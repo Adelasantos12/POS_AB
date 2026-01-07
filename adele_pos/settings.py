@@ -4,23 +4,32 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-default-fallback-key-for-dev')
+# Lee la SECRET_KEY de una variable de entorno. Es CRÍTICO que esto se configure en producción.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-default-secret-key-for-development')
 
-# DEBUG se establece en False si ENVIRONMENT es 'production'
+# DEBUG se desactiva si la variable ENVIRONMENT es 'production'.
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development')
 DEBUG = ENVIRONMENT != 'production'
 
-ALLOWED_HOSTS = []
-RAILWAY_APP_DOMAIN = os.environ.get('RAILWAY_APP_DOMAIN')
-if RAILWAY_APP_DOMAIN:
-    # El dominio de Railway debe estar en ALLOWED_HOSTS
-    ALLOWED_HOSTS.append(RAILWAY_APP_DOMAIN)
+# --- Configuración de Hosts ---
+# En producción, lee los hosts permitidos de la variable de entorno DJANGO_ALLOWED_HOSTS.
+# Esta variable debe ser una lista de dominios separados por comas.
+# Ejemplo: 'posboutique.up.railway.app,www.miotraapp.com'
+ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS')
+if ALLOWED_HOSTS_STRING:
+    ALLOWED_HOSTS = ALLOWED_HOSTS_STRING.split(',')
+else:
+    # Para desarrollo local, permite cualquier host.
+    ALLOWED_HOSTS = ['*'] if DEBUG else []
 
-# Seguridad: CSRF_TRUSTED_ORIGINS debe incluir el dominio de la app
+# --- Configuración de CSRF ---
+# Para peticiones seguras (HTTPS), Django necesita saber qué dominios son de confianza.
+# Lee los orígenes de confianza de la misma variable DJANGO_ALLOWED_HOSTS.
 CSRF_TRUSTED_ORIGINS = []
-if RAILWAY_APP_DOMAIN:
-    # Se debe incluir el esquema (https://)
-    CSRF_TRUSTED_ORIGINS.append(f"https://{RAILWAY_APP_DOMAIN}")
+if ALLOWED_HOSTS_STRING:
+    # Se debe incluir el esquema (https://) para cada dominio.
+    for host in ALLOWED_HOSTS_STRING.split(','):
+        CSRF_TRUSTED_ORIGINS.append(f"https://{host.strip()}")
 
 
 INSTALLED_APPS = [
