@@ -4,20 +4,24 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-default-fallback-key')
-DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-default-fallback-key-for-dev')
+
+# DEBUG se establece en False si ENVIRONMENT es 'production'
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development')
+DEBUG = ENVIRONMENT != 'production'
 
 ALLOWED_HOSTS = []
-RAILWAY_STATIC_URL = os.environ.get('RAILWAY_STATIC_URL')
-if RAILWAY_STATIC_URL:
-    ALLOWED_HOSTS.append(RAILWAY_STATIC_URL.split('//')[1])
+RAILWAY_APP_DOMAIN = os.environ.get('RAILWAY_APP_DOMAIN')
+if RAILWAY_APP_DOMAIN:
+    # El dominio de Railway debe estar en ALLOWED_HOSTS
+    ALLOWED_HOSTS.append(RAILWAY_APP_DOMAIN)
 
-if os.environ.get('RENDER_EXTERNAL_HOSTNAME'):
-    ALLOWED_HOSTS.append(os.environ.get('RENDER_EXTERNAL_HOSTNAME'))
-
+# Seguridad: CSRF_TRUSTED_ORIGINS debe incluir el dominio de la app
 CSRF_TRUSTED_ORIGINS = []
-if RAILWAY_STATIC_URL:
-    CSRF_TRUSTED_ORIGINS.append(RAILWAY_STATIC_URL)
+if RAILWAY_APP_DOMAIN:
+    # Se debe incluir el esquema (https://)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RAILWAY_APP_DOMAIN}")
+
 
 INSTALLED_APPS = [
     'boutique.apps.BoutiqueConfig',
