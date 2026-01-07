@@ -1,0 +1,13 @@
+# Caches
+__pycache__/
+*.pyc
+
+# Database
+db.sqlite3
+*.sqlite3
+
+# Logs
+*.log
+
+# Env
+.env
