@@ -4,33 +4,21 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Lee la SECRET_KEY de una variable de entorno. Es CRÍTICO que esto se configure en producción.
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-default-secret-key-for-development')
 
-# DEBUG se desactiva si la variable ENVIRONMENT es 'production'.
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'development')
 DEBUG = ENVIRONMENT != 'production'
 
-# --- Configuración de Hosts ---
-# En producción, lee los hosts permitidos de la variable de entorno DJANGO_ALLOWED_HOSTS.
-# Esta variable debe ser una lista de dominios separados por comas.
-# Ejemplo: 'posboutique.up.railway.app,www.miotraapp.com'
 ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS')
 if ALLOWED_HOSTS_STRING:
     ALLOWED_HOSTS = ALLOWED_HOSTS_STRING.split(',')
 else:
-    # Para desarrollo local, permite cualquier host.
     ALLOWED_HOSTS = ['*'] if DEBUG else []
 
-# --- Configuración de CSRF ---
-# Para peticiones seguras (HTTPS), Django necesita saber qué dominios son de confianza.
-# Lee los orígenes de confianza de la misma variable DJANGO_ALLOWED_HOSTS.
 CSRF_TRUSTED_ORIGINS = []
 if ALLOWED_HOSTS_STRING:
-    # Se debe incluir el esquema (https://) para cada dominio.
     for host in ALLOWED_HOSTS_STRING.split(','):
         CSRF_TRUSTED_ORIGINS.append(f"https://{host.strip()}")
-
 
 INSTALLED_APPS = [
     'boutique.apps.BoutiqueConfig',
@@ -42,8 +30,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 ]
 
+# El middleware de WhiteNoise debe ir después del de Seguridad.
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -95,4 +85,9 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
+# --- Configuración de Archivos Estáticos ---
 STATIC_URL = 'static/'
+# Directorio donde `collectstatic` recogerá los archivos estáticos para producción.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Motor de almacenamiento para WhiteNoise.
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
