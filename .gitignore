@@ -12,3 +12,6 @@ server.log
 
 # Env
 .env
+
+# Static files
+/staticfiles
