@@ -22,7 +22,7 @@ if ALLOWED_HOSTS_STRING:
 
 INSTALLED_APPS = [
     'boutique.apps.BoutiqueConfig',
-    'django.contrib.admin',
+    # 'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
