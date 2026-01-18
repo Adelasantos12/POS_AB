@@ -7,12 +7,15 @@ class Command(BaseCommand):
     help = 'Configura los roles avanzados para la boutique (Caja, Inventario, Agenda, Superadmin)'
 
     def handle(self, *args, **options):
-        # 1. Superadmin (Administrador existente o nuevo)
-        # Usamos el grupo Administrador ya creado en v1 si existe, pero lo llamaremos Superadmin para seguir el nuevo esquema
-        superadmin_group, _ = Group.objects.get_or_create(name='Superadmin')
+        # 1. Admin (Administrador con acceso a dashboards y edición)
+        admin_group, _ = Group.objects.get_or_create(name='Admin')
         all_perms = Permission.objects.filter(content_type__app_label='boutique')
-        superadmin_group.permissions.set(all_perms)
-        self.stdout.write(self.style.SUCCESS('Grupo Superadmin configurado.'))
+        admin_group.permissions.set(all_perms)
+        self.stdout.write(self.style.SUCCESS('Grupo Admin configurado.'))
+
+        # 1b. Vendedor (Acceso básico)
+        vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
+        self.stdout.write(self.style.SUCCESS('Grupo Vendedor configurado.'))
 
         # 2. Caja
         caja_group, _ = Group.objects.get_or_create(name='Caja')

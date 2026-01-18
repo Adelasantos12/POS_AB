@@ -44,6 +44,7 @@ class Producto(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADOS, default='TIENDA')
     foto = models.ImageField(upload_to='productos/', blank=True, null=True)
     qr_code = models.ImageField(upload_to='qrs/', blank=True, null=True)
+    barcode_image = models.ImageField(upload_to='barcodes/', blank=True, null=True)
 
     # Rasgos adicionales para búsqueda amigable
     rasgo1 = models.CharField(max_length=100, blank=True, help_text="Ej: Manga Larga, Escote V")
@@ -75,6 +76,23 @@ class Producto(models.Model):
             img.save(buffer, format='PNG')
             filename = f"qr-{self.sku}.png"
             self.qr_code.save(filename, File(buffer), save=False)
+
+        # Generar Código de Barras si no existe (Code 128)
+        if not self.barcode_image:
+            import barcode
+            from barcode.writer import ImageWriter
+            from io import BytesIO
+            from django.core.files import File
+
+            CODE128 = barcode.get_barcode_class('code128')
+            buffer = BytesIO()
+            # Quitamos el texto debajo para que sea más compacto en etiquetas pequeñas si se desea,
+            # pero por defecto lo dejamos para legibilidad humana.
+            barcode_instance = CODE128(self.sku, writer=ImageWriter())
+            barcode_instance.write(buffer, options={"write_text": True, "module_height": 10})
+
+            filename = f"barcode-{self.sku}.png"
+            self.barcode_image.save(filename, File(buffer), save=False)
 
         super().save(*args, **kwargs)
     def __str__(self):
@@ -139,3 +157,24 @@ class IntegranteGrupo(models.Model):
     anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     saldo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     def __str__(self): return f"{self.cliente.nombre} en {self.grupo.nombre}"
+
+class CorteCaja(models.Model):
+    usuario = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+    fecha_apertura = models.DateTimeField(auto_now_add=True)
+    fecha_cierre = models.DateTimeField(null=True, blank=True)
+    monto_apertura = models.DecimalField(max_digits=10, decimal_places=2)
+
+    # Valores esperados (calculados por el sistema)
+    efectivo_esperado = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tarjeta_esperada = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Valores reales (ingresados por el vendedor)
+    efectivo_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    tarjeta_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    diferencia = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    observaciones = models.TextField(blank=True)
+    cerrado = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Corte {self.fecha_apertura.strftime('%Y-%m-%d %H:%M')} - {self.usuario.username}"

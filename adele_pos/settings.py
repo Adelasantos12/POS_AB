@@ -12,8 +12,10 @@ DEBUG = ENVIRONMENT != 'production'
 ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS')
 if ALLOWED_HOSTS_STRING:
     ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STRING.split(',')]
+    if 'testserver' not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append('testserver')
 else:
-    ALLOWED_HOSTS = ['*'] if DEBUG else []
+    ALLOWED_HOSTS = ['*', 'testserver'] if DEBUG else []
 
 CSRF_TRUSTED_ORIGINS = []
 if ALLOWED_HOSTS_STRING:
@@ -95,3 +97,11 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Motor de almacenamiento para WhiteNoise.
 if not DEBUG:
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# --- Configuración de Archivos Media ---
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'index'
+LOGOUT_REDIRECT_URL = 'index'

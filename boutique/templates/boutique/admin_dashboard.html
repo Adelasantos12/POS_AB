@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Admin - Adelé</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary-color: #0070ba; }
+        body { background-color: #f8f9fa; }
+        .sidebar { height: 100vh; background: white; border-right: 1px solid #ddd; }
+        .stat-card { border-radius: 1rem; border: none; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-5px); }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-2 sidebar p-3 d-none d-md-block">
+                <h3 class="logo mb-4 text-primary">Adelé</h3>
+                <ul class="nav flex-column">
+                    <li class="nav-item mb-2"><a href="{% url 'admin_dashboard' %}" class="nav-link active fw-bold text-primary"><i class="bi bi-graph-up me-2"></i>Dashboard</a></li>
+                    <li class="nav-item mb-2"><a href="{% url 'pos_dashboard' %}" class="nav-link text-dark"><i class="bi bi-calculator me-2"></i>Caja</a></li>
+                    <li class="nav-item mb-2"><a href="{% url 'inventario_view' %}" class="nav-link text-dark"><i class="bi bi-box me-2"></i>Inventario</a></li>
+                    <li class="nav-item mb-2"><a href="{% url 'logout' %}" class="nav-link text-danger"><i class="bi bi-box-arrow-right me-2"></i>Salir</a></li>
+                </ul>
+            </div>
+
+            <div class="col-md-10 p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Panel de Administración</h2>
+                    <div>
+                        <a href="{% url 'exportar_ventas_csv' %}" class="btn btn-outline-success rounded-pill shadow-sm me-2">
+                            <i class="bi bi-file-earmark-spreadsheet me-2"></i>Exportar Ventas
+                        </a>
+                        <button class="btn btn-primary rounded-pill shadow-sm" id="btnAIStrategy">
+                            <i class="bi bi-stars me-2"></i>Consultar Estrategia IA
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card stat-card shadow-sm p-3">
+                            <small class="text-muted">Ventas del Mes</small>
+                            <h3 class="fw-bold text-primary">${{ total_mensual }}</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <div class="card stat-card shadow-sm p-3">
+                            <h5 class="mb-4">Tendencia de Ventas (30 días)</h5>
+                            <canvas id="salesChart" height="250"></canvas>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card stat-card shadow-sm p-3 h-100">
+                            <h5>Ventas por Categoría</h5>
+                            <canvas id="catChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Response Placeholder -->
+                <div id="aiResponse" class="alert alert-info d-none shadow-sm border-0" style="white-space: pre-wrap;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const salesData = {{ ventas_dia|safe }};
+        const catData = {{ ventas_cat|safe }};
+
+        // Sales Chart
+        new Chart(document.getElementById('salesChart'), {
+            type: 'line',
+            data: {
+                labels: salesData.map(d => d.dia),
+                datasets: [{
+                    label: 'Ventas ($)',
+                    data: salesData.map(d => d.total),
+                    borderColor: '#0070ba',
+                    tension: 0.3,
+                    fill: true,
+                    backgroundColor: 'rgba(0, 112, 186, 0.1)'
+                }]
+            }
+        });
+
+        // Category Chart
+        new Chart(document.getElementById('catChart'), {
+            type: 'doughnut',
+            data: {
+                labels: catData.map(d => d.producto__categoria__nombre),
+                datasets: [{
+                    data: catData.map(d => d.total),
+                    backgroundColor: ['#0070ba', '#47a1ff', '#8bc5ff', '#c2e1ff']
+                }]
+            }
+        });
+
+        // AI Strategy Call
+        document.getElementById('btnAIStrategy').addEventListener('click', function() {
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analizando...';
+
+            fetch('{% url "api_ai_strategy" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                const box = document.getElementById('aiResponse');
+                box.classList.remove('d-none');
+                box.innerText = data.estrategia;
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-stars me-2"></i>Consultar Estrategia IA';
+            });
+        });
+    </script>
+</body>
+</html>

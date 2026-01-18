@@ -5,10 +5,15 @@ from django.contrib.auth.models import Group
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, permission_required
-from django.db.models import Q
-from .models import Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, Grupo, IntegranteGrupo
+from django.db.models import Q, Sum, Count
+from django.db.models.functions import TruncDate
+from .models import Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, Grupo, IntegranteGrupo, CorteCaja
+from django.utils import timezone
+from decimal import Decimal
+from django.http import HttpResponse
 import logging
 import json
+import csv
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
@@ -17,9 +22,17 @@ def index(request):
     """
     Vista para la página de inicio principal.
     """
-    # De momento, solo renderiza una plantilla estática de bienvenida.
-    # En el futuro, aquí se podrá añadir lógica para mostrar
-    # un dashboard, ventas recientes, etc.
+    if request.user.is_authenticated:
+        # Si es vendedor, mandarlo al POS o a abrir caja
+        if not request.user.is_superuser and not request.user.groups.filter(name='Admin').exists():
+            corte = CorteCaja.objects.filter(usuario=request.user, cerrado=False).first()
+            if not corte:
+                return redirect('apertura_caja')
+            return redirect('pos_dashboard')
+        else:
+            # Si es admin, mandarlo al dashboard de admin (que crearemos)
+            return render(request, 'boutique/index.html')
+
     return render(request, 'boutique/index.html')
 
 def signup(request):
@@ -48,7 +61,64 @@ def signup(request):
 @login_required
 def pos_dashboard(request):
     """Interfaz principal de Punto de Venta"""
-    return render(request, 'boutique/pos_dashboard.html')
+    corte = CorteCaja.objects.filter(usuario=request.user, cerrado=False).first()
+    if not corte:
+        return redirect('apertura_caja')
+    return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
+
+@login_required
+def apertura_caja(request):
+    """Vista para abrir la caja del día"""
+    if CorteCaja.objects.filter(usuario=request.user, cerrado=False).exists():
+        return redirect('pos_dashboard')
+
+    if request.method == 'POST':
+        monto = request.POST.get('monto_apertura', 0)
+        CorteCaja.objects.create(
+            usuario=request.user,
+            monto_apertura=monto,
+            efectivo_esperado=monto
+        )
+        return redirect('pos_dashboard')
+    return render(request, 'boutique/apertura_caja.html')
+
+@login_required
+def cierre_caja(request):
+    """Vista para cerrar la caja y confirmar montos"""
+    corte = CorteCaja.objects.filter(usuario=request.user, cerrado=False).first()
+    if not corte:
+        return redirect('apertura_caja')
+
+    if request.method == 'POST':
+        efectivo_real = Decimal(request.POST.get('efectivo_real', 0))
+        tarjeta_real = Decimal(request.POST.get('tarjeta_real', 0))
+
+        corte.efectivo_real = efectivo_real
+        corte.tarjeta_real = tarjeta_real
+        corte.fecha_cierre = timezone.now()
+        corte.cerrado = True
+        corte.diferencia = (efectivo_real + tarjeta_real) - (corte.efectivo_esperado + corte.tarjeta_esperada)
+        corte.observaciones = request.POST.get('observaciones', '')
+        corte.save()
+        return redirect('index')
+
+    # Calcular esperados desde ventas del día vinculadas a este corte
+    # (Para simplificar, usamos las ventas realizadas por el usuario desde la apertura del corte)
+    ventas = Venta.objects.filter(vendedor=request.user, fecha__gte=corte.fecha_apertura)
+    pagos = Pago.objects.filter(venta__in=ventas)
+
+    efectivo_ventas = sum(p.monto for p in pagos if p.metodo == 'EFECTIVO')
+    tarjeta_ventas = sum(p.monto for p in pagos if p.metodo == 'TARJETA')
+
+    corte.efectivo_esperado = Decimal(corte.monto_apertura) + efectivo_ventas
+    corte.tarjeta_esperada = tarjeta_ventas
+    corte.save()
+
+    return render(request, 'boutique/cierre_caja.html', {
+        'corte': corte,
+        'efectivo_ventas': efectivo_ventas,
+        'tarjeta_ventas': tarjeta_ventas
+    })
 
 @require_POST
 @login_required
@@ -172,3 +242,148 @@ def agenda_view(request):
     """Vista de la agenda de grupos"""
     grupos = Grupo.objects.all().order_by('fecha_entrega')
     return render(request, 'boutique/agenda.html', {'grupos': grupos})
+
+@login_required
+def imprimir_etiquetas(request):
+    """Genera una página para imprimir etiquetas en lote"""
+    ids = request.GET.get('ids', '').split(',')
+    productos = Producto.objects.filter(id__in=[i for i in ids if i.isdigit()])
+    return render(request, 'boutique/etiquetas_lote.html', {'productos': productos})
+
+@login_required
+def admin_dashboard(request):
+    """Dashboard para Administradores con analítica"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return redirect('index')
+
+    # Ventas por día (últimos 30 días)
+    ventas_dia = Venta.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
+        total=Sum('total'),
+        cantidad=Count('id')
+    ).order_by('dia')
+
+    # Ventas por modelo/categoría
+    ventas_cat = ItemVenta.objects.values('producto__categoria__nombre').annotate(
+        total=Sum('cantidad')
+    ).order_by('-total')
+
+    # Ventas por Color
+    ventas_color = ItemVenta.objects.values('producto__color__nombre').annotate(
+        total=Sum('cantidad')
+    ).order_by('-total')
+
+    context = {
+        'ventas_dia': list(ventas_dia),
+        'ventas_cat': list(ventas_cat),
+        'ventas_color': list(ventas_color),
+        'total_mensual': Venta.objects.filter(fecha__month=timezone.now().month).aggregate(Sum('total'))['total__sum'] or 0
+    }
+    return render(request, 'boutique/admin_dashboard.html', context)
+
+@require_POST
+@login_required
+def api_ai_strategy(request):
+    """Genera una estrategia de venta usando IA (Simulado)"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return JsonResponse({'status': 'error'}, status=403)
+
+    # Recopilar datos para el prompt
+    cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:3]
+    color_top = ItemVenta.objects.values('producto__color__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:3]
+
+    resumen = f"Categorías más vendidas: {', '.join([c['producto__categoria__nombre'] for c in cat_top])}. "
+    resumen += f"Colores tendencia: {', '.join([c['producto__color__nombre'] for c in color_top])}."
+
+    # Simulación de respuesta de IA basada en los datos reales
+    estrategia = f"Basado en tus datos ({resumen}), se recomienda: \n"
+    estrategia += "1. Aumentar stock de los colores tendencia para la próxima temporada.\n"
+    estrategia += "2. Lanzar una promoción 'Combo' para las categorías menos movidas.\n"
+    estrategia += "3. Los fines de semana muestran mayor volumen, considera reforzar el equipo esos días."
+
+    return JsonResponse({'estrategia': estrategia})
+
+@login_required
+def exportar_inventario_csv(request):
+    """Exporta el catálogo de productos a CSV"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return HttpResponse("No autorizado", status=403)
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="inventario_adele.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['SKU', 'Categoria', 'Rasgo 1', 'Rasgo 2', 'Color', 'Talla', 'Precio', 'Stock'])
+
+    productos = Producto.objects.all().select_related('categoria', 'color')
+    for p in productos:
+        writer.writerow([p.sku, p.categoria.nombre, p.rasgo1, p.rasgo2, p.color.nombre, p.talla, p.precio_venta, p.cantidad_actual])
+
+    return response
+
+@login_required
+def exportar_ventas_csv(request):
+    """Exporta el historial de ventas a CSV"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return HttpResponse("No autorizado", status=403)
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="ventas_adele.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['ID Venta', 'Fecha', 'Vendedor', 'Total', 'Metodos de Pago'])
+
+    ventas = Venta.objects.all().select_related('vendedor').prefetch_related('pagos')
+    for v in ventas:
+        metodos = ", ".join([p.metodo for p in v.pagos.all()])
+        writer.writerow([v.id, v.fecha.strftime('%Y-%m-%d %H:%M'), v.vendedor.username, v.total, metodos])
+
+    return response
+
+@login_required
+def inventario_view(request):
+    """Vista de gestión de inventario con RBAC"""
+    q = request.GET.get('q', '')
+    productos = Producto.objects.filter(
+        Q(sku__icontains=q) |
+        Q(rasgo1__icontains=q) |
+        Q(rasgo2__icontains=q)
+    ).select_related('categoria', 'color').order_by('-fecha_creacion')[:100]
+
+    es_admin = request.user.is_superuser or request.user.groups.filter(name='Admin').exists()
+
+    return render(request, 'boutique/inventario.html', {
+        'productos': productos,
+        'q': q,
+        'es_admin': es_admin
+    })
+
+@require_POST
+@login_required
+def api_eliminar_producto(request, pk):
+    """Elimina un producto (solo Admin)"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return JsonResponse({'status': 'error', 'message': 'No autorizado'}, status=403)
+
+    producto = get_object_or_404(Producto, pk=pk)
+    producto.delete()
+    return JsonResponse({'status': 'ok'})
+
+@require_POST
+@login_required
+def api_editar_producto(request, pk):
+    """Edita un producto (solo Admin)"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return JsonResponse({'status': 'error', 'message': 'No autorizado'}, status=403)
+
+    data = json.loads(request.body)
+    producto = get_object_or_404(Producto, pk=pk)
+
+    try:
+        producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
+        producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
+        producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
+        producto.cantidad_actual = int(data.get('stock', producto.cantidad_actual))
+        producto.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

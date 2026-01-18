@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Caja - Adelé Boutique POS</title>
+    <title>Caja - Adelé POS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -24,8 +24,14 @@
                 <ul class="nav flex-column">
                     <li class="nav-item mb-2"><a href="{% url 'pos_dashboard' %}" class="nav-link active"><i class="bi bi-calculator me-2"></i>Caja</a></li>
                     <li class="nav-item mb-2"><a href="{% url 'agenda_view' %}" class="nav-link text-dark"><i class="bi bi-calendar-event me-2"></i>Agenda</a></li>
-                    <li class="nav-item mb-2"><a href="/admin/boutique/producto/" class="nav-link text-dark"><i class="bi bi-box me-2"></i>Inventario</a></li>
+                    <li class="nav-item mb-2"><a href="{% url 'inventario_view' %}" class="nav-link text-dark"><i class="bi bi-box me-2"></i>Inventario</a></li>
                 </ul>
+                <div class="mt-auto pt-5">
+                    <hr>
+                    <a href="{% url 'cierre_caja' %}" class="btn btn-outline-danger btn-sm w-100 btn-pill">
+                        <i class="bi bi-lock me-2"></i>Cerrar Caja
+                    </a>
+                </div>
             </div>
 
             <!-- Main Content -->
