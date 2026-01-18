@@ -18,7 +18,8 @@ class Command(BaseCommand):
         # 2. Grupo Vendedor
         vendedor_group, created = Group.objects.get_or_create(name='Vendedor')
         # El vendedor solo puede ver productos, y gestionar ventas, pedidos y clientes
-        vendedor_models = [Venta, Pedido, Cliente]
+        from boutique.models import ItemVenta
+        vendedor_models = [Venta, ItemVenta, Pedido, Cliente]
         vendedor_permissions = []
 
         for model in vendedor_models:
