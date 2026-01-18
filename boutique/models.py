@@ -125,7 +125,16 @@ class Pago(models.Model):
     monto = models.DecimalField(max_digits=10, decimal_places=2)
     metodo = models.CharField(max_length=20, choices=METODOS)
     fecha = models.DateTimeField(auto_now_add=True)
+    registrado_por = models.ForeignKey('auth.User', on_delete=models.PROTECT, null=True, blank=True)
     def __str__(self): return f"Pago de {self.monto} a Venta #{self.venta.id}"
+
+class Auditoria(models.Model):
+    usuario = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    accion = models.CharField(max_length=255)
+    detalles = models.TextField(blank=True)
+    def __str__(self):
+        return f"{self.usuario.username} - {self.accion} - {self.timestamp}"
 
 class Pedido(models.Model):
     ESTADOS = [('PENDIENTE', 'Pendiente'), ('EN_PROCESO', 'En Proceso'), ('LISTO', 'Listo'), ('ENTREGADO', 'Entregado')]
@@ -159,7 +168,7 @@ class IntegranteGrupo(models.Model):
     def __str__(self): return f"{self.cliente.nombre} en {self.grupo.nombre}"
 
 class CorteCaja(models.Model):
-    usuario = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+    abierto_por = models.ForeignKey('auth.User', on_delete=models.PROTECT)
     fecha_apertura = models.DateTimeField(auto_now_add=True)
     fecha_cierre = models.DateTimeField(null=True, blank=True)
     monto_apertura = models.DecimalField(max_digits=10, decimal_places=2)
@@ -177,4 +186,4 @@ class CorteCaja(models.Model):
     cerrado = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"Corte {self.fecha_apertura.strftime('%Y-%m-%d %H:%M')} - {self.usuario.username}"
+        return f"Corte {self.fecha_apertura.strftime('%Y-%m-%d %H:%M')} - {self.abierto_por.username}"

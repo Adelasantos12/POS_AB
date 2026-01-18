@@ -1,13 +1,14 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .forms import CustomUserCreationForm
-from django.contrib.auth import login
+from django.contrib.auth import login, logout as auth_logout
 from django.contrib.auth.models import Group, User
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
-from .models import Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, Grupo, IntegranteGrupo, CorteCaja
+from .models import Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, Grupo, IntegranteGrupo, CorteCaja, Auditoria
+from .middleware import profile_permission_required
 from django.utils import timezone
 from decimal import Decimal
 from django.http import HttpResponse
@@ -23,9 +24,15 @@ def index(request):
     Vista para la página de inicio principal.
     """
     if request.user.is_authenticated:
+        # Si no hay perfil activo, forzar selección
+        if not hasattr(request, 'active_profile'):
+            return redirect('seleccionar_perfil')
+
+        active_profile = request.active_profile
+
         # Si es vendedor, mandarlo al POS o a abrir caja
-        if not request.user.is_superuser and not request.user.groups.filter(name='Admin').exists():
-            corte = CorteCaja.objects.filter(usuario=request.user, cerrado=False).first()
+        if not active_profile.is_superuser and not active_profile.groups.filter(name__in=['Admin', 'Superadmin']).exists():
+            corte = CorteCaja.objects.filter(cerrado=False).first()
             if not corte:
                 return redirect('apertura_caja')
             return redirect('pos_dashboard')
@@ -35,24 +42,61 @@ def index(request):
 
     return render(request, 'boutique/index.html')
 
+@login_required
+def seleccionar_perfil(request):
+    usuarios = User.objects.filter(is_active=True).prefetch_related('groups')
+    return render(request, 'boutique/seleccionar_perfil.html', {'usuarios': usuarios})
+
+@login_required
+def autenticar_perfil(request):
+    if request.method == 'POST':
+        user_id = request.POST.get('user_id')
+        password = request.POST.get('password')
+        user = get_object_or_404(User, id=user_id)
+
+        if user.check_password(password):
+            request.session['active_profile_id'] = user.id
+            Auditoria.objects.create(
+                usuario=user,
+                accion='Selección de Perfil',
+                detalles=f'Perfil {user.username} activado'
+            )
+            return redirect('index')
+        else:
+            return render(request, 'boutique/autenticar_perfil.html', {
+                'u': user,
+                'error': 'Contraseña incorrecta'
+            })
+
+    user_id = request.GET.get('user_id')
+    user = get_object_or_404(User, id=user_id)
+    return render(request, 'boutique/autenticar_perfil.html', {'u': user})
+
+@login_required
+def cambiar_perfil(request):
+    if 'active_profile_id' in request.session:
+        del request.session['active_profile_id']
+    return redirect('seleccionar_perfil')
+
+def logout_view(request):
+    """Cierra la sesión del terminal de forma segura"""
+    auth_logout(request)
+    return redirect('index')
+
 def signup(request):
     """
     Vista para el registro de nuevos usuarios.
+    Los usuarios nuevos quedan sin rol asignado inicialmente.
     """
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             try:
                 user = form.save()
-                # Asignar al grupo Vendedor por defecto
-                # Usamos get_or_create para evitar el error 500 si el grupo no existe aún
-                vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
-                user.groups.add(vendedor_group)
                 login(request, user)
                 return redirect('index')
             except Exception as e:
                 logger.exception("Error crítico durante el registro de usuario")
-                # Re-lanzamos para que Django maneje el 500 pero con el log ya guardado
                 raise e
     else:
         form = CustomUserCreationForm()
@@ -61,7 +105,7 @@ def signup(request):
 @login_required
 def pos_dashboard(request):
     """Interfaz principal de Punto de Venta"""
-    corte = CorteCaja.objects.filter(usuario=request.user, cerrado=False).first()
+    corte = CorteCaja.objects.filter(cerrado=False).first()
     if not corte:
         return redirect('apertura_caja')
     return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
@@ -69,15 +113,21 @@ def pos_dashboard(request):
 @login_required
 def apertura_caja(request):
     """Vista para abrir la caja del día"""
-    if CorteCaja.objects.filter(usuario=request.user, cerrado=False).exists():
+    if CorteCaja.objects.filter(cerrado=False).exists():
         return redirect('pos_dashboard')
 
     if request.method == 'POST':
         monto = request.POST.get('monto_apertura', 0)
         CorteCaja.objects.create(
-            usuario=request.user,
+            abierto_por=request.active_profile,
             monto_apertura=monto,
             efectivo_esperado=monto
+        )
+        # Auditoría
+        Auditoria.objects.create(
+            usuario=request.active_profile,
+            accion='Apertura de Caja',
+            detalles=f'Caja abierta con {monto}'
         )
         return redirect('pos_dashboard')
     return render(request, 'boutique/apertura_caja.html')
@@ -85,7 +135,7 @@ def apertura_caja(request):
 @login_required
 def cierre_caja(request):
     """Vista para cerrar la caja y confirmar montos"""
-    corte = CorteCaja.objects.filter(usuario=request.user, cerrado=False).first()
+    corte = CorteCaja.objects.filter(cerrado=False).first()
     if not corte:
         return redirect('apertura_caja')
 
@@ -100,11 +150,18 @@ def cierre_caja(request):
         corte.diferencia = (efectivo_real + tarjeta_real) - (corte.efectivo_esperado + corte.tarjeta_esperada)
         corte.observaciones = request.POST.get('observaciones', '')
         corte.save()
+
+        # Auditoría
+        Auditoria.objects.create(
+            usuario=request.active_profile,
+            accion='Cierre de Caja',
+            detalles=f'Caja cerrada con diferencia de {corte.diferencia}'
+        )
         return redirect('index')
 
     # Calcular esperados desde ventas del día vinculadas a este corte
-    # (Para simplificar, usamos las ventas realizadas por el usuario desde la apertura del corte)
-    ventas = Venta.objects.filter(vendedor=request.user, fecha__gte=corte.fecha_apertura)
+    # (Ahora usamos todas las ventas desde la apertura del corte, sin importar quién las hizo)
+    ventas = Venta.objects.filter(fecha__gte=corte.fecha_apertura)
     pagos = Pago.objects.filter(venta__in=ventas)
 
     efectivo_ventas = sum(p.monto for p in pagos if p.metodo == 'EFECTIVO')
@@ -122,6 +179,7 @@ def cierre_caja(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Vendedor')
 def api_crear_producto_rapido(request):
     """Crea un producto de forma rápida desde la caja"""
     try:
@@ -171,7 +229,7 @@ def api_registrar_venta(request):
         metodo = data.get('metodo', 'EFECTIVO')
 
         venta = Venta.objects.create(
-            vendedor=request.user,
+            vendedor=request.active_profile,
             total=total
         )
 
@@ -190,7 +248,15 @@ def api_registrar_venta(request):
         Pago.objects.create(
             venta=venta,
             monto=pago_inicial,
-            metodo=metodo
+            metodo=metodo,
+            registrado_por=request.active_profile
+        )
+
+        # Auditoría
+        Auditoria.objects.create(
+            usuario=request.active_profile,
+            accion='Registro de Venta',
+            detalles=f'Venta #{venta.id} por total de {total}'
         )
 
         return JsonResponse({'status': 'ok', 'venta_id': venta.id})
@@ -254,7 +320,7 @@ def imprimir_etiquetas(request):
 @login_required
 def admin_dashboard(request):
     """Dashboard para Administradores con analítica"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+    if not (request.active_profile.is_superuser or request.active_profile.groups.filter(name='Admin').exists()):
         return redirect('index')
 
     # Ventas por día (últimos 30 días)
@@ -283,10 +349,9 @@ def admin_dashboard(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Admin')
 def api_ai_strategy(request):
     """Genera una estrategia de venta usando IA (Simulado)"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return JsonResponse({'status': 'error'}, status=403)
 
     # Recopilar datos para el prompt
     cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:3]
@@ -304,10 +369,9 @@ def api_ai_strategy(request):
     return JsonResponse({'estrategia': estrategia})
 
 @login_required
+@profile_permission_required('Admin')
 def exportar_inventario_csv(request):
     """Exporta el catálogo de productos a CSV"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return HttpResponse("No autorizado", status=403)
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="inventario_adele.csv"'
@@ -322,10 +386,9 @@ def exportar_inventario_csv(request):
     return response
 
 @login_required
+@profile_permission_required('Admin')
 def exportar_ventas_csv(request):
     """Exporta el historial de ventas a CSV"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return HttpResponse("No autorizado", status=403)
 
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="ventas_adele.csv"'
@@ -350,7 +413,7 @@ def inventario_view(request):
         Q(rasgo2__icontains=q)
     ).select_related('categoria', 'color').order_by('-fecha_creacion')[:100]
 
-    es_admin = request.user.is_superuser or request.user.groups.filter(name='Admin').exists()
+    es_admin = request.active_profile.is_superuser or request.active_profile.groups.filter(name='Admin').exists()
 
     return render(request, 'boutique/inventario.html', {
         'productos': productos,
@@ -360,22 +423,26 @@ def inventario_view(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Admin')
 def api_eliminar_producto(request, pk):
     """Elimina un producto (solo Admin)"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return JsonResponse({'status': 'error', 'message': 'No autorizado'}, status=403)
-
     producto = get_object_or_404(Producto, pk=pk)
+
+    # Auditoría
+    Auditoria.objects.create(
+        usuario=request.active_profile,
+        accion='Eliminación de Producto',
+        detalles=f'Producto {producto.sku} eliminado'
+    )
+
     producto.delete()
     return JsonResponse({'status': 'ok'})
 
 @require_POST
 @login_required
+@profile_permission_required('Admin')
 def api_editar_producto(request, pk):
     """Edita un producto (solo Admin)"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return JsonResponse({'status': 'error', 'message': 'No autorizado'}, status=403)
-
     data = json.loads(request.body)
     producto = get_object_or_404(Producto, pk=pk)
 
@@ -385,24 +452,29 @@ def api_editar_producto(request, pk):
         producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
         producto.cantidad_actual = int(data.get('stock', producto.cantidad_actual))
         producto.save()
+
+        # Auditoría
+        Auditoria.objects.create(
+            usuario=request.active_profile,
+            accion='Edición de Producto',
+            detalles=f'Producto {producto.sku} editado'
+        )
+
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 @login_required
+@profile_permission_required('Admin')
 def gestion_usuarios(request):
     """Lista de personal de la boutique (solo Admin)"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return redirect('index')
-
     usuarios = User.objects.all().prefetch_related('groups').order_by('username')
     return render(request, 'boutique/usuarios_list.html', {'usuarios': usuarios})
 
 @login_required
+@profile_permission_required('Admin')
 def editar_usuario(request, pk):
     """Edita el rol de un usuario (solo Admin)"""
-    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
-        return redirect('index')
 
     usuario = get_object_or_404(User, pk=pk)
     grupos = Group.objects.all()

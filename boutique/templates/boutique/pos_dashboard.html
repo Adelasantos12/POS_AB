@@ -1,320 +1,284 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Caja - Adelé POS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <style>
-        :root { --primary-color: #0070ba; }
-        body { background-color: #f8f9fa; }
-        .sidebar { height: 100vh; background: white; border-right: 1px solid #ddd; }
-        .cart-item { border-bottom: 1px solid #eee; padding: 10px 0; }
-        .btn-pill { border-radius: 50px; }
-        .nav-link.active { color: var(--primary-color); font-weight: bold; }
-    </style>
-</head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar Navigation -->
-            <div class="col-md-2 sidebar d-none d-md-block p-3">
-                <h3 class="logo mb-4 text-primary">Adelé</h3>
-                <ul class="nav flex-column">
-                    {% if request.user.is_superuser or request.user.groups.all.0.name == 'Admin' %}
-                    <li class="nav-item mb-2"><a href="{% url 'admin_dashboard' %}" class="nav-link text-dark"><i class="bi bi-graph-up me-2"></i>Dashboard</a></li>
-                    {% endif %}
-                    <li class="nav-item mb-2"><a href="{% url 'pos_dashboard' %}" class="nav-link active"><i class="bi bi-calculator me-2"></i>Caja</a></li>
-                    <li class="nav-item mb-2"><a href="{% url 'agenda_view' %}" class="nav-link text-dark"><i class="bi bi-calendar-event me-2"></i>Agenda</a></li>
-                    <li class="nav-item mb-2"><a href="{% url 'inventario_view' %}" class="nav-link text-dark"><i class="bi bi-box me-2"></i>Inventario</a></li>
-                    {% if request.user.is_superuser or request.user.groups.all.0.name == 'Admin' %}
-                    <li class="nav-item mb-2"><a href="{% url 'gestion_usuarios' %}" class="nav-link text-dark"><i class="bi bi-people me-2"></i>Usuarios</a></li>
-                    {% endif %}
-                </ul>
-                <div class="mt-auto pt-5">
-                    <hr>
-                    <a href="{% url 'cierre_caja' %}" class="btn btn-outline-danger btn-sm w-100 btn-pill">
-                        <i class="bi bi-lock me-2"></i>Cerrar Caja
-                    </a>
-                </div>
-            </div>
+{% extends 'boutique/base.html' %}
 
-            <!-- Main Content -->
-            <div class="col-md-10 p-4">
-                <div class="row">
-                    <!-- Left: Search and Catalog -->
-                    <div class="col-md-7">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h4>Operación de Venta</h4>
-                            <button class="btn btn-outline-primary btn-sm btn-pill" data-bs-toggle="modal" data-bs-target="#quickProductModal">
-                                <i class="bi bi-plus-lg me-1"></i>Producto Rápido
-                            </button>
-                        </div>
+{% block title %}Caja - Adelé POS{% endblock %}
 
-                        <div class="input-group mb-4 shadow-sm">
-                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                            <input type="text" id="productSearch" class="form-control border-start-0 ps-0" placeholder="Escanear QR o buscar por rasgo/SKU...">
-                        </div>
+{% block extra_css %}
+.cart-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+.list-group-item-action { cursor: pointer; }
+{% endblock %}
 
-                        <div id="searchResults" class="list-group shadow-sm">
-                            <!-- Results will appear here -->
-                        </div>
-                    </div>
+{% block content %}
+<div class="row">
+    <!-- Left: Search and Catalog -->
+    <div class="col-md-7">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="fw-bold">Operación de Venta</h4>
+            <button class="btn btn-outline-primary btn-sm btn-pill" data-bs-toggle="modal" data-bs-target="#quickProductModal">
+                <i class="bi bi-plus-lg me-1"></i>Producto Rápido
+            </button>
+        </div>
 
-                    <!-- Right: Cart -->
-                    <div class="col-md-5">
-                        <div class="card shadow-sm border-0">
-                            <div class="card-body">
-                                <h5 class="card-title mb-4">Carrito</h5>
-                                <div id="cartItems" class="mb-4" style="min-height: 200px;">
-                                    <p class="text-muted text-center">El carrito está vacío</p>
-                                </div>
+        <div class="input-group mb-4 shadow-sm">
+            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+            <input type="text" id="productSearch" class="form-control border-start-0 ps-0" placeholder="Escanear QR o buscar por rasgo/SKU...">
+        </div>
 
-                                <div class="d-flex justify-content-between mb-2">
-                                    <span>Subtotal</span>
-                                    <span id="cartSubtotal">$0.00</span>
-                                </div>
-                                <hr>
-                                <div class="d-flex justify-content-between mb-4">
-                                    <span class="h5">Total</span>
-                                    <span class="h5 text-primary" id="cartTotal">$0.00</span>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label">Método de Pago</label>
-                                    <select class="form-select" id="paymentMethod">
-                                        <option value="EFECTIVO">Efectivo</option>
-                                        <option value="TARJETA">Tarjeta</option>
-                                        <option value="TRANSFERENCIA">Transferencia</option>
-                                    </select>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label">Pago Inicial (para apartados)</label>
-                                    <input type="number" id="initialPayment" class="form-control" placeholder="Monto entregado">
-                                </div>
-
-                                <button class="btn btn-primary w-100 py-3 btn-pill" id="btnCheckout">Finalizar Operación</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div id="searchResults" class="list-group shadow-sm">
+            <!-- Results will appear here -->
         </div>
     </div>
 
-    <!-- Quick Product Modal -->
-    <div class="modal fade" id="quickProductModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title">Alta Rápida de Producto</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <!-- Right: Cart -->
+    <div class="col-md-5">
+        <div class="card shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-body p-4">
+                <h5 class="card-title mb-4 fw-bold">Carrito</h5>
+                <div id="cartItems" class="mb-4" style="min-height: 200px;">
+                    <p class="text-muted text-center">El carrito está vacío</p>
                 </div>
-                <div class="modal-body">
-                    <form id="quickProductForm">
-                        <div class="mb-3">
-                            <label class="form-label">Categoría (Tipo)</label>
-                            <input type="text" name="categoria" class="form-control" list="catOptions" placeholder="Ej: Vestido" required>
-                            <datalist id="catOptions"><option value="Vestido"><option value="Top"><option value="Falda"></datalist>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Rasgo 1 (Corte)</label>
-                                <input type="text" name="rasgo1" class="form-control" placeholder="Ej: Manga Larga">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Rasgo 2 (Tela/Estilo)</label>
-                                <input type="text" name="rasgo2" class="form-control" placeholder="Ej: Satinado">
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Color</label>
-                                <input type="text" name="color" class="form-control" placeholder="Ej: Rojo" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Talla</label>
-                                <input type="text" name="talla" class="form-control" placeholder="Ej: M">
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Precio de Venta</label>
-                            <div class="input-group">
-                                <span class="input-group-text">$</span>
-                                <input type="number" name="precio" class="form-control" required>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Estado</label>
-                            <select name="estado" class="form-select">
-                                <option value="TIENDA">En Tienda</option>
-                                <option value="APARTADO">Apartado</option>
-                                <option value="PEDIDO">Sobre Pedido</option>
-                            </select>
-                        </div>
-                        <div id="duplicateAlert" class="alert alert-warning d-none">
-                            <small><i class="bi bi-exclamation-triangle me-2"></i>Se detectaron posibles duplicados:</small>
-                            <ul id="duplicateList" class="mb-0 small"></ul>
-                        </div>
-                    </form>
+
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Subtotal</span>
+                    <span id="cartSubtotal">$0.00</span>
                 </div>
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-light btn-pill" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary btn-pill" id="btnSaveQuickProduct">Crear y Agregar</button>
+                <hr>
+                <div class="d-flex justify-content-between mb-4">
+                    <span class="h5 fw-bold">Total</span>
+                    <span class="h5 text-primary fw-bold" id="cartTotal">$0.00</span>
                 </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Método de Pago</label>
+                    <select class="form-select" id="paymentMethod" style="border-radius: 10px;">
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="TARJETA">Tarjeta</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Pago Inicial (para apartados)</label>
+                    <input type="number" id="initialPayment" class="form-control" placeholder="Monto entregado" style="border-radius: 10px;">
+                </div>
+
+                <button class="btn btn-primary w-100 py-3 btn-pill fw-bold" id="btnCheckout">Finalizar Operación</button>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let cart = [];
-        const csrfToken = '{{ csrf_token }}';
+<!-- Quick Product Modal -->
+<div class="modal fade" id="quickProductModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">Alta Rápida de Producto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="quickProductForm">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Categoría (Tipo)</label>
+                        <input type="text" name="categoria" class="form-control" list="catOptions" placeholder="Ej: Vestido" required style="border-radius: 10px;">
+                        <datalist id="catOptions"><option value="Vestido"><option value="Top"><option value="Falda"></datalist>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-bold">Rasgo 1 (Corte)</label>
+                            <input type="text" name="rasgo1" class="form-control" placeholder="Ej: Manga Larga" style="border-radius: 10px;">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-bold">Rasgo 2 (Tela/Estilo)</label>
+                            <input type="text" name="rasgo2" class="form-control" placeholder="Ej: Satinado" style="border-radius: 10px;">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-bold">Color</label>
+                            <input type="text" name="color" class="form-control" placeholder="Ej: Rojo" required style="border-radius: 10px;">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-bold">Talla</label>
+                            <input type="text" name="talla" class="form-control" placeholder="Ej: M" style="border-radius: 10px;">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Precio de Venta</label>
+                        <div class="input-group">
+                            <span class="input-group-text" style="border-radius: 10px 0 0 10px;">$</span>
+                            <input type="number" name="precio" class="form-control" required style="border-radius: 0 10px 10px 0;">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Estado</label>
+                        <select name="estado" class="form-select" style="border-radius: 10px;">
+                            <option value="TIENDA">En Tienda</option>
+                            <option value="APARTADO">Apartado</option>
+                            <option value="PEDIDO">Sobre Pedido</option>
+                        </select>
+                    </div>
+                    <div id="duplicateAlert" class="alert alert-warning d-none" style="border-radius: 10px;">
+                        <small><i class="bi bi-exclamation-triangle me-2"></i>Se detectaron posibles duplicados:</small>
+                        <ul id="duplicateList" class="mb-0 small"></ul>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-light btn-pill" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-pill fw-bold" id="btnSaveQuickProduct">Crear y Agregar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-        // Product Search
-        document.getElementById('productSearch').addEventListener('input', function(e) {
-            const q = e.target.value;
-            if (q.length < 2) {
-                document.getElementById('searchResults').innerHTML = '';
-                return;
-            }
-            fetch(`/api/search-productos/?q=${q}`)
-                .then(r => r.json())
-                .then(data => {
-                    let html = '';
-                    data.results.forEach(p => {
-                        html += `<button type="button" class="list-group-item list-group-item-action" onclick="addToCart(${p.id}, '${p.sku}', '${p.text}', ${p.precio})">
-                                    <div class="d-flex justify-content-between">
-                                        <span>${p.text} <small class="text-muted">(${p.sku})</small></span>
-                                        <strong>$${p.precio}</strong>
-                                    </div>
-                                 </button>`;
-                    });
-                    document.getElementById('searchResults').innerHTML = html;
-                });
-        });
+{% block extra_js %}
+<script>
+    let cart = [];
+    const csrfToken = '{{ csrf_token }}';
 
-        function addToCart(id, sku, text, precio) {
-            cart.push({id, sku, text, precio, cantidad: 1});
-            updateCart();
-            document.getElementById('productSearch').value = '';
+    // Product Search
+    document.getElementById('productSearch').addEventListener('input', function(e) {
+        const q = e.target.value;
+        if (q.length < 2) {
             document.getElementById('searchResults').innerHTML = '';
+            return;
         }
-
-        function updateCart() {
-            const container = document.getElementById('cartItems');
-            if (cart.length === 0) {
-                container.innerHTML = '<p class="text-muted text-center">El carrito está vacío</p>';
-                document.getElementById('cartTotal').innerText = '$0.00';
-                return;
-            }
-            let html = '';
-            let total = 0;
-            cart.forEach((item, index) => {
-                total += item.precio * item.cantidad;
-                html += `<div class="cart-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <div class="fw-bold">${item.text}</div>
-                                <small class="text-muted">${item.sku}</small>
-                            </div>
-                            <div class="d-flex align-items-center">
-                                <span class="me-3">$${item.precio}</span>
-                                <button class="btn btn-sm btn-outline-danger" onclick="removeFromCart(${index})"><i class="bi bi-trash"></i></button>
-                            </div>
-                         </div>`;
+        fetch(`/api/search-productos/?q=${q}`)
+            .then(r => r.json())
+            .then(data => {
+                let html = '';
+                data.results.forEach(p => {
+                    html += `<button type="button" class="list-group-item list-group-item-action" onclick="addToCart(${p.id}, '${p.sku}', '${p.text}', ${p.precio})">
+                                <div class="d-flex justify-content-between">
+                                    <span>${p.text} <small class="text-muted">(${p.sku})</small></span>
+                                    <strong>$${p.precio}</strong>
+                                </div>
+                             </button>`;
+                });
+                document.getElementById('searchResults').innerHTML = html;
             });
-            container.innerHTML = html;
-            document.getElementById('cartTotal').innerText = `$${total.toFixed(2)}`;
-            document.getElementById('cartSubtotal').innerText = `$${total.toFixed(2)}`;
-            document.getElementById('initialPayment').value = total.toFixed(2);
-        }
+    });
 
-        function removeFromCart(index) {
-            cart.splice(index, 1);
-            updateCart();
-        }
+    function addToCart(id, sku, text, precio) {
+        cart.push({id, sku, text, precio, cantidad: 1});
+        updateCart();
+        document.getElementById('productSearch').value = '';
+        document.getElementById('searchResults').innerHTML = '';
+    }
 
-        // Duplicate Check
-        document.querySelectorAll('#quickProductForm input').forEach(el => {
-            el.addEventListener('blur', function() {
-                const form = document.getElementById('quickProductForm');
-                const formData = new FormData(form);
-                const data = Object.fromEntries(formData.entries());
-                if (data.categoria && data.color) {
-                    fetch('/api/check-duplicados/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                        body: JSON.stringify(data)
-                    })
-                    .then(r => r.json())
-                    .then(res => {
-                        const alert = document.getElementById('duplicateAlert');
-                        const list = document.getElementById('duplicateList');
-                        if (res.duplicados.length > 0) {
-                            alert.classList.remove('d-none');
-                            list.innerHTML = res.duplicados.map(d => `<li>${d.text} (${d.score}%)</li>`).join('');
-                        } else {
-                            alert.classList.add('d-none');
-                        }
-                    });
-                }
-            });
+    function updateCart() {
+        const container = document.getElementById('cartItems');
+        if (cart.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">El carrito está vacío</p>';
+            document.getElementById('cartTotal').innerText = '$0.00';
+            document.getElementById('cartSubtotal').innerText = '$0.00';
+            return;
+        }
+        let html = '';
+        let total = 0;
+        cart.forEach((item, index) => {
+            total += item.precio * item.cantidad;
+            html += `<div class="cart-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">${item.text}</div>
+                            <small class="text-muted">${item.sku}</small>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <span class="me-3 fw-bold">$${item.precio}</span>
+                            <button class="btn btn-sm btn-outline-danger border-0" onclick="removeFromCart(${index})"><i class="bi bi-trash"></i></button>
+                        </div>
+                     </div>`;
         });
+        container.innerHTML = html;
+        document.getElementById('cartTotal').innerText = `$${total.toFixed(2)}`;
+        document.getElementById('cartSubtotal').innerText = `$${total.toFixed(2)}`;
+        document.getElementById('initialPayment').value = total.toFixed(2);
+    }
 
-        // Quick Product Save
-        document.getElementById('btnSaveQuickProduct').addEventListener('click', function() {
+    function removeFromCart(index) {
+        cart.splice(index, 1);
+        updateCart();
+    }
+
+    // Duplicate Check
+    document.querySelectorAll('#quickProductForm input').forEach(el => {
+        el.addEventListener('blur', function() {
             const form = document.getElementById('quickProductForm');
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
-
-            fetch('/api/producto-rapido/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify(data)
-            })
-            .then(r => r.json())
-            .then(res => {
-                if (res.status === 'ok') {
-                    addToCart(res.id, res.sku, res.text, parseFloat(data.precio));
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('quickProductModal'));
-                    modal.hide();
-                    form.reset();
-                } else {
-                    alert('Error: ' + res.message);
-                }
-            });
+            if (data.categoria && data.color) {
+                fetch('/api/check-duplicados/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify(data)
+                })
+                .then(r => r.json())
+                .then(res => {
+                    const alert = document.getElementById('duplicateAlert');
+                    const list = document.getElementById('duplicateList');
+                    if (res.duplicados.length > 0) {
+                        alert.classList.remove('d-none');
+                        list.innerHTML = res.duplicados.map(d => `<li>${d.text} (${d.score}%)</li>`).join('');
+                    } else {
+                        alert.classList.add('d-none');
+                    }
+                });
+            }
         });
+    });
 
-        // Checkout
-        document.getElementById('btnCheckout').addEventListener('click', function() {
-            if (cart.length === 0) return alert('El carrito está vacío');
+    // Quick Product Save
+    document.getElementById('btnSaveQuickProduct').addEventListener('click', function() {
+        const form = document.getElementById('quickProductForm');
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
 
-            const total = cart.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
-            const data = {
-                items: cart,
-                total: total,
-                pago_inicial: parseFloat(document.getElementById('initialPayment').value),
-                metodo: document.getElementById('paymentMethod').value
-            };
-
-            fetch('/api/registrar-venta/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                body: JSON.stringify(data)
-            })
-            .then(r => r.json())
-            .then(res => {
-                if (res.status === 'ok') {
-                    alert('Venta registrada con éxito');
-                    cart = [];
-                    updateCart();
-                } else {
-                    alert('Error: ' + res.message);
-                }
-            });
+        fetch('/api/producto-rapido/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status === 'ok') {
+                addToCart(res.id, res.sku, res.text, parseFloat(data.precio));
+                const modal = bootstrap.Modal.getInstance(document.getElementById('quickProductModal'));
+                modal.hide();
+                form.reset();
+            } else {
+                alert('Error: ' + res.message);
+            }
         });
-    </script>
-</body>
-</html>
+    });
+
+    // Checkout
+    document.getElementById('btnCheckout').addEventListener('click', function() {
+        if (cart.length === 0) return alert('El carrito está vacío');
+
+        const total = cart.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
+        const data = {
+            items: cart,
+            total: total,
+            pago_inicial: parseFloat(document.getElementById('initialPayment').value),
+            metodo: document.getElementById('paymentMethod').value
+        };
+
+        fetch('/api/registrar-venta/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status === 'ok') {
+                alert('Venta registrada con éxito');
+                cart = [];
+                updateCart();
+            } else {
+                alert('Error: ' + res.message);
+            }
+        });
+    });
+</script>
+{% endblock %}
