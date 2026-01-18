@@ -4,69 +4,93 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registro - Adelé Boutique POS</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
             background-color: #f4f5f7;
             color: #172b4d;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .container {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        .card {
             width: 100%;
-            max-width: 400px;
-        }
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
-        form p {
-            margin-bottom: 1rem;
-        }
-        button {
-            width: 100%;
-            padding: 0.75rem;
-            background-color: #0052cc;
-            color: white;
+            max-width: 450px;
             border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        button:hover {
+        .btn-primary {
+            background-color: #0052cc;
+            border-color: #0052cc;
+        }
+        .btn-primary:hover {
             background-color: #007bff;
+            border-color: #007bff;
         }
-        .login-link {
-            text-align: center;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-        }
-        a {
-            color: #0052cc;
-            text-decoration: none;
+        .form-text {
+            font-size: 0.8rem;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Crear nueva cuenta</h1>
+    <div class="card p-4">
+        <h1 class="h3 mb-4 text-center">Crear nueva cuenta</h1>
         <form method="post">
             {% csrf_token %}
-            {{ form.as_p }}
-            <button type="submit">Registrarse</button>
+
+            {% for field in form %}
+                <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+
+                    {% if "password" in field.name %}
+                        <div class="input-group">
+                            <input type="password" name="{{ field.html_name }}" class="form-control" id="{{ field.id_for_label }}" required>
+                            <button class="btn btn-outline-secondary toggle-password" type="button">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    {% else %}
+                        {{ field.errors }}
+                        <input type="{{ field.field.widget.input_type|default:'text' }}" name="{{ field.html_name }}" class="form-control" id="{{ field.id_for_label }}" value="{{ field.value|default:'' }}" required>
+                    {% endif %}
+
+                    {% if field.help_text %}
+                        <div class="form-text">{{ field.help_text|safe }}</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary w-100 py-2 mt-3">Registrarse</button>
         </form>
-        <div class="login-link">
-            <p>¿Ya tienes una cuenta? <a href="/admin/login/">Inicia sesión</a></p>
-            <p><a href="{% url 'index' %}">Volver al inicio</a></p>
+
+        <div class="text-center mt-4 small">
+            <p class="mb-1">¿Ya tienes una cuenta? <a href="/admin/login/" class="text-decoration-none">Inicia sesión</a></p>
+            <p><a href="{% url 'index' %}" class="text-decoration-none">Volver al inicio</a></p>
         </div>
     </div>
+
+    <!-- JavaScript para alternar visibilidad de contraseña -->
+    <script>
+        document.querySelectorAll('.toggle-password').forEach(button => {
+            button.addEventListener('click', function() {
+                const input = this.previousElementSibling;
+                const icon = this.querySelector('i');
+
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.classList.remove('bi-eye');
+                    icon.classList.add('bi-eye-slash');
+                } else {
+                    input.type = 'password';
+                    icon.classList.remove('bi-eye-slash');
+                    icon.classList.add('bi-eye');
+                }
+            });
+        });
+    </script>
 </body>
 </html>
