@@ -5,7 +5,7 @@ echo "Running migrations..."
 python manage.py migrate
 
 echo "Setting up roles..."
-python manage.py setup_roles
+python manage.py setup_roles_v2
 
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
