@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
+from django.contrib.auth.models import Group
 
 def index(request):
     """
@@ -19,6 +20,10 @@ def signup(request):
         form = UserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
+            # Asignar al grupo Vendedor por defecto
+            vendedor_group = Group.objects.filter(name='Vendedor').first()
+            if vendedor_group:
+                user.groups.add(vendedor_group)
             login(request, user)
             return redirect('index')
     else:

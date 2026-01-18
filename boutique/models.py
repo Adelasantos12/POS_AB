@@ -48,3 +48,32 @@ class Producto(models.Model):
             kwargs['force_insert'] = False
             super().save(update_fields=['sku'])
     def __str__(self): return f"{self.modelo.nombre} {self.tela.nombre} {self.color.nombre} - Talla: {self.talla}"
+
+class Cliente(models.Model):
+    nombre = models.CharField(max_length=100)
+    email = models.EmailField(blank=True)
+    telefono = models.CharField(max_length=20, blank=True)
+    def __str__(self): return self.nombre
+
+class Venta(models.Model):
+    vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    def __str__(self): return f"Venta #{self.id} - {self.fecha.strftime('%Y-%m-%d')}"
+
+class ItemVenta(models.Model):
+    venta = models.ForeignKey(Venta, related_name='items', on_delete=models.CASCADE)
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT)
+    cantidad = models.PositiveIntegerField(default=1)
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+
+class Pedido(models.Model):
+    ESTADOS = [('PENDIENTE', 'Pendiente'), ('EN_PROCESO', 'En Proceso'), ('LISTO', 'Listo'), ('ENTREGADO', 'Entregado')]
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT)
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT)
+    cantidad = models.PositiveIntegerField(default=1)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+    fecha_pedido = models.DateTimeField(auto_now_add=True)
+    notas = models.TextField(blank=True)
+    def __str__(self): return f"Pedido #{self.id} - {self.cliente.nombre}"

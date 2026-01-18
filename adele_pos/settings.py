@@ -18,7 +18,9 @@ else:
 CSRF_TRUSTED_ORIGINS = []
 if ALLOWED_HOSTS_STRING:
     for host in ALLOWED_HOSTS_STRING.split(','):
-        CSRF_TRUSTED_ORIGINS.append(f"https://{host.strip()}")
+        h = host.strip()
+        CSRF_TRUSTED_ORIGINS.append(f"https://{h}")
+        CSRF_TRUSTED_ORIGINS.append(f"http://{h}")
 
 INSTALLED_APPS = [
     'boutique.apps.BoutiqueConfig',
@@ -91,4 +93,5 @@ STATIC_URL = 'static/'
 # Directorio donde `collectstatic` recogerá los archivos estáticos para producción.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Motor de almacenamiento para WhiteNoise.
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

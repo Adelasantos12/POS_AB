@@ -1,5 +1,26 @@
 from django.contrib import admin
-from .models import Proveedor, Categoria, Modelo, Tela, Color, Producto
+from .models import Proveedor, Categoria, Modelo, Tela, Color, Producto, Cliente, Venta, ItemVenta, Pedido
+
+@admin.register(Cliente)
+class ClienteAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'email', 'telefono')
+    search_fields = ('nombre', 'email')
+
+class ItemVentaInline(admin.TabularInline):
+    model = ItemVenta
+    extra = 1
+
+@admin.register(Venta)
+class VentaAdmin(admin.ModelAdmin):
+    list_display = ('id', 'fecha', 'vendedor', 'cliente', 'total')
+    list_filter = ('fecha', 'vendedor')
+    inlines = [ItemVentaInline]
+
+@admin.register(Pedido)
+class PedidoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'cliente', 'producto', 'cantidad', 'estado', 'fecha_pedido')
+    list_filter = ('estado', 'fecha_pedido')
+    search_fields = ('cliente__nombre', 'producto__modelo__nombre')
 
 @admin.register(Proveedor)
 class ProveedorAdmin(admin.ModelAdmin):
