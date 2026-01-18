@@ -12,3 +12,7 @@ server.log
 
 # Env
 .env
+
+# Static & Media
+staticfiles/
+media/
