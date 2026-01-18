@@ -11,7 +11,7 @@ DEBUG = ENVIRONMENT != 'production'
 
 ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS')
 if ALLOWED_HOSTS_STRING:
-    ALLOWED_HOSTS = ALLOWED_HOSTS_STRING.split(',')
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STRING.split(',')]
 else:
     ALLOWED_HOSTS = ['*'] if DEBUG else []
 
@@ -62,8 +62,9 @@ TEMPLATES = [
 WSGI_APPLICATION = 'adele_pos.wsgi.application'
 
 if 'DATABASE_URL' in os.environ:
+    db_ssl_require = os.environ.get('DB_SSL_REQUIRE', 'True').lower() == 'true'
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
+        'default': dj_database_url.config(conn_max_age=600, ssl_require=db_ssl_require)
     }
 else:
     DATABASES = {

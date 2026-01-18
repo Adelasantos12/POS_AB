@@ -6,4 +6,5 @@ from . import views
 urlpatterns = [
     # La ruta raíz de esta app ('/') apuntará a la vista 'index'.
     path('', views.index, name='index'),
+    path('signup/', views.signup, name='signup'),
 ]
