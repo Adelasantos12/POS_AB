@@ -19,6 +19,7 @@ class BoutiqueViewsTest(TestCase):
 
         data = {
             'username': 'testuser',
+            'email': 'test@example.com',
             'password1': 'testpass123',
             'password2': 'testpass123',
         }

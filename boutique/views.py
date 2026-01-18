@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth.forms import UserCreationForm
+from .forms import CustomUserCreationForm
 from django.contrib.auth import login
 from django.contrib.auth.models import Group
 
@@ -17,15 +17,15 @@ def signup(request):
     Vista para el registro de nuevos usuarios.
     """
     if request.method == 'POST':
-        form = UserCreationForm(request.POST)
+        form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             user = form.save()
             # Asignar al grupo Vendedor por defecto
-            vendedor_group = Group.objects.filter(name='Vendedor').first()
-            if vendedor_group:
-                user.groups.add(vendedor_group)
+            # Usamos get_or_create para evitar el error 500 si el grupo no existe aún
+            vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
+            user.groups.add(vendedor_group)
             login(request, user)
             return redirect('index')
     else:
-        form = UserCreationForm()
+        form = CustomUserCreationForm()
     return render(request, 'boutique/signup.html', {'form': form})
