@@ -34,4 +34,8 @@ urlpatterns = [
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/exportar-ventas/', views.exportar_ventas_csv, name='exportar_ventas_csv'),
     path('api/ai-strategy/', views.api_ai_strategy, name='api_ai_strategy'),
+
+    # Gestión de Usuarios
+    path('usuarios/', views.gestion_usuarios, name='gestion_usuarios'),
+    path('usuarios/editar/<int:pk>/', views.editar_usuario, name='editar_usuario'),
 ]

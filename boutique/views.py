@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .forms import CustomUserCreationForm
 from django.contrib.auth import login
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, User
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, permission_required
@@ -30,8 +30,8 @@ def index(request):
                 return redirect('apertura_caja')
             return redirect('pos_dashboard')
         else:
-            # Si es admin, mandarlo al dashboard de admin (que crearemos)
-            return render(request, 'boutique/index.html')
+            # Si es admin, mandarlo al dashboard de admin
+            return redirect('admin_dashboard')
 
     return render(request, 'boutique/index.html')
 
@@ -246,6 +246,7 @@ def agenda_view(request):
 @login_required
 def imprimir_etiquetas(request):
     """Genera una página para imprimir etiquetas en lote"""
+    # Permitimos a Vendedores imprimir etiquetas de los productos que gestionan
     ids = request.GET.get('ids', '').split(',')
     productos = Producto.objects.filter(id__in=[i for i in ids if i.isdigit()])
     return render(request, 'boutique/etiquetas_lote.html', {'productos': productos})
@@ -387,3 +388,31 @@ def api_editar_producto(request, pk):
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+def gestion_usuarios(request):
+    """Lista de personal de la boutique (solo Admin)"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return redirect('index')
+
+    usuarios = User.objects.all().prefetch_related('groups').order_by('username')
+    return render(request, 'boutique/usuarios_list.html', {'usuarios': usuarios})
+
+@login_required
+def editar_usuario(request, pk):
+    """Edita el rol de un usuario (solo Admin)"""
+    if not (request.user.is_superuser or request.user.groups.filter(name='Admin').exists()):
+        return redirect('index')
+
+    usuario = get_object_or_404(User, pk=pk)
+    grupos = Group.objects.all()
+
+    if request.method == 'POST':
+        grupo_id = request.POST.get('grupo')
+        if grupo_id:
+            grupo = Group.objects.get(id=grupo_id)
+            usuario.groups.clear()
+            usuario.groups.add(grupo)
+            return redirect('gestion_usuarios')
+
+    return render(request, 'boutique/usuario_form.html', {'u': usuario, 'grupos': grupos})
