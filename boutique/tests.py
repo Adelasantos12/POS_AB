@@ -30,12 +30,19 @@ class BoutiqueViewsTest(TestCase):
 
 class POSAPITest(TestCase):
     def setUp(self):
-        from django.contrib.auth.models import User
+        from django.contrib.auth.models import User, Group
         from boutique.models import Categoria, Color
         self.user = User.objects.create_user(username='staff', password='pass')
+        vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
+        self.user.groups.add(vendedor_group)
         self.categoria = Categoria.objects.create(nombre='Vestido')
         self.color = Color.objects.create(nombre='Rojo')
         self.client.login(username='staff', password='pass')
+
+        # Simular selección de perfil activo
+        session = self.client.session
+        session['active_profile_id'] = self.user.id
+        session.save()
 
     def test_crear_producto_rapido(self):
         data = {
