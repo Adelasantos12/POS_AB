@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from .forms import CustomUserCreationForm
-from django.contrib.auth import login
+from django.contrib.auth import login, logout as auth_logout
 from django.contrib.auth.models import Group, User
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -25,13 +25,13 @@ def index(request):
     """
     if request.user.is_authenticated:
         # Si no hay perfil activo, forzar selección
-        if 'active_profile_id' not in request.session:
+        if not hasattr(request, 'active_profile'):
             return redirect('seleccionar_perfil')
 
-        active_profile = User.objects.get(id=request.session['active_profile_id'])
+        active_profile = request.active_profile
 
         # Si es vendedor, mandarlo al POS o a abrir caja
-        if not active_profile.is_superuser and not active_profile.groups.filter(name='Admin').exists():
+        if not active_profile.is_superuser and not active_profile.groups.filter(name__in=['Admin', 'Superadmin']).exists():
             corte = CorteCaja.objects.filter(cerrado=False).first()
             if not corte:
                 return redirect('apertura_caja')
@@ -78,24 +78,25 @@ def cambiar_perfil(request):
         del request.session['active_profile_id']
     return redirect('seleccionar_perfil')
 
+def logout_view(request):
+    """Cierra la sesión del terminal de forma segura"""
+    auth_logout(request)
+    return redirect('index')
+
 def signup(request):
     """
     Vista para el registro de nuevos usuarios.
+    Los usuarios nuevos quedan sin rol asignado inicialmente.
     """
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             try:
                 user = form.save()
-                # Asignar al grupo Vendedor por defecto
-                # Usamos get_or_create para evitar el error 500 si el grupo no existe aún
-                vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
-                user.groups.add(vendedor_group)
                 login(request, user)
                 return redirect('index')
             except Exception as e:
                 logger.exception("Error crítico durante el registro de usuario")
-                # Re-lanzamos para que Django maneje el 500 pero con el log ya guardado
                 raise e
     else:
         form = CustomUserCreationForm()

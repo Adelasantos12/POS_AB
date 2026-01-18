@@ -93,3 +93,32 @@ class ProfileFlowTest(TestCase):
         # Intentar acceder a gestion usuarios
         response = self.client.get(reverse('gestion_usuarios'))
         self.assertEqual(response.status_code, 403) # PermissionDenied returns 403
+
+    def test_get_autenticar_perfil(self):
+        response = self.client.get(reverse('autenticar_perfil'), {'user_id': self.vendedora.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'boutique/autenticar_perfil.html')
+
+    def test_cambiar_perfil_get_and_post(self):
+        # Activar perfil primero
+        session = self.client.session
+        session['active_profile_id'] = self.vendedora.id
+        session.save()
+
+        # Test GET
+        response = self.client.get(reverse('cambiar_perfil'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('seleccionar_perfil'))
+        self.assertNotIn('active_profile_id', self.client.session)
+
+        # Reactivar y Test POST (aunque sea GET por defecto, verifiquemos que no da 405 si se intenta POST)
+        session = self.client.session
+        session['active_profile_id'] = self.vendedora.id
+        session.save()
+        response = self.client.post(reverse('cambiar_perfil'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_logout_get_avoids_405(self):
+        response = self.client.get(reverse('logout'))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('index'))

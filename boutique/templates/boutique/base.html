@@ -23,14 +23,17 @@
                 <h3 class="logo mb-4 text-primary">Adelé</h3>
                 <ul class="nav flex-column">
                     {% with profile=request.active_profile %}
-                    {% if profile.is_superuser or profile.groups.all.0.name == 'Admin' %}
-                    <li class="nav-item mb-2"><a href="{% url 'admin_dashboard' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}"><i class="bi bi-graph-up me-2"></i>Dashboard</a></li>
+                    {# Determinamos si es admin de forma más robusta #}
+                    {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" %}
+                        <li class="nav-item mb-2"><a href="{% url 'admin_dashboard' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}"><i class="bi bi-graph-up me-2"></i>Dashboard</a></li>
                     {% endif %}
+
                     <li class="nav-item mb-2"><a href="{% url 'pos_dashboard' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}"><i class="bi bi-calculator me-2"></i>Caja</a></li>
                     <li class="nav-item mb-2"><a href="{% url 'agenda_view' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'agenda_view' %}active{% endif %}"><i class="bi bi-calendar-event me-2"></i>Agenda</a></li>
                     <li class="nav-item mb-2"><a href="{% url 'inventario_view' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'inventario_view' %}active{% endif %}"><i class="bi bi-box me-2"></i>Inventario</a></li>
-                    {% if profile.is_superuser or profile.groups.all.0.name == 'Admin' %}
-                    <li class="nav-item mb-2"><a href="{% url 'gestion_usuarios' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'gestion_usuarios' %}active{% endif %}"><i class="bi bi-people me-2"></i>Usuarios</a></li>
+
+                    {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" %}
+                        <li class="nav-item mb-2"><a href="{% url 'gestion_usuarios' %}" class="nav-link text-dark {% if request.resolver_match.url_name == 'gestion_usuarios' %}active{% endif %}"><i class="bi bi-people me-2"></i>Usuarios</a></li>
                     {% endif %}
                     {% endwith %}
                 </ul>

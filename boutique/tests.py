@@ -13,7 +13,7 @@ class BoutiqueViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'boutique/signup.html')
 
-    def test_signup_assigns_vendedor_group(self):
+    def test_signup_no_longer_auto_assigns_vendedor_group(self):
         from django.contrib.auth.models import User, Group
         # Ensure group exists
         Group.objects.get_or_create(name='Vendedor')
@@ -26,7 +26,8 @@ class BoutiqueViewsTest(TestCase):
         }
         self.client.post(reverse('signup'), data)
         user = User.objects.get(username='testuser')
-        self.assertTrue(user.groups.filter(name='Vendedor').exists())
+        # Now users start without roles, to be assigned by admin
+        self.assertFalse(user.groups.filter(name='Vendedor').exists())
 
 class POSAPITest(TestCase):
     def setUp(self):
