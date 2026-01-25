@@ -369,39 +369,177 @@ def fuzzy_match(s1, s2):
 @require_POST
 @login_required
 def api_check_duplicados(request):
-    """Verifica posibles duplicados antes de crear un producto"""
+    """Verifica posibles duplicados con IA antes de crear un producto"""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    
     data = json.loads(request.body)
     cat = data.get('categoria', '')
     r1 = data.get('rasgo1', '')
     r2 = data.get('rasgo2', '')
     color = data.get('color', '')
+    talla = data.get('talla', '')
 
+    # Buscar productos similares en la misma categoría
     posibles = Producto.objects.filter(
-        Q(categoria__nombre__icontains=cat) | Q(color__nombre__icontains=color)
-    ).select_related('categoria', 'color')
+        Q(categoria__nombre__icontains=cat) | 
+        Q(rasgo1__icontains=r1) |
+        Q(rasgo2__icontains=r2)
+    ).select_related('categoria', 'color')[:20]
 
     coincidencias = []
+    productos_texto = []
+    
     for p in posibles:
         score = 0
+        # Misma categoría = alto score
         if p.categoria.nombre.lower() == cat.lower():
-            score += 0.4
-        if p.color.nombre.lower() == color.lower():
-            score += 0.2
-
+            score += 0.35
+        
+        # Similitud en rasgos
         s1 = fuzzy_match(p.rasgo1, r1)
         s2 = fuzzy_match(p.rasgo2, r2)
-        score += (s1 * 0.2) + (s2 * 0.2)
+        score += (s1 * 0.25) + (s2 * 0.25)
+        
+        # Color similar (considerar variantes como rosa palo, rosa mauve)
+        color_score = fuzzy_match(p.color.nombre, color)
+        if 'rosa' in p.color.nombre.lower() and 'rosa' in color.lower():
+            color_score = max(color_score, 0.7)  # Boost para variantes de rosa
+        score += color_score * 0.15
 
-        if score > 0.6:
+        if score > 0.5:
             coincidencias.append({
                 'id': p.id,
                 'text': str(p),
                 'sku': p.sku,
+                'categoria': p.categoria.nombre,
+                'rasgo1': p.rasgo1,
+                'rasgo2': p.rasgo2,
+                'color': p.color.nombre,
+                'talla': p.talla,
                 'score': round(score * 100, 1)
             })
+            productos_texto.append(f"- {p.categoria.nombre} {p.rasgo1} {p.rasgo2} ({p.color.nombre}, talla {p.talla}) [SKU: {p.sku}]")
 
     coincidencias.sort(key=lambda x: x['score'], reverse=True)
-    return JsonResponse({'duplicados': coincidencias[:5]})
+    top_coincidencias = coincidencias[:5]
+    
+    # Si hay coincidencias altas, usar IA para analizar si es duplicado
+    ai_analysis = None
+    if top_coincidencias and top_coincidencias[0]['score'] > 60:
+        try:
+            async def analyze_duplicates():
+                chat = LlmChat(
+                    api_key=GEMINI_API_KEY,
+                    session_id=f"dup_check_{request.active_profile.id}",
+                    system_message="Eres un asistente de inventario de boutique. Ayudas a identificar si un producto nuevo es duplicado de uno existente. Sé breve y claro."
+                ).with_model("gemini", "gemini-2.0-flash")
+                
+                prompt = f"""Analiza si este producto NUEVO podría ser duplicado de alguno existente:
+
+PRODUCTO NUEVO:
+- Categoría: {cat}
+- Rasgo 1: {r1}
+- Rasgo 2: {r2}
+- Color: {color}
+- Talla: {talla}
+
+PRODUCTOS EXISTENTES SIMILARES:
+{chr(10).join(productos_texto[:5])}
+
+IMPORTANTE sobre colores:
+- "Rosa palo" y "Rosa mauve" son DIFERENTES tonos de rosa (NO son duplicados por color)
+- Mismo modelo en diferente tela/material = productos DIFERENTES
+- Mismo modelo, misma tela, mismo color, misma talla = POSIBLE DUPLICADO
+
+Responde en máximo 2 oraciones:
+1. ¿Es probable que sea duplicado? (Sí/No/Verificar)
+2. Si hay que verificar, ¿cuál producto específico revisar?"""
+
+                user_message = UserMessage(text=prompt)
+                response = await chat.send_message(user_message)
+                return response
+            
+            ai_analysis = asyncio.run(analyze_duplicates())
+            
+        except Exception as e:
+            logger.error(f"Error en análisis IA de duplicados: {e}")
+            ai_analysis = None
+    
+    # Construir respuesta con guía
+    response_data = {
+        'duplicados': top_coincidencias,
+        'ai_analysis': ai_analysis,
+        'hay_alerta': len(top_coincidencias) > 0 and top_coincidencias[0]['score'] > 70,
+        'mensaje_guia': None
+    }
+    
+    if top_coincidencias:
+        if top_coincidencias[0]['score'] > 80:
+            response_data['mensaje_guia'] = f"⚠️ ALTO: Este producto parece muy similar a '{top_coincidencias[0]['text']}'. Verifica antes de crear."
+        elif top_coincidencias[0]['score'] > 60:
+            response_data['mensaje_guia'] = f"⚡ Revisa: Encontramos productos parecidos. ¿Es una variante de color/tela diferente?"
+    
+    return JsonResponse(response_data)
+
+
+@require_POST
+@login_required
+def api_validar_crear_producto(request):
+    """Valida y crea producto solo si no hay duplicados confirmados"""
+    data = json.loads(request.body)
+    forzar_crear = data.get('forzar_crear', False)
+    
+    # Si no se fuerza, verificar duplicados primero
+    if not forzar_crear:
+        # Verificar si hay duplicados con score > 80%
+        cat = data.get('categoria', '')
+        r1 = data.get('rasgo1', '')
+        r2 = data.get('rasgo2', '')
+        color = data.get('color', '')
+        
+        existe_similar = Producto.objects.filter(
+            categoria__nombre__iexact=cat,
+            rasgo1__iexact=r1,
+            rasgo2__iexact=r2,
+            color__nombre__iexact=color
+        ).exists()
+        
+        if existe_similar:
+            return JsonResponse({
+                'status': 'blocked',
+                'message': '🚫 Ya existe un producto IDÉNTICO. No se puede crear duplicado.',
+                'requiere_confirmacion': False
+            }, status=400)
+    
+    # Crear el producto
+    try:
+        cat_nombre = data.get('categoria', 'General')
+        color_nombre = data.get('color', 'N/A')
+        
+        categoria, _ = Categoria.objects.get_or_create(nombre=cat_nombre)
+        color_obj, _ = Color.objects.get_or_create(nombre=color_nombre)
+        
+        producto = Producto.objects.create(
+            categoria=categoria,
+            color=color_obj,
+            rasgo1=data.get('rasgo1', ''),
+            rasgo2=data.get('rasgo2', ''),
+            talla=data.get('talla', 'U'),
+            precio_venta=data.get('precio', 0),
+            estado=data.get('estado', 'TIENDA'),
+            cantidad_actual=1
+        )
+        
+        return JsonResponse({
+            'status': 'ok', 
+            'sku': producto.sku, 
+            'id': producto.id, 
+            'text': str(producto),
+            'message': '✅ Producto creado correctamente'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 # ============================================================
