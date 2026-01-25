@@ -18,7 +18,7 @@
         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaDama">
             <i class="bi bi-person-plus me-2"></i>Agregar Dama
         </button>
-        <button class="btn btn-primary">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarNovia">
             <i class="bi bi-pencil me-2"></i>Editar Perfil
         </button>
     </div>
@@ -67,6 +67,16 @@
                         <span class="text-muted small italic">Sin definir</span>
                     {% endfor %}
                 </div>
+
+                {% if novia.modelo_especial or novia.color_especial or novia.tela_especial %}
+                <hr>
+                <div class="mb-3">
+                    <label class="text-muted small d-block mb-1">Hechura Especial (Novia)</label>
+                    <div class="small fw-bold">{{ novia.modelo_especial }}</div>
+                    <div class="small text-muted">{{ novia.color_especial }} / {{ novia.tela_especial }}</div>
+                    {% if novia.talla_especial %}<div class="small">Talla: {{ novia.talla_especial }}</div>{% endif %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -173,8 +183,62 @@
                         <label class="form-label">Talla / Medidas</label>
                         <input type="text" name="talla" class="form-control">
                     </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Detalles Hechura Especial (Opcional)</label>
+                        <input type="text" name="modelo_especial" class="form-control form-control-sm mb-2" placeholder="Modelo específico">
+                        <input type="text" name="color_especial" class="form-control form-control-sm mb-2" placeholder="Color específico">
+                        <input type="text" name="tela_especial" class="form-control form-control-sm" placeholder="Tela específica">
+                    </div>
                     <div class="text-end">
                         <button type="submit" class="btn btn-primary rounded-pill px-4">Guardar Dama</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Novia -->
+<div class="modal fade" id="modalEditarNovia" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Perfil de Novia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarNovia">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <input type="text" name="nombre" class="form-control" value="{{ novia.nombre }}" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Fecha Boda</label>
+                            <input type="date" name="fecha_boda" class="form-control" value="{{ novia.fecha_boda|date:'Y-m-d' }}" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" name="telefono" class="form-control" value="{{ novia.telefono }}">
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Detalles del Vestido (Hechura Especial)</label>
+                        <div class="row g-2">
+                            <div class="col-6"><input type="text" name="modelo_especial" class="form-control form-control-sm" placeholder="Modelo" value="{{ novia.modelo_especial }}"></div>
+                            <div class="col-6"><input type="text" name="color_especial" class="form-control form-control-sm" placeholder="Color" value="{{ novia.color_especial }}"></div>
+                            <div class="col-6"><input type="text" name="tela_especial" class="form-control form-control-sm" placeholder="Tela" value="{{ novia.tela_especial }}"></div>
+                            <div class="col-6"><input type="text" name="talla_especial" class="form-control form-control-sm" placeholder="Talla" value="{{ novia.talla_especial }}"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notas Generales</label>
+                        <textarea name="notas" class="form-control" rows="3">{{ novia.notas }}</textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">Actualizar Perfil</button>
                     </div>
                 </form>
             </div>
@@ -200,6 +264,24 @@ document.getElementById('formNuevaDama').addEventListener('submit', async (e) =>
     });
 
     if (response.ok) location.reload();
+});
+
+document.getElementById('formEditarNovia').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+
+    // Usamos la misma API de crear pero con lógica de actualización en el backend o una nueva
+    const response = await fetch('/api/novia/{{ novia.id }}/editar/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (response.ok) location.reload();
+    else alert('Error al actualizar');
 });
 </script>
 {% endblock %}

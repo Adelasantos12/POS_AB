@@ -28,6 +28,26 @@ logger = logging.getLogger(__name__)
 
 @login_required
 @profile_permission_required('Vendedor')
+def api_ai_analyze_image(request):
+    """Analiza imagen de producto usando Gemini Vision"""
+    from .ai_utils import analyze_product_image
+    if request.method == 'POST' and request.FILES.get('image'):
+        try:
+            image_file = request.FILES['image']
+            image_data = image_file.read()
+
+            atributos = analyze_product_image(image_data)
+            if atributos:
+                return JsonResponse({'status': 'ok', 'atributos': atributos})
+            else:
+                return JsonResponse({'status': 'error', 'message': 'No se pudo analizar la imagen'}, status=500)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido o imagen faltante'}, status=405)
+
+
+@login_required
+@profile_permission_required('Vendedor')
 def api_ai_extract_attributes(request):
     """Extrae atributos de producto desde una descripción usando Gemini"""
     from .ai_utils import extract_product_attributes

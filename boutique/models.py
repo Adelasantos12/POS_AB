@@ -131,21 +131,32 @@ class Producto(models.Model):
             self.qr_code.save(filename, File(buffer), save=False)
 
         # Generar Código de Barras si no existe (Code 128)
-        if not self.barcode_image:
-            import barcode
-            from barcode.writer import ImageWriter
-            from io import BytesIO
-            from django.core.files import File
+        if not self.barcode_image or is_new:
+            try:
+                import barcode
+                from barcode.writer import ImageWriter
+                from io import BytesIO
+                from django.core.files import File
 
-            CODE128 = barcode.get_barcode_class('code128')
-            buffer = BytesIO()
-            # Quitamos el texto debajo para que sea más compacto en etiquetas pequeñas si se desea,
-            # pero por defecto lo dejamos para legibilidad humana.
-            barcode_instance = CODE128(self.sku, writer=ImageWriter())
-            barcode_instance.write(buffer, options={"write_text": True, "module_height": 10})
+                CODE128 = barcode.get_barcode_class('code128')
+                buffer = BytesIO()
+                # Asegurar que se escriba el texto para que sea legible
+                barcode_instance = CODE128(self.sku, writer=ImageWriter())
+                barcode_instance.write(buffer, options={
+                    "write_text": True,
+                    "module_height": 15.0,
+                    "text_distance": 5.0,
+                    "font_size": 10
+                })
 
-            filename = f"barcode-{self.sku}.png"
-            self.barcode_image.save(filename, File(buffer), save=False)
+                filename = f"barcode-{self.sku}.png"
+                # Eliminar imagen previa si existe y es cambio
+                if self.barcode_image:
+                    self.barcode_image.delete(save=False)
+                self.barcode_image.save(filename, File(buffer), save=False)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Error generando barcode: {e}")
 
         super().save(*args, **kwargs)
     def __str__(self):
@@ -363,6 +374,12 @@ class Novia(models.Model):
     notas = models.TextField(blank=True)
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    # Detalles para Hechura Especial
+    modelo_especial = models.CharField(max_length=200, blank=True, help_text="Para modelos no en catálogo")
+    color_especial = models.CharField(max_length=200, blank=True)
+    tela_especial = models.CharField(max_length=200, blank=True)
+    talla_especial = models.CharField(max_length=100, blank=True)
     
     class Meta:
         ordering = ['fecha_boda']
@@ -421,6 +438,11 @@ class Dama(models.Model):
     tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
     modelo = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True)
     talla = models.CharField(max_length=10, blank=True)
+
+    # Detalles para Hechura Especial
+    modelo_especial = models.CharField(max_length=200, blank=True)
+    color_especial = models.CharField(max_length=200, blank=True)
+    tela_especial = models.CharField(max_length=200, blank=True)
     
     notas_ajustes = models.TextField(blank=True, help_text="Notas de ajustes específicos")
     

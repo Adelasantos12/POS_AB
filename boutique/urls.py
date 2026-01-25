@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/check-duplicados/', views.api_check_duplicados, name='api_check_duplicados'),
     path('api/validar-crear-producto/', views.api_validar_crear_producto, name='api_validar_crear_producto'),
     path('api/ai-extract-attributes/', views.api_ai_extract_attributes, name='api_ai_extract_attributes'),
+    path('api/ai-analyze-image/', views.api_ai_analyze_image, name='api_ai_analyze_image'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),
     path('api/registrar-venta/', views.api_registrar_venta, name='api_registrar_venta'),
 
@@ -48,7 +49,11 @@ urlpatterns = [
     path('api/colores/', views_agenda.api_colores_list, name='api_colores_list'),
     path('api/telas/', views_agenda.api_telas_list, name='api_telas_list'),
     path('api/crear-color/', views_agenda.api_crear_color, name='api_crear_color'),
+    path('api/color-editar/<int:pk>/', views_agenda.api_color_editar, name='api_color_editar'),
+    path('api/color-eliminar/<int:pk>/', views_agenda.api_color_eliminar, name='api_color_eliminar'),
     path('api/crear-tela/', views_agenda.api_crear_tela, name='api_crear_tela'),
+    path('api/tela-editar/<int:pk>/', views_agenda.api_tela_editar, name='api_tela_editar'),
+    path('api/tela-eliminar/<int:pk>/', views_agenda.api_tela_eliminar, name='api_tela_eliminar'),
     
     # ============================================================
     # AGENDA Y CALENDARIO
@@ -63,6 +68,7 @@ urlpatterns = [
     # ============================================================
     path('novias/', views_agenda.novias_list, name='novias_list'),
     path('novias/<int:pk>/', views_agenda.novia_detalle, name='novia_detalle'),
+    path('api/novia/<int:pk>/editar/', views_agenda.api_editar_novia, name='api_editar_novia'),
     path('api/crear-novia/', views_agenda.api_crear_novia, name='api_crear_novia'),
     path('api/novia/<int:novia_id>/agregar-dama/', views_agenda.api_agregar_dama, name='api_agregar_dama'),
     

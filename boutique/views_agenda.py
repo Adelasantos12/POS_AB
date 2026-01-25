@@ -54,6 +54,33 @@ def catalogo_telas(request):
 
 @require_POST
 @profile_permission_required(['Inventario', 'Vendedor'])
+def api_color_editar(request, pk):
+    """Edita un color"""
+    color = get_object_or_404(Color, pk=pk)
+    data = json.loads(request.body)
+    try:
+        color.nombre = data.get('nombre', color.nombre)
+        color.codigo_hex = data.get('codigo_hex', color.codigo_hex)
+        color.familia = data.get('familia', color.familia)
+        color.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_color_eliminar(request, pk):
+    """Elimina un color"""
+    color = get_object_or_404(Color, pk=pk)
+    if color.es_predefinido:
+        return JsonResponse({'status': 'error', 'message': 'No se pueden eliminar colores base'}, status=400)
+    color.delete()
+    return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
 def api_crear_color(request):
     """Crear nuevo color con validación IA de similitud"""
     from .ai_utils import get_gemini_model
@@ -198,6 +225,33 @@ Responde SOLO con:
         response['warning'] = ai_warning
     
     return JsonResponse(response)
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_tela_editar(request, pk):
+    """Edita una tela"""
+    tela = get_object_or_404(Tela, pk=pk)
+    data = json.loads(request.body)
+    try:
+        tela.nombre = data.get('nombre', tela.nombre)
+        tela.descripcion = data.get('descripcion', tela.descripcion)
+        tela.codigo_proveedor = data.get('codigo_proveedor', tela.codigo_proveedor)
+        tela.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_tela_eliminar(request, pk):
+    """Elimina una tela"""
+    tela = get_object_or_404(Tela, pk=pk)
+    if tela.es_predefinida:
+        return JsonResponse({'status': 'error', 'message': 'No se pueden eliminar telas base'}, status=400)
+    tela.delete()
+    return JsonResponse({'status': 'ok'})
 
 
 @login_required
@@ -491,6 +545,10 @@ def api_crear_novia(request):
         fecha_limite=datetime.strptime(data['fecha_limite'], '%Y-%m-%d').date() if data.get('fecha_limite') else None,
         cantidad_damas=int(data.get('cantidad_damas', 0)),
         notas=data.get('notas', ''),
+        modelo_especial=data.get('modelo_especial', ''),
+        color_especial=data.get('color_especial', ''),
+        tela_especial=data.get('tela_especial', ''),
+        talla_especial=data.get('talla_especial', ''),
         creado_por=request.active_profile
     )
     
@@ -524,6 +582,9 @@ def api_agregar_dama(request, novia_id):
         nombre=data.get('nombre', ''),
         telefono=data.get('telefono', ''),
         talla=data.get('talla', ''),
+        modelo_especial=data.get('modelo_especial', ''),
+        color_especial=data.get('color_especial', ''),
+        tela_especial=data.get('tela_especial', ''),
         notas_ajustes=data.get('notas', '')
     )
     
@@ -536,6 +597,31 @@ def api_agregar_dama(request, novia_id):
         'id': dama.id,
         'message': f'Dama "{dama.nombre}" agregada al grupo'
     })
+
+
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_editar_novia(request, pk):
+    """Actualiza datos de una novia"""
+    novia = get_object_or_404(Novia, pk=pk)
+    data = json.loads(request.body)
+
+    try:
+        novia.nombre = data.get('nombre', novia.nombre)
+        novia.telefono = data.get('telefono', novia.telefono)
+        if data.get('fecha_boda'):
+            novia.fecha_boda = datetime.strptime(data['fecha_boda'], '%Y-%m-%d').date()
+
+        novia.modelo_especial = data.get('modelo_especial', novia.modelo_especial)
+        novia.color_especial = data.get('color_especial', novia.color_especial)
+        novia.tela_especial = data.get('tela_especial', novia.tela_especial)
+        novia.talla_especial = data.get('talla_especial', novia.talla_especial)
+        novia.notas = data.get('notas', novia.notas)
+
+        novia.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 # ============================================================

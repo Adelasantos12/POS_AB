@@ -59,6 +59,44 @@ Si no estás seguro de un campo, deja el valor por defecto o vacío. Responde Ú
         logger.error(f"Error extraendo atributos con Gemini: {e}")
         return None
 
+def analyze_product_image(image_data):
+    """
+    Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos.
+    """
+    model = get_gemini_model()
+    if not model:
+        return None
+
+    prompt = """Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario.
+
+FORMATO JSON ESPERADO:
+{
+  "categoria": "Categoría (ej: Vestido, Blusa, Velo)",
+  "rasgo1": "Modelo/Corte (ej: Sirena, Escote Corazón)",
+  "rasgo2": "Tipo de Tela (ej: Satín, Encaje, Chiffón)",
+  "color": "Color predominante",
+  "talla": "U",
+  "precio_sugerido": 0
+}
+
+Responde ÚNICAMENTE el JSON."""
+
+    try:
+        response = model.generate_content([
+            prompt,
+            {'mime_type': 'image/jpeg', 'data': image_data}
+        ])
+        text = response.text.strip()
+        if text.startswith('```json'):
+            text = text[7:-3].strip()
+        elif text.startswith('```'):
+            text = text[3:-3].strip()
+
+        return json.loads(text)
+    except Exception as e:
+        logger.error(f"Error analizando imagen con Gemini: {e}")
+        return None
+
 def analyze_duplicate_ai(new_product, existing_products):
     """
     Analiza si un producto nuevo es duplicado de los existentes.
