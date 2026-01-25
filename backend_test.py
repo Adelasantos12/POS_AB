@@ -73,7 +73,7 @@ class DjangoPOSTester:
             return False, None
 
     def test_terminal_login(self):
-        """Test terminal login with admin/admin123"""
+        """Test terminal login with adela.santos12/Karinakakapopo1"""
         print("\n=== TESTING TERMINAL LOGIN ===")
         
         # Get CSRF token first
@@ -91,15 +91,15 @@ class DjangoPOSTester:
         if not success:
             return False
             
-        # Test login with admin credentials
+        # Test login with Adela Santos credentials
         login_data = {
-            'username': 'admin',
-            'password': 'admin123',
+            'username': 'adela.santos12',
+            'password': 'Karinakakapopo1',
             'csrfmiddlewaretoken': self.csrf_token
         }
         
         success, response = self.run_test(
-            "Terminal login with admin/admin123",
+            "Terminal login with adela.santos12/Karinakakapopo1",
             "POST",
             "/login/",
             302,  # Should redirect after successful login
