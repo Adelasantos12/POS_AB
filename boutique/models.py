@@ -161,12 +161,62 @@ class Pago(models.Model):
     def __str__(self): return f"Pago de {self.monto} a Venta #{self.venta.id}"
 
 class Auditoria(models.Model):
-    usuario = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    """Auditoría centralizada para todas las acciones sensibles"""
+    ACCIONES = [
+        ('LOGIN_PERFIL', 'Selección de perfil'),
+        ('LOGOUT', 'Cierre de sesión'),
+        ('APERTURA_CAJA', 'Apertura de caja'),
+        ('CIERRE_CAJA', 'Cierre de caja'),
+        ('VENTA', 'Venta registrada'),
+        ('PAGO', 'Pago registrado'),
+        ('MOVIMIENTO_INV', 'Movimiento de inventario'),
+        ('EDICION_PRODUCTO', 'Edición de producto'),
+        ('ELIMINACION_PRODUCTO', 'Eliminación de producto'),
+        ('CREACION_USUARIO', 'Creación de usuario'),
+        ('EDICION_USUARIO', 'Edición de usuario'),
+        ('CAMBIO_ROL', 'Cambio de rol'),
+        ('EXPORTACION', 'Exportación de datos'),
+    ]
+    
+    usuario = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='auditorias')
     timestamp = models.DateTimeField(auto_now_add=True)
-    accion = models.CharField(max_length=255)
+    accion = models.CharField(max_length=50, choices=ACCIONES)
     detalles = models.TextField(blank=True)
+    tienda = models.ForeignKey(Tienda, on_delete=models.SET_NULL, null=True, blank=True)
+    entidad_tipo = models.CharField(max_length=50, blank=True, help_text='Modelo afectado')
+    entidad_id = models.IntegerField(null=True, blank=True, help_text='ID del objeto afectado')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name_plural = 'Auditorías'
+    
     def __str__(self):
-        return f"{self.usuario.username} - {self.accion} - {self.timestamp}"
+        return f"{self.usuario.username} - {self.get_accion_display()} - {self.timestamp}"
+
+
+def registrar_auditoria(usuario, accion, detalles='', tienda=None, entidad=None, request=None):
+    """Helper único para registrar auditoría en todo el sistema"""
+    ip = None
+    if request:
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+    
+    entidad_tipo = ''
+    entidad_id = None
+    if entidad:
+        entidad_tipo = entidad.__class__.__name__
+        entidad_id = entidad.pk
+    
+    return Auditoria.objects.create(
+        usuario=usuario,
+        accion=accion,
+        detalles=detalles,
+        tienda=tienda,
+        entidad_tipo=entidad_tipo,
+        entidad_id=entidad_id,
+        ip_address=ip
+    )
 
 class Pedido(models.Model):
     ESTADOS = [('PENDIENTE', 'Pendiente'), ('EN_PROCESO', 'En Proceso'), ('LISTO', 'Listo'), ('ENTREGADO', 'Entregado')]
