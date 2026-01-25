@@ -40,20 +40,24 @@ class ProfileMiddleware:
 
         return self.get_response(request)
 
-def profile_permission_required(group_name):
+def profile_permission_required(group_names):
     """
     Decorador para validar permisos contra el perfil activo en la sesión.
+    Soporta un nombre de grupo (string) o una lista de nombres de grupo.
     """
+    if isinstance(group_names, str):
+        group_names = [group_names]
+
     def decorator(view_func):
         @wraps(view_func)
         def _wrapped_view(request, *args, **kwargs):
             if not hasattr(request, 'active_profile'):
                 return redirect('seleccionar_perfil')
 
-            # Superadmin o Admin tienen acceso total
+            # Superadmin, Admin o CEO tienen acceso total
             if (request.active_profile.is_superuser or
-                request.active_profile.groups.filter(name__in=['Admin', 'Superadmin']).exists() or
-                request.active_profile.groups.filter(name=group_name).exists()):
+                request.active_profile.groups.filter(name__in=['Admin', 'Superadmin', 'CEO']).exists() or
+                request.active_profile.groups.filter(name__in=group_names).exists()):
                 return view_func(request, *args, **kwargs)
 
             raise PermissionDenied

@@ -56,7 +56,7 @@ def catalogo_telas(request):
 
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_crear_color(request):
     """Crear nuevo color con validación IA de similitud"""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -136,7 +136,7 @@ Responde SOLO con:
 
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_crear_tela(request):
     """Crear nueva tela con validación IA de similitud"""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -248,7 +248,7 @@ def api_telas_list(request):
 # AGENDA - CALENDARIO
 # ============================================================
 
-@profile_permission_required('Agenda')
+@profile_permission_required(['Agenda', 'Vendedor'])
 def agenda_calendario(request):
     """Vista principal del calendario estilo iPhone"""
     year = int(request.GET.get('year', timezone.now().year))
@@ -329,7 +329,7 @@ def agenda_dia(request, year, month, day):
 
 
 @require_POST
-@login_required
+@profile_permission_required('Agenda')
 def api_crear_cita(request):
     """Crear nueva cita en la agenda"""
     data = json.loads(request.body)
@@ -368,6 +368,22 @@ def api_crear_cita(request):
         except Novia.DoesNotExist:
             pass
     
+    # Crear novia si se solicita
+    if not novia and data.get('crear_novia') and nombre_cliente:
+        fecha_boda_str = data.get('fecha_boda')
+        if fecha_boda_str:
+            try:
+                fecha_boda = datetime.strptime(fecha_boda_str, '%Y-%m-%d').date()
+                novia = Novia.objects.create(
+                    nombre=nombre_cliente,
+                    telefono=telefono_cliente,
+                    fecha_boda=fecha_boda,
+                    cantidad_damas=cantidad_damas,
+                    creado_por=request.active_profile
+                )
+            except ValueError:
+                pass
+
     cita = CitaAgenda.objects.create(
         titulo=titulo,
         tipo=tipo,
@@ -426,7 +442,7 @@ def api_citas_rango(request):
 # NOVIAS Y PEDIDOS
 # ============================================================
 
-@profile_permission_required('Agenda')
+@profile_permission_required(['Agenda', 'Vendedor'])
 def novias_list(request):
     """Lista de todas las novias"""
     q = request.GET.get('q', '')
@@ -466,7 +482,7 @@ def novia_detalle(request, pk):
 
 
 @require_POST
-@login_required
+@profile_permission_required('Agenda')
 def api_crear_novia(request):
     """Crear nueva novia"""
     data = json.loads(request.body)
@@ -516,7 +532,7 @@ def api_crear_novia(request):
 
 
 @require_POST
-@login_required
+@profile_permission_required('Agenda')
 def api_agregar_dama(request, novia_id):
     """Agregar dama al grupo de la novia"""
     novia = get_object_or_404(Novia, pk=novia_id)
@@ -545,7 +561,7 @@ def api_agregar_dama(request, novia_id):
 # PEDIDOS EN PUERTA - RESUMEN
 # ============================================================
 
-@profile_permission_required('Agenda')
+@profile_permission_required(['Agenda', 'Vendedor'])
 def pedidos_en_puerta(request):
     """Vista de todos los pedidos pendientes agrupados por novia"""
     from .models import Pedido

@@ -281,7 +281,7 @@ def api_crear_producto_rapido(request):
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=1
+            cantidad_actual=int(data.get('stock', 1))
         )
         return JsonResponse({'status': 'ok', 'sku': producto.sku, 'id': producto.id, 'text': str(producto)})
     except Exception as e:
@@ -530,7 +530,7 @@ def api_validar_crear_producto(request):
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=1
+            cantidad_actual=int(data.get('stock', 1))
         )
         
         return JsonResponse({
@@ -550,7 +550,7 @@ def api_validar_crear_producto(request):
 # ============================================================
 
 @login_required
-@profile_permission_required('Inventario')
+@profile_permission_required(['Inventario', 'Vendedor'])
 def inventario_view(request):
     """Vista de gestión de inventario"""
     q = request.GET.get('q', '')
@@ -578,7 +578,9 @@ def inventario_view(request):
     return render(request, 'boutique/inventario.html', {
         'productos': productos,
         'q': q,
-        'es_admin': es_admin(request.active_profile)
+        'es_admin': es_admin(request.active_profile),
+        'categorias': Categoria.objects.all().order_by('nombre'),
+        'colores': Color.objects.filter(activo=True).order_by('nombre')
     })
 
 
