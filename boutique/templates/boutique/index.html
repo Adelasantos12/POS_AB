@@ -3,96 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adelé Boutique POS</title>
-    <!-- Bootstrap 5 CSS -->
+    <title>ByEasy POS | Tu punto de venta fácil</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
         :root {
-            --primary-color: #0070ba; /* PayPal Blue */
-            --secondary-color: #ffffff;
-            --text-color: #242729;
-            --bg-color: #ffffff;
+            --primary: #2563EB;
+            --primary-hover: #1D4ED8;
+            --bg-page: #F8FAFC;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
         }
+        
+        * {
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        h1, h2, h3, .logo {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+        }
+        
         body {
-            font-family: "Salesforce Sans", "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            height: 100vh;
-            margin: 0;
+            background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            padding: 2rem;
         }
+        
         .hero-section {
             text-align: center;
-            max-width: 400px;
-            width: 90%;
+            max-width: 420px;
+            width: 100%;
         }
+        
         .logo {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            color: var(--primary-color);
-            letter-spacing: -1px;
+            font-size: 3rem;
+            color: var(--primary);
+            letter-spacing: -0.05em;
+            margin-bottom: 0.25rem;
         }
+        
         .tagline {
             font-size: 1.1rem;
-            color: #6c757d;
-            margin-bottom: 3rem;
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
         }
+        
+        .store-badge {
+            background: linear-gradient(135deg, var(--primary), #60A5FA);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 2.5rem;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+        }
+        
         .btn-container {
             display: grid;
             gap: 1rem;
             width: 100%;
         }
+        
         .btn {
-            padding: 0.8rem 2rem;
+            padding: 1rem 2rem;
             font-size: 1rem;
             font-weight: 600;
-            border-radius: 100px; /* Rounded pill style like modern fintech */
-            transition: all 0.2s ease-in-out;
+            border-radius: 100px;
+            transition: all 0.2s ease;
         }
+        
         .btn-primary {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
+            background-color: var(--primary);
+            border: none;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
         }
+        
         .btn-primary:hover {
-            background-color: #005ea6;
-            border-color: #005ea6;
+            background-color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
         }
+        
         .btn-outline-primary {
-            color: var(--primary-color);
-            border-color: var(--primary-color);
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            background: white;
         }
+        
         .btn-outline-primary:hover {
-            background-color: #f0f7fd;
-            color: var(--primary-color);
-            border-color: var(--primary-color);
+            background-color: var(--primary);
+            color: white;
         }
+        
         .footer-links {
-            margin-top: 4rem;
+            margin-top: 3rem;
             font-size: 0.85rem;
         }
+        
         .footer-links a {
-            color: #6c757d;
+            color: var(--text-secondary);
             text-decoration: none;
-            margin: 0 10px;
+            margin: 0 12px;
+            transition: color 0.2s ease;
         }
+        
         .footer-links a:hover {
-            text-decoration: underline;
+            color: var(--primary);
+        }
+        
+        .features {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 3rem;
+            flex-wrap: wrap;
+        }
+        
+        .feature {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        
+        .feature i {
+            font-size: 1.5rem;
+            color: var(--primary);
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .hero-section {
+            animation: fadeInUp 0.6s ease forwards;
         }
     </style>
 </head>
 <body>
 
-    <div class="hero-section">
-        <div class="logo">Adelé</div>
-        <p class="tagline">Punto de venta simple, para tu boutique.</p>
+    <div class="hero-section" data-testid="welcome-section">
+        <div class="logo">ByEasy</div>
+        <p class="tagline">Tu punto de venta fácil</p>
+        
+        <div class="store-badge" data-testid="store-badge">
+            <i class="bi bi-shop"></i>
+            Adelé Boutique (Gdl)
+        </div>
 
         <div class="btn-container">
-            <a href="{% url 'login' %}" class="btn btn-primary">Entrar</a>
-            <a href="{% url 'signup' %}" class="btn btn-outline-primary">Crear cuenta</a>
+            <a href="{% url 'login' %}" class="btn btn-primary" data-testid="btn-entrar">
+                <i class="bi bi-box-arrow-in-right me-2"></i>Entrar al Sistema
+            </a>
+            <a href="{% url 'signup' %}" class="btn btn-outline-primary" data-testid="btn-crear-cuenta">
+                <i class="bi bi-person-plus me-2"></i>Crear Cuenta
+            </a>
+        </div>
+        
+        <div class="features">
+            <div class="feature">
+                <i class="bi bi-lightning-charge"></i>
+                Ventas rápidas
+            </div>
+            <div class="feature">
+                <i class="bi bi-box-seam"></i>
+                Control de inventario
+            </div>
+            <div class="feature">
+                <i class="bi bi-graph-up"></i>
+                Reportes con IA
+            </div>
         </div>
     </div>
 
