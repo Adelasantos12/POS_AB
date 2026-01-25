@@ -1,0 +1,169 @@
+{
+  "identity": {
+    "name": "E1",
+    "role": "Creative Designer (Top 1%)",
+    "philosophy": "Fusion over Imitation. Emotion First. Content is King.",
+    "anti_patterns": [
+      "Purple/Teal for CTA",
+      "Inter font everywhere",
+      "Center-everything layout",
+      "Gradient overload (>20%)"
+    ]
+  },
+  "typography": {
+    "strategy": "The Soft Utility (Dashboard / Apps)",
+    "headings": {
+      "family": "Manrope",
+      "weights": ["600", "800"],
+      "tracking": "tracking-tight",
+      "usage": "Main headers, modal titles, price displays"
+    },
+    "body": {
+      "family": "IBM Plex Sans",
+      "weights": ["400", "500"],
+      "tracking": "tracking-normal",
+      "usage": "Form labels, table data, descriptions"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "usage": "Transaction IDs, SKU codes"
+    }
+  },
+  "colors": {
+    "palette_name": "Fintech Clarity (Light Mode)",
+    "theme": "light",
+    "primary": {
+      "name": "Royal Azure",
+      "hex": "#2563EB",
+      "tailwind": "blue-600",
+      "usage": "Primary CTAs, Active States, Brand Accents"
+    },
+    "secondary": {
+      "name": "Slate Anchor",
+      "hex": "#0F172A",
+      "tailwind": "slate-900",
+      "usage": "Headings, Strong Borders, Secondary Buttons"
+    },
+    "background": {
+      "page": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "subtle": "#F1F5F9"
+    },
+    "semantic": {
+      "success": "#10B981",
+      "error": "#EF4444",
+      "warning": "#F59E0B",
+      "info": "#3B82F6"
+    },
+    "border": {
+      "default": "#E2E8F0",
+      "focus": "#2563EB"
+    },
+    "forbidden": ["#7351B7", "#1B93A4"]
+  },
+  "visual_enhancers": {
+    "radius": "rounded-full",
+    "shadows": {
+      "card": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+      "float": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)"
+    },
+    "glassmorphism": {
+      "usage": "Login Modal, Sticky Headers",
+      "classes": "bg-white/70 backdrop-blur-xl border border-white/20 shadow-sm"
+    },
+    "gradients": "None. Use solid colors or subtle noise textures."
+  },
+  "layout_strategies": {
+    "login_screen": {
+      "name": "The macOS Portal",
+      "structure": "Full-screen blurred background image. Centered glass card.",
+      "elements": [
+        "Background: Boutique Interior (Blurred)",
+        "Card: Glassmorphism, rounded-3xl, p-12",
+        "Avatar: Circular, centered, 128x128, ring-4 ring-white/50",
+        "Input: Minimalist, no label (placeholder only), large text",
+        "Animation: Card floats up on load. Shake on error."
+      ]
+    },
+    "pos_terminal": {
+      "name": "The Split Focus",
+      "structure": "Two-column layout. Left: Product Grid (65%). Right: Cart/Checkout (35%).",
+      "grid_mode": "Bento Mode A (Tetris)",
+      "cart_panel": "White surface, full height, fixed right. Shadow-xl left-side."
+    },
+    "dashboard": {
+      "name": "The Data Bento",
+      "structure": "Grid-cols-4. Dense packing.",
+      "widgets": "Cardless or subtle border. White bg. Large metrics."
+    }
+  },
+  "components": {
+    "buttons": {
+      "style": "Pill-shaped (rounded-full)",
+      "padding": "px-8 py-3",
+      "typography": "font-semibold tracking-wide",
+      "hover": "transform -translate-y-0.5 transition-all duration-200"
+    },
+    "cards": {
+      "style": "Flat, 1px border (slate-200), rounded-2xl",
+      "hover": "border-blue-300 shadow-md transition-all"
+    },
+    "inputs": {
+      "style": "bg-slate-50 border-transparent focus:bg-white focus:border-blue-500 rounded-xl h-12 px-4",
+      "labels": "text-sm font-medium text-slate-500 mb-1 block"
+    }
+  },
+  "assets": {
+    "icons": "Phosphor Icons (Regular weight for UI, Duotone for Marketing)",
+    "images": {
+      "login_background": "https://images.unsplash.com/photo-1769107805412-90d9191d53e9?blur=50",
+      "avatars": [
+        {
+          "role": "Owner",
+          "url": "https://images.unsplash.com/photo-1736939666660-d4c776e0532c"
+        },
+        {
+          "role": "Manager",
+          "url": "https://images.unsplash.com/photo-1740153204804-200310378f2f"
+        },
+        {
+          "role": "Staff",
+          "url": "https://images.unsplash.com/photo-1700575083904-d5e3279a8cb8"
+        }
+      ],
+      "placeholders": {
+        "product": "https://images.unsplash.com/photo-1766934587214-86e21b3ae093"
+      }
+    }
+  },
+  "motion": {
+    "library": "framer-motion",
+    "transitions": {
+      "default": { "type": "spring", "stiffness": 300, "damping": 30 },
+      "page": { "opacity": 0, "y": 20 },
+      "hover": { "scale": 1.02 }
+    }
+  },
+  "universal_guidelines": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "Use glass-morphism effects with backdrop filters (12-24px blur)",
+    "You MUST NOT apply universal transition. Eg: transition: all. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts the human natural reading flow of text",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN",
+    "Prioritize using pre-existing components from src/components/ui when applicable",
+    "Create new components that match the style and conventions of existing components when needed",
+    "Examine existing components to understand the project's component patterns before creating new ones",
+    "Components MUST use named exports (export const ComponentName = ...)",
+    "Pages MUST use default exports (export default function PageName() {...})",
+    "Use sonner for toasts",
+    "Sonner component are located in /app/src/components/ui/sonner.tsx"
+  ],
+  "instructions_to_main_agent": "You are building a React frontend for a POS system. The backend is Django (existing). You need to create the frontend structure if it doesn't exist. Use the 'Fintech Clarity' palette. Implement the 'macOS Portal' login screen first. Use 'Manrope' for headings. Ensure all buttons are pill-shaped. Use the provided image URLs for avatars and backgrounds. Do not ask for clarification."
+}
