@@ -64,9 +64,23 @@
                     <td>{{ p.talla }} / {{ p.color.nombre }}</td>
                     <td class="precio-col fw-bold">${{ p.precio_venta }}</td>
                     <td class="stock-col">
-                        <span class="badge {% if p.cantidad_actual > 0 %}bg-success{% else %}bg-danger{% endif %} rounded-pill">
-                            {{ p.cantidad_actual }}
+                        {% if p.cantidad_actual == 0 %}
+                        <span class="status-badge status-inactive">
+                            <i class="bi bi-exclamation-circle me-1"></i>Agotado
                         </span>
+                        {% elif p.cantidad_actual <= 2 %}
+                        <span class="status-badge status-warning">
+                            <i class="bi bi-arrow-down me-1"></i>Bajo ({{ p.cantidad_actual }})
+                        </span>
+                        {% elif p.cantidad_actual <= 5 %}
+                        <span class="badge bg-info rounded-pill">
+                            <i class="bi bi-check-circle me-1"></i>Normal ({{ p.cantidad_actual }})
+                        </span>
+                        {% else %}
+                        <span class="status-badge status-active">
+                            <i class="bi bi-arrow-up me-1"></i>Alto ({{ p.cantidad_actual }})
+                        </span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if p.barcode_image %}
