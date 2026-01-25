@@ -553,17 +553,68 @@ def admin_dashboard(request):
 @login_required
 @profile_permission_required('Admin')
 def api_ai_strategy(request):
-    """Genera una estrategia de venta usando IA (Simulado)"""
-    cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:3]
-    color_top = ItemVenta.objects.values('producto__color__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:3]
+    """Genera una estrategia de venta usando IA con Gemini"""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    
+    # Recopilar datos de ventas
+    cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
+    color_top = ItemVenta.objects.values('producto__color__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
+    
+    # Ventas por día de la semana
+    ventas_semana = Venta.objects.extra(select={'dia_semana': "strftime('%%w', fecha)"}).values('dia_semana').annotate(
+        total=Sum('total'),
+        cantidad=Count('id')
+    ).order_by('dia_semana')
+    
+    # Stock bajo
+    stock_bajo = Producto.objects.filter(cantidad_actual__lte=2).count()
+    total_productos = Producto.objects.count()
+    
+    # Construir contexto para IA
+    categorias = ', '.join([f"{c['producto__categoria__nombre']} ({c['c']} vendidos)" for c in cat_top]) if cat_top else 'Sin datos'
+    colores = ', '.join([f"{c['producto__color__nombre']} ({c['c']} vendidos)" for c in color_top]) if color_top else 'Sin datos'
+    
+    prompt = f"""Eres un consultor de retail experto. Analiza estos datos de Adelé Boutique (Gdl) y da 3-4 recomendaciones concretas y accionables.
 
-    resumen = f"Categorías más vendidas: {', '.join([c['producto__categoria__nombre'] for c in cat_top])}. "
-    resumen += f"Colores tendencia: {', '.join([c['producto__color__nombre'] for c in color_top])}."
+DATOS DE LA BOUTIQUE:
+- Categorías más vendidas: {categorias}
+- Colores más vendidos: {colores}
+- Productos con stock bajo: {stock_bajo} de {total_productos}
+- Mes actual: Enero 2026
 
-    estrategia = f"Basado en tus datos ({resumen}), se recomienda: \n"
-    estrategia += "1. Aumentar stock de los colores tendencia para la próxima temporada.\n"
-    estrategia += "2. Lanzar una promoción 'Combo' para las categorías menos movidas.\n"
-    estrategia += "3. Los fines de semana muestran mayor volumen, considera reforzar el equipo esos días."
+Responde en español, de forma directa y práctica. Usa emojis para hacer la lectura más amigable. Máximo 200 palabras."""
+
+    try:
+        # Usar Gemini con la API key del usuario
+        async def get_ai_response():
+            chat = LlmChat(
+                api_key=GEMINI_API_KEY,
+                session_id=f"strategy_{request.active_profile.id}",
+                system_message="Eres un consultor de retail experto en boutiques de moda. Das consejos prácticos y concretos."
+            ).with_model("gemini", "gemini-2.0-flash")
+            
+            user_message = UserMessage(text=prompt)
+            response = await chat.send_message(user_message)
+            return response
+        
+        estrategia = asyncio.run(get_ai_response())
+        
+    except Exception as e:
+        logger.error(f"Error con Gemini AI: {e}")
+        # Fallback a respuesta simulada
+        estrategia = f"""📊 **Análisis de Adelé Boutique**
+
+Basado en tus datos:
+- Top categorías: {categorias}
+- Colores tendencia: {colores}
+
+**Recomendaciones:**
+1. 🎯 Refuerza el stock de tus categorías top antes del fin de semana
+2. 🎨 Los colores que más vendes deberían tener más variedad de tallas
+3. ⚠️ Tienes {stock_bajo} productos con stock bajo - revisa reposición
+4. 💡 Considera una promoción "2x1" en categorías de menor rotación
+
+_Nota: Respuesta generada localmente (error de conexión con IA)_"""
 
     return JsonResponse({'estrategia': estrategia})
 
