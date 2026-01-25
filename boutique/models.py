@@ -1,4 +1,36 @@
 from django.db import models
+from django.conf import settings
+from django.utils import timezone
+
+
+class Tienda(models.Model):
+    """Tienda o sucursal del negocio"""
+    nombre = models.CharField(max_length=100, unique=True)
+    direccion = models.TextField(blank=True)
+    telefono = models.CharField(max_length=20, blank=True)
+    activa = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return self.nombre
+
+
+class Permiso(models.Model):
+    """Permisos atómicos del sistema"""
+    PERMISOS = [
+        ('abrir_caja', 'Puede abrir caja'),
+        ('vender', 'Puede realizar ventas'),
+        ('cobrar', 'Puede cobrar'),
+        ('editar_inventario', 'Puede editar inventario'),
+        ('ver_reportes', 'Puede ver reportes'),
+        ('gestionar_usuarios', 'Puede gestionar usuarios'),
+        ('ver_todo', 'Acceso total'),
+    ]
+    codigo = models.CharField(max_length=50, unique=True, choices=PERMISOS)
+    descripcion = models.CharField(max_length=100)
+    
+    def __str__(self):
+        return self.get_codigo_display()
+
 
 class Proveedor(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
