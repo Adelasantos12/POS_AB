@@ -1,0 +1,129 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Pedidos en Puerta - Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">Pedidos en Puerta</h1>
+        <p class="page-subtitle">Seguimiento de confección y entregas</p>
+    </div>
+    <div class="d-flex gap-3">
+        <div class="text-end">
+            <div class="h4 fw-bold mb-0">{{ total_pedidos }}</div>
+            <small class="text-muted text-uppercase small fw-bold">Total Pendientes</small>
+        </div>
+    </div>
+</div>
+
+<!-- Estadísticas Rápidas -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <small class="text-muted d-block mb-1">Nuevos</small>
+                <div class="h4 fw-bold mb-0 text-primary">{{ por_estado.nuevos }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <small class="text-muted d-block mb-1">Pendiente Tela</small>
+                <div class="h4 fw-bold mb-0 text-warning">{{ por_estado.pendiente_tela }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <small class="text-muted d-block mb-1">En Confección</small>
+                <div class="h4 fw-bold mb-0 text-info">{{ por_estado.en_confeccion }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <small class="text-muted d-block mb-1">Listos</small>
+                <div class="h4 fw-bold mb-0 text-success">{{ por_estado.listos }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lista de Pedidos Agrupados por Novia -->
+{% for novia_id, data in pedidos_por_novia.items %}
+<div class="card mb-4 overflow-hidden border-0 shadow-sm">
+    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="heading mb-0 text-primary">Grupo: {{ data.novia.nombre }}</h5>
+            <small class="text-muted"><i class="bi bi-calendar-event me-1"></i>Boda: {{ data.novia.fecha_boda|date:"d M, Y" }}</small>
+        </div>
+        <div class="text-end">
+            <div class="fw-bold">${{ data.pagado }} / ${{ data.total }}</div>
+            <small class="text-muted small">Liquidación de grupo</small>
+        </div>
+    </div>
+    <div class="card-body px-0 pb-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Ticket</th>
+                        <th>Dama / Beneficiaria</th>
+                        <th>Modelo / Características</th>
+                        <th>Fecha Entrega</th>
+                        <th>Estado</th>
+                        <th class="pe-4 text-end">Saldo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in data.pedidos %}
+                    <tr>
+                        <td class="ps-4">
+                            <code class="fw-bold text-dark">{{ p.numero_ticket }}</code>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</div>
+                            <small class="text-muted">{{ p.talla|default:"Sin talla" }}</small>
+                        </td>
+                        <td>
+                            <div class="small fw-bold">{{ p.modelo.nombre|default:"Modelo Especial" }}</div>
+                            <small class="text-muted">{{ p.tela.nombre }} · {{ p.color.nombre }}</small>
+                        </td>
+                        <td>
+                            <div class="{% if p.fecha_entrega_estimada < today %}text-danger fw-bold{% endif %}">
+                                {{ p.fecha_entrega_estimada|date:"d/m/Y" }}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="status-badge {% if p.estado == 'LISTO' %}status-active{% elif p.estado == 'EN_CONFECCION' %}status-warning{% else %}status-warning{% endif %}">
+                                {{ p.get_estado_display }}
+                            </span>
+                        </td>
+                        <td class="pe-4 text-end">
+                            <div class="fw-bold {% if p.saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                                ${{ p.saldo_pendiente }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-light p-3 text-center">
+            <a href="{% url 'novia_detalle' novia_id %}" class="btn btn-sm btn-link text-decoration-none fw-bold">
+                Gestionar Grupo Completo <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="text-center py-5">
+    <i class="bi bi-bag-x display-1 text-muted opacity-25"></i>
+    <p class="mt-3 text-muted">No hay pedidos pendientes en este momento.</p>
+</div>
+{% endfor %}
+
+{% endblock %}

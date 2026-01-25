@@ -107,3 +107,6 @@ MEDIA_ROOT = BASE_DIR / 'media'
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = 'index'
+
+# --- Integración IA Gemini ---
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')

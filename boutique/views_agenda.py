@@ -11,8 +11,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta, date
 import json
 import calendar
-import asyncio
-import os
+from django.conf import settings
 
 from .models import (
     Color, Tela, Novia, Dama, CitaAgenda, 
@@ -20,14 +19,12 @@ from .models import (
 )
 from .middleware import profile_permission_required
 
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-
 
 # ============================================================
 # CATÁLOGO DE COLORES Y TELAS
 # ============================================================
 
-@login_required
+@profile_permission_required('Inventario')
 def catalogo_colores(request):
     """Vista del catálogo de colores con muestras visuales"""
     colores = Color.objects.filter(activo=True).order_by('familia', 'orden', 'nombre')
@@ -44,7 +41,7 @@ def catalogo_colores(request):
     })
 
 
-@login_required
+@profile_permission_required('Inventario')
 def catalogo_telas(request):
     """Vista del catálogo de telas"""
     telas = Tela.objects.filter(activa=True).order_by('nombre')
@@ -56,10 +53,37 @@ def catalogo_telas(request):
 
 
 @require_POST
-@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_color_editar(request, pk):
+    """Edita un color"""
+    color = get_object_or_404(Color, pk=pk)
+    data = json.loads(request.body)
+    try:
+        color.nombre = data.get('nombre', color.nombre)
+        color.codigo_hex = data.get('codigo_hex', color.codigo_hex)
+        color.familia = data.get('familia', color.familia)
+        color.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_color_eliminar(request, pk):
+    """Elimina un color"""
+    color = get_object_or_404(Color, pk=pk)
+    if color.es_predefinido:
+        return JsonResponse({'status': 'error', 'message': 'No se pueden eliminar colores base'}, status=400)
+    color.delete()
+    return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
 def api_crear_color(request):
     """Crear nuevo color con validación IA de similitud"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from .ai_utils import get_gemini_model
     
     data = json.loads(request.body)
     nombre = data.get('nombre', '').strip()
@@ -83,14 +107,9 @@ def api_crear_color(request):
     
     ai_warning = None
     if colores_similares:
-        try:
-            async def check_color_similarity():
-                chat = LlmChat(
-                    api_key=GEMINI_API_KEY,
-                    session_id=f"color_check",
-                    system_message="Eres experto en colores para moda y vestidos."
-                ).with_model("gemini", "gemini-2.0-flash")
-                
+        model = get_gemini_model()
+        if model:
+            try:
                 prompt = f"""¿El color "{nombre}" es igual o muy similar a alguno de estos colores existentes?
 Colores existentes: {', '.join(colores_similares)}
 
@@ -99,20 +118,17 @@ Responde SOLO con:
 - "SIMILAR: [nombre]" si es un tono muy parecido pero diferente
 - "DIFERENTE" si es un color claramente distinto"""
 
-                response = await chat.send_message(UserMessage(text=prompt))
-                return response
-            
-            ai_response = asyncio.run(check_color_similarity())
-            if 'IGUAL' in ai_response.upper():
-                return JsonResponse({
-                    'status': 'blocked',
-                    'message': f'Este color parece ser igual a uno existente. {ai_response}'
-                }, status=400)
-            elif 'SIMILAR' in ai_response.upper():
-                ai_warning = ai_response
-                
-        except Exception as e:
-            pass  # Continuar sin IA
+                response = model.generate_content(prompt)
+                ai_response = response.text.strip()
+                if 'IGUAL' in ai_response.upper():
+                    return JsonResponse({
+                        'status': 'blocked',
+                        'message': f'Este color parece ser igual a uno existente. {ai_response}'
+                    }, status=400)
+                elif 'SIMILAR' in ai_response.upper():
+                    ai_warning = ai_response
+            except:
+                pass
     
     # Crear el color
     color = Color.objects.create(
@@ -136,10 +152,10 @@ Responde SOLO con:
 
 
 @require_POST
-@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
 def api_crear_tela(request):
     """Crear nueva tela con validación IA de similitud"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from .ai_utils import get_gemini_model
     
     data = json.loads(request.body)
     nombre = data.get('nombre', '').strip()
@@ -163,14 +179,9 @@ def api_crear_tela(request):
     
     ai_warning = None
     if telas_similares:
-        try:
-            async def check_tela_similarity():
-                chat = LlmChat(
-                    api_key=GEMINI_API_KEY,
-                    session_id=f"tela_check",
-                    system_message="Eres experto en textiles y telas para moda."
-                ).with_model("gemini", "gemini-2.0-flash")
-                
+        model = get_gemini_model()
+        if model:
+            try:
                 prompt = f"""¿La tela "{nombre}" es igual o muy similar a alguna de estas telas existentes?
 Telas existentes: {', '.join(telas_similares)}
 
@@ -179,20 +190,17 @@ Responde SOLO con:
 - "SIMILAR: [nombre]" si es muy parecida
 - "DIFERENTE" si es claramente distinta"""
 
-                response = await chat.send_message(UserMessage(text=prompt))
-                return response
-            
-            ai_response = asyncio.run(check_tela_similarity())
-            if 'IGUAL' in ai_response.upper():
-                return JsonResponse({
-                    'status': 'blocked',
-                    'message': f'Esta tela parece ser igual a una existente. {ai_response}'
-                }, status=400)
-            elif 'SIMILAR' in ai_response.upper():
-                ai_warning = ai_response
-                
-        except:
-            pass
+                response = model.generate_content(prompt)
+                ai_response = response.text.strip()
+                if 'IGUAL' in ai_response.upper():
+                    return JsonResponse({
+                        'status': 'blocked',
+                        'message': f'Esta tela parece ser igual a una existente. {ai_response}'
+                    }, status=400)
+                elif 'SIMILAR' in ai_response.upper():
+                    ai_warning = ai_response
+            except:
+                pass
     
     # Crear la tela
     from .models import Proveedor
@@ -217,6 +225,33 @@ Responde SOLO con:
         response['warning'] = ai_warning
     
     return JsonResponse(response)
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_tela_editar(request, pk):
+    """Edita una tela"""
+    tela = get_object_or_404(Tela, pk=pk)
+    data = json.loads(request.body)
+    try:
+        tela.nombre = data.get('nombre', tela.nombre)
+        tela.descripcion = data.get('descripcion', tela.descripcion)
+        tela.codigo_proveedor = data.get('codigo_proveedor', tela.codigo_proveedor)
+        tela.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_tela_eliminar(request, pk):
+    """Elimina una tela"""
+    tela = get_object_or_404(Tela, pk=pk)
+    if tela.es_predefinida:
+        return JsonResponse({'status': 'error', 'message': 'No se pueden eliminar telas base'}, status=400)
+    tela.delete()
+    return JsonResponse({'status': 'ok'})
 
 
 @login_required
@@ -248,7 +283,7 @@ def api_telas_list(request):
 # AGENDA - CALENDARIO
 # ============================================================
 
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def agenda_calendario(request):
     """Vista principal del calendario estilo iPhone"""
     year = int(request.GET.get('year', timezone.now().year))
@@ -292,7 +327,7 @@ def agenda_calendario(request):
     return render(request, 'boutique/agenda_calendario.html', context)
 
 
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def agenda_dia(request, year, month, day):
     """Vista de agenda por día - desglose por horas"""
     fecha = date(year, month, day)
@@ -329,7 +364,7 @@ def agenda_dia(request, year, month, day):
 
 
 @require_POST
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def api_crear_cita(request):
     """Crear nueva cita en la agenda"""
     data = json.loads(request.body)
@@ -368,6 +403,22 @@ def api_crear_cita(request):
         except Novia.DoesNotExist:
             pass
     
+    # Crear novia si se solicita
+    if not novia and data.get('crear_novia') and nombre_cliente:
+        fecha_boda_str = data.get('fecha_boda')
+        if fecha_boda_str:
+            try:
+                fecha_boda = datetime.strptime(fecha_boda_str, '%Y-%m-%d').date()
+                novia = Novia.objects.create(
+                    nombre=nombre_cliente,
+                    telefono=telefono_cliente,
+                    fecha_boda=fecha_boda,
+                    cantidad_damas=cantidad_damas,
+                    creado_por=request.active_profile
+                )
+            except ValueError:
+                pass
+
     cita = CitaAgenda.objects.create(
         titulo=titulo,
         tipo=tipo,
@@ -426,7 +477,7 @@ def api_citas_rango(request):
 # NOVIAS Y PEDIDOS
 # ============================================================
 
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def novias_list(request):
     """Lista de todas las novias"""
     q = request.GET.get('q', '')
@@ -445,7 +496,7 @@ def novias_list(request):
     })
 
 
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def novia_detalle(request, pk):
     """Detalle de una novia con su grupo y pedidos"""
     novia = get_object_or_404(Novia, pk=pk)
@@ -466,7 +517,7 @@ def novia_detalle(request, pk):
 
 
 @require_POST
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def api_crear_novia(request):
     """Crear nueva novia"""
     data = json.loads(request.body)
@@ -494,6 +545,10 @@ def api_crear_novia(request):
         fecha_limite=datetime.strptime(data['fecha_limite'], '%Y-%m-%d').date() if data.get('fecha_limite') else None,
         cantidad_damas=int(data.get('cantidad_damas', 0)),
         notas=data.get('notas', ''),
+        modelo_especial=data.get('modelo_especial', ''),
+        color_especial=data.get('color_especial', ''),
+        tela_especial=data.get('tela_especial', ''),
+        talla_especial=data.get('talla_especial', ''),
         creado_por=request.active_profile
     )
     
@@ -516,7 +571,7 @@ def api_crear_novia(request):
 
 
 @require_POST
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def api_agregar_dama(request, novia_id):
     """Agregar dama al grupo de la novia"""
     novia = get_object_or_404(Novia, pk=novia_id)
@@ -527,6 +582,9 @@ def api_agregar_dama(request, novia_id):
         nombre=data.get('nombre', ''),
         telefono=data.get('telefono', ''),
         talla=data.get('talla', ''),
+        modelo_especial=data.get('modelo_especial', ''),
+        color_especial=data.get('color_especial', ''),
+        tela_especial=data.get('tela_especial', ''),
         notas_ajustes=data.get('notas', '')
     )
     
@@ -541,11 +599,36 @@ def api_agregar_dama(request, novia_id):
     })
 
 
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_editar_novia(request, pk):
+    """Actualiza datos de una novia"""
+    novia = get_object_or_404(Novia, pk=pk)
+    data = json.loads(request.body)
+
+    try:
+        novia.nombre = data.get('nombre', novia.nombre)
+        novia.telefono = data.get('telefono', novia.telefono)
+        if data.get('fecha_boda'):
+            novia.fecha_boda = datetime.strptime(data['fecha_boda'], '%Y-%m-%d').date()
+
+        novia.modelo_especial = data.get('modelo_especial', novia.modelo_especial)
+        novia.color_especial = data.get('color_especial', novia.color_especial)
+        novia.tela_especial = data.get('tela_especial', novia.tela_especial)
+        novia.talla_especial = data.get('talla_especial', novia.talla_especial)
+        novia.notas = data.get('notas', novia.notas)
+
+        novia.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
 # ============================================================
 # PEDIDOS EN PUERTA - RESUMEN
 # ============================================================
 
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def pedidos_en_puerta(request):
     """Vista de todos los pedidos pendientes agrupados por novia"""
     from .models import Pedido
@@ -601,7 +684,7 @@ def pedidos_en_puerta(request):
 # RESUMEN NOCTURNO
 # ============================================================
 
-@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 def resumen_nocturno(request):
     """Resumen de citas para mañana y resto de la semana"""
     hoy = timezone.now().date()

@@ -231,6 +231,16 @@
                                 <label class="form-label small fw-bold">Cantidad de Damas Esperadas</label>
                                 <input type="number" name="cantidad_damas" class="form-control" value="0" min="0" data-testid="input-damas">
                             </div>
+                            <div class="mb-3" id="groupCrearNovia">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" name="crear_novia" id="crearNoviaCheck">
+                                    <label class="form-check-label small fw-bold" for="crearNoviaCheck">Crear Perfil de Novia</label>
+                                </div>
+                                <div id="fechaBodaContainer" style="display: none;">
+                                    <label class="form-label small fw-bold">Fecha de Boda</label>
+                                    <input type="date" name="fecha_boda" class="form-control">
+                                </div>
+                            </div>
                             <div class="mb-3">
                                 <label class="form-label small fw-bold">Notas</label>
                                 <textarea name="notas" class="form-control" rows="3" placeholder="Notas adicionales..." data-testid="input-notas-cita"></textarea>
@@ -257,6 +267,16 @@ const csrfToken = '{{ csrf_token }}';
 // Establecer fecha mínima como hoy
 document.querySelector('input[name="fecha"]').min = new Date().toISOString().split('T')[0];
 
+// Mostrar/Ocultar fecha de boda al marcar checkbox
+document.getElementById('crearNoviaCheck').addEventListener('change', function(e) {
+    document.getElementById('fechaBodaContainer').style.display = e.target.checked ? 'block' : 'none';
+});
+
+// Mostrar/Ocultar opción de crear novia según tipo de cita
+document.querySelector('select[name="tipo"]').addEventListener('change', function(e) {
+    document.getElementById('groupCrearNovia').style.display = (e.target.value === 'CONSULTA') ? 'block' : 'none';
+});
+
 function crearCita() {
     const form = document.getElementById('nuevaCitaForm');
     const data = {
@@ -268,7 +288,9 @@ function crearCita() {
         nombre_cliente: form.nombre_cliente.value,
         telefono_cliente: form.telefono_cliente.value,
         cantidad_damas: parseInt(form.cantidad_damas.value) || 0,
-        notas: form.notas.value
+        notas: form.notas.value,
+        crear_novia: form.crear_novia.checked,
+        fecha_boda: form.fecha_boda.value
     };
     
     if (!data.titulo || !data.fecha || !data.hora_inicio) {

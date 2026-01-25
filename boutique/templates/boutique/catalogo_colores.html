@@ -57,13 +57,21 @@
     <div class="row g-3">
         {% for color in colores %}
         <div class="col-6 col-md-4 col-lg-2">
-            <div class="color-card" data-testid="color-{{ color.nombre|slugify }}">
+            <div class="color-card position-relative" data-testid="color-{{ color.nombre|slugify }}">
                 <div class="color-swatch mx-auto mb-2" style="background-color: {{ color.codigo_hex }};{% if color.nombre == 'Blanco' %} border: 2px solid #ddd;{% endif %}"></div>
                 <div class="fw-semibold small">{{ color.nombre }}</div>
                 <div class="text-muted" style="font-size: 0.7rem;">{{ color.codigo_hex }}</div>
-                {% if not color.es_predefinido %}
-                <span class="badge bg-primary rounded-pill mt-1" style="font-size: 0.6rem;">Personalizado</span>
-                {% endif %}
+
+                <div class="mt-2 d-flex justify-content-center gap-1">
+                    <button class="btn btn-xs btn-outline-secondary border-0 p-1" onclick="openEditColor({{ color.id }}, '{{ color.nombre }}', '{{ color.codigo_hex }}', '{{ color.familia }}')" title="Editar">
+                        <i class="bi bi-pencil" style="font-size: 0.7rem;"></i>
+                    </button>
+                    {% if not color.es_predefinido %}
+                    <button class="btn btn-xs btn-outline-danger border-0 p-1" onclick="deleteColor({{ color.id }})" title="Eliminar">
+                        <i class="bi bi-trash" style="font-size: 0.7rem;"></i>
+                    </button>
+                    {% endif %}
+                </div>
             </div>
         </div>
         {% endfor %}
@@ -142,6 +150,22 @@ document.querySelector('input[name="codigo_hex_text"]').addEventListener('input'
     }
 });
 
+let editColorId = null;
+
+function openEditColor(id, nombre, hex, familia) {
+    editColorId = id;
+    const form = document.getElementById('nuevoColorForm');
+    form.nombre.value = nombre;
+    form.codigo_hex.value = hex;
+    form.codigo_hex_text.value = hex;
+    form.familia.value = familia;
+
+    document.querySelector('#nuevoColorModal .modal-title').textContent = 'Editar Color';
+    document.querySelector('#nuevoColorModal .btn-primary').innerHTML = '<i class="bi bi-check-lg me-1"></i>Guardar Cambios';
+
+    new bootstrap.Modal(document.getElementById('nuevoColorModal')).show();
+}
+
 function crearColor() {
     const form = document.getElementById('nuevoColorForm');
     const data = {
@@ -155,7 +179,9 @@ function crearColor() {
         return;
     }
     
-    fetch('/api/crear-color/', {
+    const url = editColorId ? `/api/color-editar/${editColorId}/` : '/api/crear-color/';
+
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -167,17 +193,29 @@ function crearColor() {
     .then(result => {
         if (result.status === 'ok') {
             if (result.warning) {
-                document.getElementById('colorAiWarning').classList.remove('d-none');
-                document.getElementById('colorAiWarningText').textContent = result.warning;
+                alert('IA Nota: ' + result.warning);
             }
-            alert(result.message);
             location.reload();
         } else {
             alert(result.message);
         }
     })
     .catch(err => {
-        alert('Error al crear color');
+        alert('Error al procesar solicitud');
+    });
+}
+
+function deleteColor(id) {
+    if (!confirm('¿Seguro que deseas eliminar este color?')) return;
+
+    fetch(`/api/color-eliminar/${id}/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.status === 'ok') location.reload();
+        else alert('Error: ' + res.message);
     });
 }
 </script>

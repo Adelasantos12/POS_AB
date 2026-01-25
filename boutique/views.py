@@ -9,7 +9,7 @@ from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
-    Grupo, IntegranteGrupo, CorteCaja, Tienda, MovimientoInventario,
+    CorteCaja, Tienda, MovimientoInventario,
     registrar_auditoria
 )
 from .middleware import profile_permission_required
@@ -19,14 +19,51 @@ import logging
 import json
 import csv
 import os
-import asyncio
 from io import BytesIO
 from difflib import SequenceMatcher
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Gemini API Key
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+@login_required
+@profile_permission_required('Vendedor')
+def api_ai_analyze_image(request):
+    """Analiza imagen de producto usando Gemini Vision"""
+    from .ai_utils import analyze_product_image
+    if request.method == 'POST' and request.FILES.get('image'):
+        try:
+            image_file = request.FILES['image']
+            image_data = image_file.read()
+
+            atributos = analyze_product_image(image_data)
+            if atributos:
+                return JsonResponse({'status': 'ok', 'atributos': atributos})
+            else:
+                return JsonResponse({'status': 'error', 'message': 'No se pudo analizar la imagen'}, status=500)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido o imagen faltante'}, status=405)
+
+
+@login_required
+@profile_permission_required('Vendedor')
+def api_ai_extract_attributes(request):
+    """Extrae atributos de producto desde una descripción usando Gemini"""
+    from .ai_utils import extract_product_attributes
+    try:
+        data = json.loads(request.body)
+        descripcion = data.get('descripcion', '')
+        if not descripcion:
+            return JsonResponse({'status': 'error', 'message': 'Descripción vacía'}, status=400)
+
+        atributos = extract_product_attributes(descripcion)
+        if atributos:
+            return JsonResponse({'status': 'ok', 'atributos': atributos})
+        else:
+            return JsonResponse({'status': 'error', 'message': 'No se pudo procesar la descripción'}, status=500)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 # ============================================================
@@ -177,7 +214,7 @@ def signup(request):
 # VISTAS DE CAJA
 # ============================================================
 
-@login_required
+@profile_permission_required('Vendedor')
 def pos_dashboard(request):
     """Interfaz principal de Punto de Venta"""
     corte = get_caja_activa()
@@ -186,7 +223,7 @@ def pos_dashboard(request):
     return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
 
 
-@login_required
+@profile_permission_required(['Caja', 'Vendedor'])
 def apertura_caja(request):
     """Vista para abrir la caja del día"""
     if CorteCaja.objects.filter(cerrado=False).exists():
@@ -210,7 +247,7 @@ def apertura_caja(request):
     return render(request, 'boutique/apertura_caja.html')
 
 
-@login_required
+@profile_permission_required(['Caja', 'Vendedor'])
 def cierre_caja(request):
     """Vista para cerrar la caja y confirmar montos"""
     corte = get_caja_activa()
@@ -262,6 +299,7 @@ def cierre_caja(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Vendedor')
 def api_crear_producto_rapido(request):
     """Crea un producto de forma rápida desde la caja"""
     try:
@@ -280,7 +318,7 @@ def api_crear_producto_rapido(request):
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=1
+            cantidad_actual=int(data.get('stock', 1))
         )
         return JsonResponse({'status': 'ok', 'sku': producto.sku, 'id': producto.id, 'text': str(producto)})
     except Exception as e:
@@ -288,6 +326,7 @@ def api_crear_producto_rapido(request):
 
 
 @login_required
+@profile_permission_required('Vendedor')
 def api_search_productos(request):
     """Buscador de productos para el POS"""
     q = request.GET.get('q', '')
@@ -303,6 +342,7 @@ def api_search_productos(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta con pagos"""
     try:
@@ -370,7 +410,7 @@ def fuzzy_match(s1, s2):
 @login_required
 def api_check_duplicados(request):
     """Verifica posibles duplicados con IA antes de crear un producto"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from .ai_utils import analyze_duplicate_ai
     
     data = json.loads(request.body)
     cat = data.get('categoria', '')
@@ -427,40 +467,14 @@ def api_check_duplicados(request):
     ai_analysis = None
     if top_coincidencias and top_coincidencias[0]['score'] > 60:
         try:
-            async def analyze_duplicates():
-                chat = LlmChat(
-                    api_key=GEMINI_API_KEY,
-                    session_id=f"dup_check_{request.active_profile.id}",
-                    system_message="Eres un asistente de inventario de boutique. Ayudas a identificar si un producto nuevo es duplicado de uno existente. Sé breve y claro."
-                ).with_model("gemini", "gemini-2.0-flash")
-                
-                prompt = f"""Analiza si este producto NUEVO podría ser duplicado de alguno existente:
-
-PRODUCTO NUEVO:
-- Categoría: {cat}
-- Rasgo 1: {r1}
-- Rasgo 2: {r2}
-- Color: {color}
-- Talla: {talla}
-
-PRODUCTOS EXISTENTES SIMILARES:
-{chr(10).join(productos_texto[:5])}
-
-IMPORTANTE sobre colores:
-- "Rosa palo" y "Rosa mauve" son DIFERENTES tonos de rosa (NO son duplicados por color)
-- Mismo modelo en diferente tela/material = productos DIFERENTES
-- Mismo modelo, misma tela, mismo color, misma talla = POSIBLE DUPLICADO
-
-Responde en máximo 2 oraciones:
-1. ¿Es probable que sea duplicado? (Sí/No/Verificar)
-2. Si hay que verificar, ¿cuál producto específico revisar?"""
-
-                user_message = UserMessage(text=prompt)
-                response = await chat.send_message(user_message)
-                return response
-            
-            ai_analysis = asyncio.run(analyze_duplicates())
-            
+            nuevo_prod = {
+                'categoria': cat,
+                'rasgo1': r1,
+                'rasgo2': r2,
+                'color': color,
+                'talla': talla
+            }
+            ai_analysis = analyze_duplicate_ai(nuevo_prod, "\n".join(productos_texto[:5]))
         except Exception as e:
             logger.error(f"Error en análisis IA de duplicados: {e}")
             ai_analysis = None
@@ -483,7 +497,7 @@ Responde en máximo 2 oraciones:
 
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_validar_crear_producto(request):
     """Valida y crea producto solo si no hay duplicados confirmados"""
     data = json.loads(request.body)
@@ -527,7 +541,7 @@ def api_validar_crear_producto(request):
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=1
+            cantidad_actual=int(data.get('stock', 1))
         )
         
         return JsonResponse({
@@ -547,6 +561,7 @@ def api_validar_crear_producto(request):
 # ============================================================
 
 @login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
 def inventario_view(request):
     """Vista de gestión de inventario"""
     q = request.GET.get('q', '')
@@ -574,7 +589,9 @@ def inventario_view(request):
     return render(request, 'boutique/inventario.html', {
         'productos': productos,
         'q': q,
-        'es_admin': es_admin(request.active_profile)
+        'es_admin': es_admin(request.active_profile),
+        'categorias': Categoria.objects.all().order_by('nombre'),
+        'colores': Color.objects.filter(activo=True).order_by('nombre')
     })
 
 
@@ -583,7 +600,7 @@ def inventario_view(request):
 # ============================================================
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_imprimir_etiqueta(request, pk):
     """Imprime etiqueta para un producto en la Brother QL-800"""
     from .services.printer_service import imprimir_etiqueta_brother
@@ -607,7 +624,7 @@ def api_imprimir_etiqueta(request, pk):
 
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_imprimir_etiquetas_lote(request):
     """Imprime etiquetas para múltiples productos"""
     from .services.printer_service import imprimir_etiqueta_brother
@@ -660,7 +677,7 @@ def api_preview_etiqueta(request, pk):
     return JsonResponse(resultado)
 
 
-@login_required
+@profile_permission_required('Inventario')
 def api_verificar_impresora(request):
     """Verifica el estado de la impresora Brother"""
     from .services.printer_service import verificar_impresora
@@ -740,11 +757,6 @@ def imprimir_etiquetas(request):
 # VISTAS DE AGENDA
 # ============================================================
 
-@login_required
-def agenda_view(request):
-    """Vista de la agenda de grupos"""
-    grupos = Grupo.objects.all().order_by('fecha_entrega')
-    return render(request, 'boutique/agenda.html', {'grupos': grupos})
 
 
 # ============================================================
@@ -787,7 +799,7 @@ def admin_dashboard(request):
 @profile_permission_required('Admin')
 def api_ai_strategy(request):
     """Genera una estrategia de venta usando IA con Gemini"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from .ai_utils import generate_sales_strategy
     
     # Recopilar datos de ventas
     cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
@@ -807,31 +819,14 @@ def api_ai_strategy(request):
     categorias = ', '.join([f"{c['producto__categoria__nombre']} ({c['c']} vendidos)" for c in cat_top]) if cat_top else 'Sin datos'
     colores = ', '.join([f"{c['producto__color__nombre']} ({c['c']} vendidos)" for c in color_top]) if color_top else 'Sin datos'
     
-    prompt = f"""Eres un consultor de retail experto. Analiza estos datos de Adelé Boutique (Gdl) y da 3-4 recomendaciones concretas y accionables.
-
-DATOS DE LA BOUTIQUE:
+    contexto = f"""DATOS DE LA BOUTIQUE:
 - Categorías más vendidas: {categorias}
 - Colores más vendidos: {colores}
 - Productos con stock bajo: {stock_bajo} de {total_productos}
-- Mes actual: Enero 2026
-
-Responde en español, de forma directa y práctica. Usa emojis para hacer la lectura más amigable. Máximo 200 palabras."""
+- Mes actual: Enero 2026"""
 
     try:
-        # Usar Gemini con la API key del usuario
-        async def get_ai_response():
-            chat = LlmChat(
-                api_key=GEMINI_API_KEY,
-                session_id=f"strategy_{request.active_profile.id}",
-                system_message="Eres un consultor de retail experto en boutiques de moda. Das consejos prácticos y concretos."
-            ).with_model("gemini", "gemini-2.0-flash")
-            
-            user_message = UserMessage(text=prompt)
-            response = await chat.send_message(user_message)
-            return response
-        
-        estrategia = asyncio.run(get_ai_response())
-        
+        estrategia = generate_sales_strategy(contexto)
     except Exception as e:
         logger.error(f"Error con Gemini AI: {e}")
         # Fallback a respuesta simulada

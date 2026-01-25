@@ -20,23 +20,22 @@
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <h5 class="card-title mb-0 fw-bold">{{ tela.nombre }}</h5>
-                    {% if not tela.es_predefinida %}
-                    <span class="badge bg-primary rounded-pill" style="font-size: 0.7rem;">Personalizada</span>
-                    {% endif %}
+                    <div class="d-flex gap-1">
+                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditTela({{ tela.id }}, '{{ tela.nombre }}', '{{ tela.descripcion|escapejs }}', '{{ tela.codigo_proveedor }}')"><i class="bi bi-pencil"></i></button>
+                        {% if not tela.es_predefinida %}
+                        <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteTela({{ tela.id }})"><i class="bi bi-trash"></i></button>
+                        {% endif %}
+                    </div>
                 </div>
                 <p class="card-text text-muted small mb-3">{{ tela.descripcion|default:"Sin descripción" }}</p>
-                {% if tela.codigo_proveedor %}
                 <div class="d-flex justify-content-between align-items-center">
                     <small class="text-muted">
-                        <i class="bi bi-tag me-1"></i>{{ tela.codigo_proveedor }}
+                        <i class="bi bi-tag me-1"></i>{{ tela.codigo_proveedor|default:"---" }}
                     </small>
-                    {% if tela.proveedor %}
-                    <small class="text-muted">
-                        <i class="bi bi-building me-1"></i>{{ tela.proveedor.nombre }}
-                    </small>
+                    {% if tela.es_predefinida %}
+                    <span class="badge bg-light text-dark border rounded-pill" style="font-size: 0.6rem;">Base</span>
                     {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -94,6 +93,21 @@
 <script>
 const csrfToken = '{{ csrf_token }}';
 
+let editTelaId = null;
+
+function openEditTela(id, nombre, desc, code) {
+    editTelaId = id;
+    const form = document.getElementById('nuevaTelaForm');
+    form.nombre.value = nombre;
+    form.descripcion.value = desc;
+    form.codigo_proveedor.value = code;
+
+    document.querySelector('#nuevaTelaModal .modal-title').textContent = 'Editar Tela';
+    document.querySelector('#nuevaTelaModal .btn-primary').innerHTML = '<i class="bi bi-check-lg me-1"></i>Guardar Cambios';
+
+    new bootstrap.Modal(document.getElementById('nuevaTelaModal')).show();
+}
+
 function crearTela() {
     const form = document.getElementById('nuevaTelaForm');
     const data = {
@@ -107,7 +121,9 @@ function crearTela() {
         return;
     }
     
-    fetch('/api/crear-tela/', {
+    const url = editTelaId ? `/api/tela-editar/${editTelaId}/` : '/api/crear-tela/';
+
+    fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -118,18 +134,28 @@ function crearTela() {
     .then(r => r.json())
     .then(result => {
         if (result.status === 'ok') {
-            if (result.warning) {
-                document.getElementById('telaAiWarning').classList.remove('d-none');
-                document.getElementById('telaAiWarningText').textContent = result.warning;
-            }
-            alert(result.message);
+            if (result.warning) alert('IA Nota: ' + result.warning);
             location.reload();
         } else {
             alert(result.message);
         }
     })
     .catch(err => {
-        alert('Error al crear tela');
+        alert('Error al procesar solicitud');
+    });
+}
+
+function deleteTela(id) {
+    if (!confirm('¿Seguro que deseas eliminar esta tela?')) return;
+
+    fetch(`/api/tela-eliminar/${id}/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken }
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.status === 'ok') location.reload();
+        else alert('Error: ' + res.message);
     });
 }
 </script>
