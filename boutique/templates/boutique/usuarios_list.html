@@ -81,16 +81,14 @@
                         {% endif %}
                     </td>
                     <td class="text-end">
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-testid="user-actions-{{ u.username }}">
-                                Acciones
+                        <div class="btn-group">
+                            <a href="{% url 'editar_usuario' u.id %}" class="btn btn-sm btn-outline-primary" data-testid="edit-user-{{ u.username }}">
+                                <i class="bi bi-pencil me-1"></i>Editar
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" data-testid="user-actions-{{ u.username }}">
+                                <span class="visually-hidden">Más opciones</span>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item" href="{% url 'editar_usuario' u.id %}" data-testid="edit-user-{{ u.username }}">
-                                        <i class="bi bi-pencil me-2"></i>Editar
-                                    </a>
-                                </li>
                                 <li>
                                     <a class="dropdown-item" href="{% url 'historial_usuario' u.id %}" data-testid="history-user-{{ u.username }}">
                                         <i class="bi bi-clock-history me-2"></i>Ver historial
