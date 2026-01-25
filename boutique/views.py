@@ -578,6 +578,95 @@ def inventario_view(request):
     })
 
 
+# ============================================================
+# IMPRESIÓN DE ETIQUETAS - BROTHER QL-800
+# ============================================================
+
+@require_POST
+@login_required
+def api_imprimir_etiqueta(request, pk):
+    """Imprime etiqueta para un producto en la Brother QL-800"""
+    from .services.printer_service import imprimir_etiqueta_brother
+    
+    producto = get_object_or_404(Producto, pk=pk)
+    data = json.loads(request.body) if request.body else {}
+    cantidad = int(data.get('cantidad', 1))
+    
+    resultado = imprimir_etiqueta_brother(producto, cantidad)
+    
+    if resultado['success']:
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='EXPORTACION',
+            detalles=f'Etiqueta impresa: {producto.sku} x{cantidad}',
+            entidad=producto,
+            request=request
+        )
+    
+    return JsonResponse(resultado)
+
+
+@require_POST
+@login_required
+def api_imprimir_etiquetas_lote(request):
+    """Imprime etiquetas para múltiples productos"""
+    from .services.printer_service import imprimir_etiqueta_brother
+    
+    data = json.loads(request.body)
+    producto_ids = data.get('productos', [])
+    cantidad_cada = int(data.get('cantidad', 1))
+    
+    resultados = []
+    exitosos = 0
+    fallidos = 0
+    
+    for pid in producto_ids:
+        try:
+            producto = Producto.objects.get(pk=pid)
+            resultado = imprimir_etiqueta_brother(producto, cantidad_cada)
+            resultados.append({
+                'sku': producto.sku,
+                'success': resultado['success'],
+                'message': resultado['message']
+            })
+            if resultado['success']:
+                exitosos += 1
+            else:
+                fallidos += 1
+        except Producto.DoesNotExist:
+            resultados.append({
+                'sku': f'ID:{pid}',
+                'success': False,
+                'message': 'Producto no encontrado'
+            })
+            fallidos += 1
+    
+    return JsonResponse({
+        'success': fallidos == 0,
+        'exitosos': exitosos,
+        'fallidos': fallidos,
+        'detalles': resultados,
+        'message': f'✅ {exitosos} etiquetas impresas' if fallidos == 0 else f'⚠️ {exitosos} impresas, {fallidos} fallidas'
+    })
+
+
+@login_required
+def api_preview_etiqueta(request, pk):
+    """Genera preview de etiqueta sin imprimir"""
+    from .services.printer_service import generar_preview_etiqueta
+    
+    producto = get_object_or_404(Producto, pk=pk)
+    resultado = generar_preview_etiqueta(producto)
+    return JsonResponse(resultado)
+
+
+@login_required
+def api_verificar_impresora(request):
+    """Verifica el estado de la impresora Brother"""
+    from .services.printer_service import verificar_impresora
+    return JsonResponse(verificar_impresora())
+
+
 @require_POST
 @login_required
 @profile_permission_required('Admin')
