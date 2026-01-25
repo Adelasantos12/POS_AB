@@ -3,12 +3,12 @@
 **Tienda:** Adelé Boutique (Gdl)
 
 ## Problem Statement Original
-Sistema POS completo para boutique con gestión de usuarios basada en perfiles (estilo macOS), caja desacoplada del usuario, inventario basado en movimientos (no edición directa), auditoría centralizada, y reportes exportables. El sistema debe ser simple: el usuario solo elige, confirma y cobra. Una pantalla = una acción principal.
+Sistema POS completo para boutique de novias con: catálogo de colores/telas con muestras visuales, agenda estilo iPhone Calendar, sistema de novias con grupos de damas, pedidos con seguimiento de estados, y resumen nocturno para el día siguiente.
 
 ## Arquitectura
 - **Backend:** Django 5.1.4 con SQLite (adaptable a PostgreSQL)
 - **Frontend:** Templates Django con Bootstrap 5, estilo minimalista tipo PayPal
-- **IA:** Gemini 2.0 Flash para detección de duplicados y estrategias
+- **IA:** Gemini 2.0 Flash para detección de duplicados y validación de colores/telas
 - **Impresora:** Brother QL-800 USB para etiquetas
 
 ## Usuarios del Sistema
@@ -19,68 +19,60 @@ Sistema POS completo para boutique con gestión de usuarios basada en perfiles (
 | CEO Tienda | adeleboutiquegdl@gmail.com | CEO, Admin, Caja, Inventario, Agenda | Karinakakapopo2 |
 | Vendedora | vendedora1@adeleboutique.com | Caja, Vendedor | vendedora123 |
 
-## Roles del Sistema
-| Rol | Permisos |
-|-----|----------|
-| Superadmin | Acceso total + crear usuarios |
-| CEO | Acceso total (igual que Admin) |
-| Admin | Todo excepto ver_todo |
-| Caja | abrir_caja, vender, cobrar |
-| Vendedor | vender, cobrar |
-| Inventario | editar_inventario |
-
 ## What's Been Implemented ✅
 
-### 2026-01-25 - MVP v1.0
-1. **Branding ByEasy POS**
-   - Logo "ByEasy - Tu punto de venta fácil"
-   - Badge "Adelé Boutique (Gdl)" visible en toda la app
-   - Estilo minimalista tipo PayPal
+### 2026-01-25 - v1.0 MVP
+1. **Sistema de Perfiles (macOS style)**
+2. **Detección de Duplicados con IA (Gemini)**
+3. **Integración Impresora Brother QL-800**
 
-2. **Sistema de Perfiles (macOS style)**
-   - Login de terminal (Django Auth)
-   - Selección de perfil con avatares coloridos
-   - Autenticación de perfil con contraseña
-   - Indicador visual "Trabajando como: [nombre] - [rol]"
+### 2026-01-25 - v1.1 Catálogos y Agenda
+4. **Catálogo de Colores** (39 colores predefinidos)
+   - Organizados por familia: Rosa (Palo, Mauve, Blush...), Azul, Verde, etc.
+   - Muestras visuales con código hex
+   - Botón "Nuevo Color" con validación IA de similitud
+   
+5. **Catálogo de Telas** (20 tipos predefinidos)
+   - Satín, Encaje Chantilly, Tul, Crepe, etc.
+   - Descripción de cada tela
+   - Código de proveedor
+   - Agregar nueva con validación IA
 
-3. **Detección de Duplicados con IA (Gemini)**
-   - Verifica productos similares al crear uno nuevo
-   - Diferencia tonos de color (Rosa Palo ≠ Rosa Mauve)
-   - Análisis de IA con recomendaciones
-   - Bloquea duplicados exactos
-   - Checkbox para confirmar "es producto diferente"
+6. **Agenda Calendario (estilo iPhone)**
+   - Vista mensual con navegación año/mes
+   - Vista por día con desglose por horas (9am-8pm)
+   - Tipos de cita: Consulta, Prueba, Ajustes, Entrega, Recogida
+   - Leyenda de colores por tipo
 
-4. **Integración Impresora Brother QL-800**
-   - Servicio de impresión de etiquetas USB
-   - Verificar estado de impresora desde POS
-   - Imprimir etiquetas individuales o en lote
-   - Preview de etiqueta antes de imprimir
+7. **Sistema de Novias** (PARCIAL)
+   - Modelo Novia con fechas: boda, prueba, entrega, límite
+   - Modelo Dama (grupo de la novia)
+   - Cada dama puede tener color/tela/modelo diferente
 
-5. **Panel de Gestión de Usuarios**
-   - Solo Superadmin y CEO pueden crear usuarios
-   - Roles múltiples por usuario
-   - Permisos en lenguaje humano
+8. **Pedidos en Puerta** (PARCIAL)
+   - Estados: Nuevo, Pendiente Tela, En Confección, Listo, Entregado
+   - Estados de pago: Sin pago, Apartado, Parcial, Liquidado
 
-6. **Exportación de Reportes**
-   - Inventario: CSV y Excel (.xlsx)
-   - Ventas: CSV y PDF
+9. **Resumen Nocturno**
+   - Citas de mañana
+   - Resto de la semana
+   - Imprimir y Compartir (AirDrop)
 
-## Backlog - Next Features
+## Backlog - Pendiente para Completar
 
-### P0 (Critical)
-- [ ] Integración PayPal para pagos
-- [ ] Impresora térmica de tickets
+### P0 (En esta sesión)
+- [ ] Template de lista de Novias
+- [ ] Template de detalle de Novia con grupo
+- [ ] Template de Pedidos en Puerta
+- [ ] Crear nuevo pedido desde cita/novia
+- [ ] Búsqueda por ticket/nombre novia/fecha boda
 
-### P1 (High)
-- [ ] Cierre de caja con cuadre de efectivo
-- [ ] Impresión de ticket de venta
+### P1 (Próxima sesión)
+- [ ] Integración PayPal
+- [ ] Impresora térmica tickets
+- [ ] Agregar imagen a modelo de vestido
 
-### P2 (Medium)
-- [ ] Agenda de grupos/pedidos
-- [ ] Clientes con historial
-- [ ] Multi-tienda
-
-## Credenciales de Producción
+## Credenciales
 - **Superadmin:** adela.santos12@gmail.com / Karinakakapopo1
 - **CEO:** adeleboutiquegdl@gmail.com / Karinakakapopo2
 - **Gemini API:** Configurada en .env
