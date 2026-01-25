@@ -89,6 +89,9 @@
                     </td>
                     {% if es_admin %}
                     <td>
+                        <button class="btn btn-sm btn-outline-primary border-0" onclick="imprimirEtiqueta({{ p.id }}, '{{ p.sku }}')" title="Imprimir etiqueta">
+                            <i class="bi bi-printer"></i>
+                        </button>
                         <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }})">
                             <i class="bi bi-pencil"></i>
                         </button>
