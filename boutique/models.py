@@ -221,3 +221,54 @@ class CorteCaja(models.Model):
 
     def __str__(self):
         return f"Corte {self.fecha_apertura.strftime('%Y-%m-%d %H:%M')} - {self.abierto_por.username}"
+
+
+
+class MovimientoInventario(models.Model):
+    """El stock no se edita directamente. Es resultado de movimientos."""
+    TIPOS = [
+        ('ENTRADA', 'Entrada'),
+        ('SALIDA', 'Salida'),
+        ('AJUSTE', 'Ajuste'),
+        ('VENTA', 'Venta'),
+        ('DEVOLUCION', 'Devolución'),
+    ]
+    MOTIVOS = [
+        ('COMPRA', 'Compra a proveedor'),
+        ('VENTA', 'Venta a cliente'),
+        ('MERMA', 'Merma/Pérdida'),
+        ('AJUSTE_INVENTARIO', 'Ajuste de inventario'),
+        ('DEVOLUCION_PROVEEDOR', 'Devolución a proveedor'),
+        ('DEVOLUCION_CLIENTE', 'Devolución de cliente'),
+        ('TRANSFERENCIA', 'Transferencia entre tiendas'),
+    ]
+    
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name='movimientos')
+    tipo = models.CharField(max_length=20, choices=TIPOS)
+    cantidad = models.IntegerField()  # Positivo para entradas, negativo para salidas
+    motivo = models.CharField(max_length=30, choices=MOTIVOS)
+    notas = models.TextField(blank=True)
+    
+    # Trazabilidad
+    perfil_activo = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+    tienda = models.ForeignKey(Tienda, on_delete=models.PROTECT, null=True, blank=True)
+    venta = models.ForeignKey(Venta, on_delete=models.SET_NULL, null=True, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    
+    # Stock después del movimiento (para histórico)
+    stock_resultante = models.IntegerField()
+    
+    class Meta:
+        ordering = ['-fecha']
+    
+    def __str__(self):
+        return f"{self.get_tipo_display()} {self.cantidad} x {self.producto.sku}"
+    
+    def save(self, *args, **kwargs):
+        # Calcular stock resultante
+        if not self.stock_resultante:
+            self.stock_resultante = self.producto.cantidad_actual + self.cantidad
+        super().save(*args, **kwargs)
+        # Actualizar stock del producto
+        self.producto.cantidad_actual = self.stock_resultante
+        self.producto.save(update_fields=['cantidad_actual'])
