@@ -694,7 +694,7 @@ def exportar_inventario_excel(request):
     )
     
     # Título
-    ws['A1'] = "Inventario Adelé"
+    ws['A1'] = "Inventario ByEasy - Adelé Boutique"
     ws['A1'].font = Font(size=16, bold=True)
     ws.merge_cells('A1:H1')
     
@@ -762,7 +762,7 @@ def exportar_ventas_pdf(request):
     styles = getSampleStyleSheet()
     
     # Título
-    elements.append(Paragraph("Reporte de Ventas - Adelé", styles['Heading1']))
+    elements.append(Paragraph("Reporte de Ventas - Adelé Boutique (Gdl)", styles['Heading1']))
     elements.append(Paragraph(f"Generado: {timezone.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal']))
     elements.append(Spacer(1, 20))
     
