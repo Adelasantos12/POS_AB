@@ -371,19 +371,92 @@ class DjangoPOSTester:
         """Test API endpoints"""
         print("\n=== TESTING API ENDPOINTS ===")
         
-        # Test AI strategy API (mocked)
-        api_data = json.dumps({})
+        # Test duplicate detection API
+        duplicate_data = json.dumps({
+            'categoria': 'Vestido',
+            'rasgo1': 'Manga Larga',
+            'rasgo2': 'Satinado',
+            'color': 'Rosa Palo',
+            'talla': 'M'
+        })
         success1, response1 = self.run_test(
-            "AI Strategy API",
+            "Check duplicates API",
             "POST",
-            "/api/ai-strategy/",
+            "/api/check-duplicados/",
             200,
-            data=api_data
+            data=duplicate_data
         )
         
         if success1 and response1:
             try:
                 result = response1.json()
+                if 'duplicados' in result:
+                    print("✅ Check duplicates API returns expected structure")
+                else:
+                    print("⚠️  Check duplicates API may not return expected structure")
+            except:
+                print("⚠️  Check duplicates API response is not valid JSON")
+        
+        # Test product validation API
+        product_data = json.dumps({
+            'categoria': 'Top',
+            'rasgo1': 'Corto',
+            'rasgo2': 'Algodón',
+            'color': 'Blanco',
+            'talla': 'S',
+            'precio': 299
+        })
+        success2, response2 = self.run_test(
+            "Validate create product API",
+            "POST",
+            "/api/validar-crear-producto/",
+            200,
+            data=product_data
+        )
+        
+        if success2 and response2:
+            try:
+                result = response2.json()
+                if 'status' in result:
+                    print("✅ Validate create product API returns expected structure")
+                else:
+                    print("⚠️  Validate create product API may not return expected structure")
+            except:
+                print("⚠️  Validate create product API response is not valid JSON")
+        
+        # Test printer verification API
+        success3, response3 = self.run_test(
+            "Printer verification API",
+            "GET",
+            "/api/verificar-impresora/",
+            200
+        )
+        
+        if success3 and response3:
+            try:
+                result = response3.json()
+                if 'conectada' in result:
+                    print("✅ Printer verification API returns expected structure")
+                    if not result['conectada']:
+                        print("ℹ️  Printer not connected (expected for testing)")
+                else:
+                    print("⚠️  Printer verification API may not return expected structure")
+            except:
+                print("⚠️  Printer verification API response is not valid JSON")
+        
+        # Test AI strategy API (mocked)
+        ai_data = json.dumps({})
+        success4, response4 = self.run_test(
+            "AI Strategy API",
+            "POST",
+            "/api/ai-strategy/",
+            200,
+            data=ai_data
+        )
+        
+        if success4 and response4:
+            try:
+                result = response4.json()
                 if 'estrategia' in result:
                     print("✅ AI Strategy API returns expected data")
                 else:
@@ -392,16 +465,16 @@ class DjangoPOSTester:
                 print("⚠️  AI Strategy API response is not valid JSON")
         
         # Test product search API
-        success2, response2 = self.run_test(
+        success5, response5 = self.run_test(
             "Product search API",
             "GET",
-            "/api/search-productos/?q=test",
+            "/api/search-productos/?q=vestido",
             200
         )
         
-        if success2 and response2:
+        if success5 and response5:
             try:
-                result = response2.json()
+                result = response5.json()
                 if 'results' in result:
                     print("✅ Product search API returns expected structure")
                 else:
@@ -409,7 +482,7 @@ class DjangoPOSTester:
             except:
                 print("⚠️  Product search API response is not valid JSON")
         
-        return success1 and success2
+        return success1 and success2 and success3 and success4 and success5
 
 def main():
     print("🚀 Starting Adelé POS Django Backend Tests")
