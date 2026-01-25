@@ -315,8 +315,13 @@ def api_venta_rapida(request):
         foto = request.FILES.get('foto')
 
         with transaction.atomic():
-            categoria, _ = Categoria.objects.get_or_create(nombre=cat_nombre)
-            color, _ = Color.objects.get_or_create(nombre=color_nombre)
+            categoria = Categoria.objects.filter(nombre=cat_nombre).first()
+            if not categoria:
+                categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+
+            color = Color.objects.filter(nombre=color_nombre).first()
+            if not color:
+                color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
             # 1. Crear producto con stock 0
             producto = Producto.objects.create(
@@ -394,11 +399,16 @@ def api_crear_producto_rapido(request):
     """Crea un producto de forma rápida desde la caja"""
     try:
         data = json.loads(request.body)
-        cat_nombre = data.get('categoria', 'General')
-        color_nombre = data.get('color', 'N/A')
+        cat_nombre = data.get('categoria', 'Sin definir')
+        color_nombre = data.get('color', 'Sin definir')
 
-        categoria, _ = Categoria.objects.get_or_create(nombre=cat_nombre)
-        color, _ = Color.objects.get_or_create(nombre=color_nombre)
+        categoria = Categoria.objects.filter(nombre=cat_nombre).first()
+        if not categoria:
+            categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+
+        color = Color.objects.filter(nombre=color_nombre).first()
+        if not color:
+            color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
         producto = Producto.objects.create(
             categoria=categoria,
@@ -617,11 +627,16 @@ def api_validar_crear_producto(request):
     
     # Crear el producto
     try:
-        cat_nombre = data.get('categoria', 'General')
-        color_nombre = data.get('color', 'N/A')
+        cat_nombre = data.get('categoria', 'Sin definir')
+        color_nombre = data.get('color', 'Sin definir')
         
-        categoria, _ = Categoria.objects.get_or_create(nombre=cat_nombre)
-        color_obj, _ = Color.objects.get_or_create(nombre=color_nombre)
+        categoria = Categoria.objects.filter(nombre=cat_nombre).first()
+        if not categoria:
+            categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+
+        color_obj = Color.objects.filter(nombre=color_nombre).first()
+        if not color_obj:
+            color_obj, _ = Color.objects.get_or_create(nombre="Sin definir")
         
         producto = Producto.objects.create(
             categoria=categoria,
@@ -649,6 +664,19 @@ def api_validar_crear_producto(request):
 # ============================================================
 # VISTAS DE INVENTARIO
 # ============================================================
+
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
+def pendientes_regularizacion(request):
+    """Vista para productos que requieren completar datos"""
+    productos = Producto.objects.filter(pendiente_regularizacion=True).select_related('categoria', 'color').order_by('-fecha_creacion')
+
+    return render(request, 'boutique/pendientes_regularizacion.html', {
+        'productos': productos,
+        'categorias': Categoria.objects.all().order_by('nombre'),
+        'colores': Color.objects.filter(activo=True).order_by('nombre')
+    })
+
 
 @login_required
 @profile_permission_required(['Inventario', 'Vendedor'])
@@ -845,6 +873,43 @@ def api_clonar_variante(request, pk):
             'id': nueva_variante.id,
             'message': 'Variante agregada con éxito'
         })
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
+def api_producto_regularizar(request, pk):
+    """Regulariza un producto pendiente"""
+    data = json.loads(request.body)
+    producto = get_object_or_404(Producto, pk=pk)
+
+    try:
+        cat_nombre = data.get('categoria')
+        color_nombre = data.get('color')
+
+        if cat_nombre:
+            producto.categoria, _ = Categoria.objects.get_or_create(nombre=cat_nombre)
+        if color_nombre:
+            producto.color, _ = Color.objects.get_or_create(nombre=color_nombre)
+
+        producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
+        producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
+        producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
+        producto.pendiente_regularizacion = data.get('pendiente_regularizacion', False)
+
+        producto.save()
+
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='EDICION_PRODUCTO',
+            detalles=f'Producto {producto.sku} regularizado',
+            entidad=producto,
+            request=request
+        )
+
+        return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 

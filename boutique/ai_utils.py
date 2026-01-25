@@ -17,33 +17,41 @@ def get_gemini_model(model_name="gemini-2.0-flash"):
 
 def extract_product_attributes(description):
     """
-    Usa Gemini para extraer atributos de un producto desde una descripción textual.
-    Retorna un diccionario con los campos identificados.
+    Usa Gemini para extraer atributos de un producto desde una descripción textual normalizados al catálogo.
     """
+    from .models import Categoria, Color
+
+    # Obtener valores del catálogo para normalización
+    categorias = list(Categoria.objects.exclude(nombre="Sin definir").values_list('nombre', flat=True))
+    colores = list(Color.objects.exclude(nombre="Sin definir").values_list('nombre', flat=True))
+    tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
+
     model = get_gemini_model()
     if not model:
         return None
 
     prompt = f"""Analiza la siguiente descripción de un producto de boutique y extrae sus atributos en formato JSON.
+Debes normalizar los valores basándote ÚNICAMENTE en las opciones del catálogo proporcionadas.
 
 DESCRIPCIÓN: "{description}"
 
-CATÁLOGO DE REFERENCIA (Si aplica):
-- Categorías comunes: Vestido, Blusa, Pantalón, Falda, Accesorio, Velo, Tocado.
-- Tallas comunes: U (Única), S, M, L, XL, 2, 4, 6, 8, 10, 12, 14, 16.
+CATÁLOGO DE REFERENCIA:
+- Categorías: {', '.join(categorias)}
+- Colores: {', '.join(colores)}
+- Tallas: {', '.join(tallas)}
 
 FORMATO JSON ESPERADO:
 {{
-  "categoria": "Nombre de la categoría",
-  "rasgo1": "Modelo o Estilo (ej: Manga Larga, Escote V)",
-  "rasgo2": "Material o Tela (ej: Seda, Encaje, Satín)",
-  "color": "Color específico",
-  "talla": "Talla identificada (Default: U)",
+  "categoria": "Valor del catálogo o null",
+  "rasgo1": "Texto libre corto (Modelo/Estilo)",
+  "rasgo2": "Texto libre corto (Material/Tela)",
+  "color": "Valor del catálogo o null",
+  "talla": "Valor del catálogo o null (Default: U)",
   "precio": 0,
   "confianza": 0.0 a 1.0
 }}
 
-Si no estás seguro de un campo, deja el valor por defecto o vacío. Responde ÚNICAMENTE el JSON."""
+Si no estás seguro de un campo según el catálogo, devuelve null. Responde ÚNICAMENTE el JSON."""
 
     try:
         response = model.generate_content(prompt)
@@ -78,7 +86,7 @@ def analyze_product_image(image_data):
 Debes normalizar los valores basándote ÚNICAMENTE en las opciones del catálogo proporcionadas.
 
 CATÁLOGO:
-- Categorías: {', '.join(categorias)}
+- Categorías: {', '.join(categorias)} (Prioriza Novias, Damas, Accesorios si aplica)
 - Colores: {', '.join(colores)}
 - Tallas: {', '.join(tallas)}
 

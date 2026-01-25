@@ -15,6 +15,9 @@
         <p class="page-subtitle"><i class="bi bi-calendar-heart me-2"></i>Boda: {{ novia.fecha_boda|date:"d F, Y" }}</p>
     </div>
     <div class="d-flex gap-2">
+        <button class="btn btn-outline-danger" onclick="eliminarNovia({{ novia.id }})">
+            <i class="bi bi-trash"></i>
+        </button>
         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaDama">
             <i class="bi bi-person-plus me-2"></i>Agregar Dama
         </button>
@@ -68,22 +71,68 @@
                     {% endfor %}
                 </div>
 
-                {% if novia.modelo_especial or novia.color_especial or novia.tela_especial %}
                 <hr>
                 <div class="mb-3">
-                    <label class="text-muted small d-block mb-1">Hechura Especial (Novia)</label>
-                    <div class="small fw-bold">{{ novia.modelo_especial }}</div>
-                    <div class="small text-muted">{{ novia.color_especial }} / {{ novia.tela_especial }}</div>
-                    {% if novia.talla_especial %}<div class="small">Talla: {{ novia.talla_especial }}</div>{% endif %}
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <label class="text-muted small d-block mb-0">Hechura Especial (Novia)</label>
+                        <button class="btn btn-sm btn-link p-0 text-primary" onclick="generarPedido(null, true)">Generar Pedido</button>
+                    </div>
+                    {% if novia.modelo_especial %}
+                        <div class="small fw-bold">{{ novia.modelo_especial }}</div>
+                        <div class="small text-muted">{{ novia.color_especial }} / {{ novia.tela_especial }}</div>
+                        {% if novia.talla_especial %}<div class="small">Talla: {{ novia.talla_especial }}</div>{% endif %}
+                    {% else %}
+                        <div class="small italic text-muted">No especificado</div>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
 
-    <!-- Pedidos y Damas -->
+    <!-- Damas y Pedidos -->
     <div class="col-md-8 mb-4">
-        <div class="card mb-4">
+        <!-- Lista de Damas -->
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between">
+                <h5 class="heading mb-0">Damas del Grupo</h5>
+            </div>
+            <div class="card-body px-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr class="bg-light">
+                                <th class="ps-4">Nombre</th>
+                                <th>Info</th>
+                                <th>Modelo/Color</th>
+                                <th class="pe-4 text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in damas %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ d.nombre }}</td>
+                                <td class="small">{{ d.telefono|default:"-" }}<br>Talla: {{ d.talla|default:"-" }}</td>
+                                <td class="small">{{ d.modelo_especial|default:"-" }}<br>{{ d.color_especial|default:"" }}</td>
+                                <td class="pe-4 text-end">
+                                    <button class="btn btn-sm btn-link text-primary" onclick="generarPedido({{ d.id }}, false)">Pedido</button>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditDama({{ d.id }}, '{{ d.nombre }}', '{{ d.telefono }}', '{{ d.talla }}', '{{ d.modelo_especial }}', '{{ d.color_especial }}', '{{ d.tela_especial }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger border-0" onclick="eliminarDama({{ d.id }})">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-3 text-muted">No hay damas registradas</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
             <div class="card-header bg-white border-0 pt-4 px-4">
                 <h5 class="heading mb-0">Pedidos del Grupo</h5>
             </div>
@@ -270,7 +319,6 @@ document.getElementById('formEditarNovia').addEventListener('submit', async (e) 
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target).entries());
 
-    // Usamos la misma API de crear pero con lógica de actualización en el backend o una nueva
     const response = await fetch('/api/novia/{{ novia.id }}/editar/', {
         method: 'POST',
         headers: {
@@ -283,5 +331,122 @@ document.getElementById('formEditarNovia').addEventListener('submit', async (e) 
     if (response.ok) location.reload();
     else alert('Error al actualizar');
 });
+
+async function eliminarNovia(id) {
+    if (!confirm('¿Seguro que deseas eliminar el perfil de esta novia?')) return;
+    const res = await fetch(`/api/novia/${id}/eliminar/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    });
+    if (res.ok) window.location.href = "{% url 'novias_list' %}";
+}
+
+async function eliminarDama(id) {
+    if (!confirm('¿Quitar dama del grupo?')) return;
+    const res = await fetch(`/api/dama/${id}/eliminar/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    });
+    if (res.ok) location.reload();
+}
+
+function openEditDama(id, nombre, tel, talla, mod, col, tela) {
+    // Podría usar otro modal o el mismo adaptado. Por brevedad, adaptaré un modal dinámico si fuera necesario.
+    // Pero implementaré el modal de edición de dama aquí.
+    document.getElementById('edit_dama_id').value = id;
+    document.getElementById('edit_dama_nombre').value = nombre;
+    document.getElementById('edit_dama_telefono').value = tel;
+    document.getElementById('edit_dama_talla').value = talla;
+    document.getElementById('edit_dama_modelo').value = mod;
+    document.getElementById('edit_dama_color').value = col;
+    document.getElementById('edit_dama_tela').value = tela;
+    new bootstrap.Modal(document.getElementById('modalEditarDama')).show();
+}
+
+async function saveEditDama() {
+    const id = document.getElementById('edit_dama_id').value;
+    const data = {
+        nombre: document.getElementById('edit_dama_nombre').value,
+        telefono: document.getElementById('edit_dama_telefono').value,
+        talla: document.getElementById('edit_dama_talla').value,
+        modelo_especial: document.getElementById('edit_dama_modelo').value,
+        color_especial: document.getElementById('edit_dama_color').value,
+        tela_especial: document.getElementById('edit_dama_tela').value
+    };
+    const res = await fetch(`/api/dama/${id}/editar/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+    if (res.ok) location.reload();
+}
+
+async function generarPedido(damaId, esNovia) {
+    const precio = prompt('Ingrese el precio del pedido:', '0');
+    if (precio === null) return;
+
+    const data = {
+        novia_id: {{ novia.id }},
+        dama_id: damaId,
+        es_vestido_novia: esNovia,
+        precio: parseFloat(precio) || 0
+    };
+
+    const res = await fetch('/api/pedido/crear/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (res.ok) {
+        const json = await res.json();
+        alert('Pedido generado: ' + json.ticket);
+        location.reload();
+    }
+}
 </script>
+
+<!-- Modal Editar Dama -->
+<div class="modal fade" id="modalEditarDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Dama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_dama_id">
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" id="edit_dama_nombre" class="form-control">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" id="edit_dama_telefono" class="form-control">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Talla</label>
+                        <input type="text" id="edit_dama_talla" class="form-control">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Hechura Especial</label>
+                    <input type="text" id="edit_dama_modelo" class="form-control form-control-sm mb-2" placeholder="Modelo">
+                    <input type="text" id="edit_dama_color" class="form-control form-control-sm mb-2" placeholder="Color">
+                    <input type="text" id="edit_dama_tela" class="form-control form-control-sm" placeholder="Tela">
+                </div>
+                <div class="text-end">
+                    <button type="button" class="btn btn-primary rounded-pill px-4" onclick="saveEditDama()">Guardar Cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
