@@ -47,16 +47,37 @@ class Modelo(models.Model):
     def __str__(self): return self.nombre
 
 class Tela(models.Model):
+    """Catálogo de tipos de tela con código de proveedor"""
     nombre = models.CharField(max_length=100)
-    proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE)
-    codigo_proveedor = models.CharField(max_length=50)
-    class Meta: unique_together = ('proveedor', 'codigo_proveedor')
-    def __str__(self): return f"{self.nombre} ({self.proveedor.nombre})"
+    proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE, null=True, blank=True)
+    codigo_proveedor = models.CharField(max_length=50, blank=True)
+    descripcion = models.TextField(blank=True, help_text="Características de la tela")
+    es_predefinida = models.BooleanField(default=False, help_text="Telas del catálogo base")
+    activa = models.BooleanField(default=True)
+    
+    class Meta: 
+        unique_together = ('nombre', 'proveedor')
+    
+    def __str__(self): 
+        if self.proveedor:
+            return f"{self.nombre} ({self.proveedor.nombre})"
+        return self.nombre
+
 
 class Color(models.Model):
+    """Catálogo de colores con muestra visual"""
     nombre = models.CharField(max_length=100, unique=True)
-    codigo_hex = models.CharField(max_length=7, blank=True, help_text="Ej: #FF5733")
-    def __str__(self): return self.nombre
+    codigo_hex = models.CharField(max_length=7, default="#CCCCCC", help_text="Ej: #FF5733")
+    familia = models.CharField(max_length=50, blank=True, help_text="Ej: Rosa, Azul, Verde")
+    es_predefinido = models.BooleanField(default=False, help_text="Colores del catálogo base")
+    activo = models.BooleanField(default=True)
+    orden = models.IntegerField(default=0, help_text="Orden de aparición")
+    
+    class Meta:
+        ordering = ['familia', 'orden', 'nombre']
+    
+    def __str__(self): 
+        return self.nombre
 
 class Producto(models.Model):
     ESTADOS = [
