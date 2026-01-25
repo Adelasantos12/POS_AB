@@ -1,0 +1,78 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Historial - {{ u.username }} - Adelé{% endblock %}
+
+{% block content %}
+<div class="page-header" data-testid="historial-header">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'gestion_usuarios' %}" class="text-decoration-none">Usuarios</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'editar_usuario' u.id %}" class="text-decoration-none">{{ u.username }}</a></li>
+            <li class="breadcrumb-item active">Historial</li>
+        </ol>
+    </nav>
+    <h1 class="page-title">Historial de {{ u.get_full_name|default:u.username }}</h1>
+    <p class="page-subtitle">Últimas 50 acciones realizadas</p>
+</div>
+
+<div class="card" data-testid="historial-card">
+    <div class="card-body p-0">
+        {% if historial %}
+        <div class="list-group list-group-flush">
+            {% for item in historial %}
+            <div class="list-group-item px-4 py-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="d-flex align-items-start">
+                        <div class="me-3">
+                            {% if item.accion == 'LOGIN_PERFIL' %}
+                            <span class="badge bg-success rounded-pill"><i class="bi bi-box-arrow-in-right"></i></span>
+                            {% elif item.accion == 'LOGOUT' %}
+                            <span class="badge bg-secondary rounded-pill"><i class="bi bi-box-arrow-right"></i></span>
+                            {% elif item.accion == 'VENTA' %}
+                            <span class="badge bg-primary rounded-pill"><i class="bi bi-cart-check"></i></span>
+                            {% elif item.accion == 'APERTURA_CAJA' %}
+                            <span class="badge bg-info rounded-pill"><i class="bi bi-unlock"></i></span>
+                            {% elif item.accion == 'CIERRE_CAJA' %}
+                            <span class="badge bg-warning rounded-pill"><i class="bi bi-lock"></i></span>
+                            {% elif item.accion == 'MOVIMIENTO_INV' %}
+                            <span class="badge bg-dark rounded-pill"><i class="bi bi-box"></i></span>
+                            {% elif item.accion == 'EXPORTACION' %}
+                            <span class="badge bg-info rounded-pill"><i class="bi bi-download"></i></span>
+                            {% else %}
+                            <span class="badge bg-light text-dark rounded-pill"><i class="bi bi-clock-history"></i></span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div class="fw-semibold">{{ item.get_accion_display }}</div>
+                            <p class="mb-0 text-muted small">{{ item.detalles|default:"—" }}</p>
+                            {% if item.entidad_tipo %}
+                            <span class="badge badge-role mt-1">{{ item.entidad_tipo }} #{{ item.entidad_id }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="text-end small text-muted">
+                        <div>{{ item.timestamp|date:"d/m/Y" }}</div>
+                        <div>{{ item.timestamp|time:"H:i:s" }}</div>
+                        {% if item.ip_address %}
+                        <div class="mt-1"><i class="bi bi-geo-alt"></i> {{ item.ip_address }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-clock-history fs-1 d-block mb-3"></i>
+            <p>No hay acciones registradas</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="mt-4">
+    <a href="{% url 'editar_usuario' u.id %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-2"></i>Volver a editar usuario
+    </a>
+</div>
+{% endblock %}
