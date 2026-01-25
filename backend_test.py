@@ -154,6 +154,14 @@ class DjangoPOSTester:
         if not success:
             return False
             
+        # Update CSRF token from the authentication page
+        if response and 'csrfmiddlewaretoken' in response.text:
+            import re
+            csrf_match = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', response.text)
+            if csrf_match:
+                self.csrf_token = csrf_match.group(1)
+                print(f"✅ Updated CSRF token from auth page")
+            
         # Test POST authentication with admin password
         auth_data = {
             'user_id': self.admin_user_id,
@@ -168,6 +176,21 @@ class DjangoPOSTester:
             302,  # Should redirect to dashboard
             data=auth_data
         )
+        
+        if success:
+            print("✅ Profile authentication successful")
+            # Follow the redirect to complete the authentication
+            if response and 'Location' in response.headers:
+                redirect_url = response.headers['Location']
+                if redirect_url.startswith('/'):
+                    redirect_url = redirect_url
+                success2, response2 = self.run_test(
+                    "Follow authentication redirect",
+                    "GET",
+                    redirect_url,
+                    200
+                )
+                return success2
         
         return success
 
