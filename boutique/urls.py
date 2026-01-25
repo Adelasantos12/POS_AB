@@ -21,6 +21,7 @@ urlpatterns = [
     path('caja/cierre/', views.cierre_caja, name='cierre_caja'),
     
     # API de productos y ventas
+    path('api/venta-rapida/', views.api_venta_rapida, name='api_venta_rapida'),
     path('api/producto-rapido/', views.api_crear_producto_rapido, name='api_crear_producto_rapido'),
     path('api/check-duplicados/', views.api_check_duplicados, name='api_check_duplicados'),
     path('api/validar-crear-producto/', views.api_validar_crear_producto, name='api_validar_crear_producto'),
@@ -32,6 +33,8 @@ urlpatterns = [
     # Inventario
     path('inventario/', views.inventario_view, name='inventario_view'),
     path('api/producto-editar/<int:pk>/', views.api_editar_producto, name='api_editar_producto'),
+    path('api/producto-clonar-variante/<int:pk>/', views.api_clonar_variante, name='api_clonar_variante'),
+    path('api/producto-variantes/<int:pk>/', views.api_get_variantes, name='api_get_variantes'),
     path('api/producto-eliminar/<int:pk>/', views.api_eliminar_producto, name='api_eliminar_producto'),
     path('imprimir-etiquetas/', views.imprimir_etiquetas, name='imprimir_etiquetas'),
     

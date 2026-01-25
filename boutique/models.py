@@ -93,6 +93,7 @@ class Producto(models.Model):
     talla = models.CharField(max_length=10)
     precio_venta = models.DecimalField(max_digits=10, decimal_places=2)
     cantidad_actual = models.PositiveIntegerField(default=0)
+    stock_teorico = models.IntegerField(default=0)
     vendible_sin_stock = models.BooleanField(default=False)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='TIENDA')
     foto = models.ImageField(upload_to='productos/', blank=True, null=True)
@@ -148,6 +149,7 @@ class Producto(models.Model):
                     "text_distance": 5.0,
                     "font_size": 10
                 })
+                buffer.seek(0)
 
                 filename = f"barcode-{self.sku}.png"
                 # Eliminar imagen previa si existe y es cambio
@@ -337,13 +339,13 @@ class MovimientoInventario(models.Model):
         return f"{self.get_tipo_display()} {self.cantidad} x {self.producto.sku}"
     
     def save(self, *args, **kwargs):
-        # Calcular stock resultante
+        # Calcular stock resultante (basado en stock_teorico para permitir negativos)
         if not self.stock_resultante:
-            self.stock_resultante = self.producto.cantidad_actual + self.cantidad
+            self.stock_resultante = self.producto.stock_teorico + self.cantidad
         super().save(*args, **kwargs)
-        # Actualizar stock del producto
-        self.producto.cantidad_actual = self.stock_resultante
-        self.producto.save(update_fields=['cantidad_actual'])
+        # Actualizar stock teórico del producto
+        self.producto.stock_teorico = self.stock_resultante
+        self.producto.save(update_fields=['stock_teorico'])
 
 
 

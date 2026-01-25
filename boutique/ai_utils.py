@@ -61,23 +61,43 @@ Si no estás seguro de un campo, deja el valor por defecto o vacío. Responde Ú
 
 def analyze_product_image(image_data):
     """
-    Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos.
+    Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos normalizados al catálogo.
     """
+    from .models import Categoria, Color
+
+    # Obtener valores del catálogo para normalización
+    categorias = list(Categoria.objects.values_list('nombre', flat=True))
+    colores = list(Color.objects.values_list('nombre', flat=True))
+    tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
+
     model = get_gemini_model()
     if not model:
         return None
 
-    prompt = """Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario.
+    prompt = f"""Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario.
+Debes normalizar los valores basándote ÚNICAMENTE en las opciones del catálogo proporcionadas.
+
+CATÁLOGO:
+- Categorías: {', '.join(categorias)}
+- Colores: {', '.join(colores)}
+- Tallas: {', '.join(tallas)}
+
+REGLAS:
+1. Si el valor no se parece razonablemente a una opción del catálogo, devuelve null para ese campo.
+2. 'rasgo1' debe ser el modelo/corte (ej: Sirena, Escote V).
+3. 'rasgo2' debe ser el tipo de tela (ej: Satín, Encaje).
+4. El precio debe ser un número sugerido basado en la calidad percibida.
 
 FORMATO JSON ESPERADO:
-{
-  "categoria": "Categoría (ej: Vestido, Blusa, Velo)",
-  "rasgo1": "Modelo/Corte (ej: Sirena, Escote Corazón)",
-  "rasgo2": "Tipo de Tela (ej: Satín, Encaje, Chiffón)",
-  "color": "Color predominante",
-  "talla": "U",
-  "precio_sugerido": 0
-}
+{{
+  "categoria": "Valor del catálogo o null",
+  "rasgo1": "Texto libre corto",
+  "rasgo2": "Texto libre corto",
+  "color": "Valor del catálogo o null",
+  "talla": "Valor del catálogo o null (Default: U)",
+  "precio_sugerido": 0,
+  "confianza": 0.0 a 1.0
+}}
 
 Responde ÚNICAMENTE el JSON."""
 
@@ -99,7 +119,7 @@ Responde ÚNICAMENTE el JSON."""
 
 def analyze_duplicate_ai(new_product, existing_products):
     """
-    Analiza si un producto nuevo es duplicado de los existentes.
+    Analiza si un producto nuevo es duplicado de los existentes con consejos accionables.
     """
     model = get_gemini_model()
     if not model:
@@ -113,14 +133,15 @@ PRODUCTO NUEVO:
 PRODUCTOS EXISTENTES SIMILARES:
 {existing_products}
 
-REGLAS:
-- Mismo modelo en diferente tela/material = productos DIFERENTES
-- Colores parecidos (ej: Rosa palo vs Rosa mauve) = productos DIFERENTES
-- Mismo modelo, misma tela, mismo color, misma talla = POSIBLE DUPLICADO
+REGLAS DE NEGOCIO:
+- Diferente tela/material = productos DIFERENTES (ej: Crepé vs Seda).
+- Colores parecidos pero con nombre distinto = productos DIFERENTES (ej: Rosa Palo vs Rosa Mauve).
+- Mismo modelo, misma tela, mismo color, misma talla = POSIBLE DUPLICADO.
 
-Responde en máximo 2 oraciones:
-1. ¿Es probable que sea duplicado? (Sí/No/Verificar)
-2. Recomendación breve."""
+RESPONDE DE FORMA DIRECTA Y ACCIONABLE (Máximo 3 oraciones):
+1. ¿Es duplicado? (Indica probabilidad Alta/Media/Baja).
+2. Acción recomendada: "Usar SKU existente" o "Crear como nueva variante".
+3. Nota sobre qué lo hace diferente si aplica (ej: "Es la misma tela pero en talla XL")."""
 
     try:
         response = model.generate_content(prompt)

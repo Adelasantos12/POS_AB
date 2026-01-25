@@ -23,6 +23,9 @@
                 <button class="btn btn-outline-secondary btn-sm" onclick="verificarImpresora()" data-testid="btn-verificar-impresora">
                     <i class="bi bi-printer me-1"></i>Impresora
                 </button>
+                <button class="btn btn-warning btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#ventaRapidaModal" data-testid="btn-venta-rapida">
+                    <i class="bi bi-lightning-charge-fill me-1"></i>Venta Rápida
+                </button>
                 <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#quickProductModal" data-testid="btn-producto-rapido">
                     <i class="bi bi-plus-lg me-1"></i>Nuevo Producto
                 </button>
@@ -77,6 +80,95 @@
 
                 <button class="btn btn-primary w-100 py-3 fw-bold" id="btnCheckout" style="border-radius: 100px;" data-testid="btn-checkout">
                     <i class="bi bi-check-circle me-2"></i>Cobrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Venta Rápida Modal -->
+<div class="modal fade" id="ventaRapidaModal" tabindex="-1" data-testid="venta-rapida-modal">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">Venta Rápida / No Registrado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="ventaRapidaForm">
+                    <div class="mb-4 text-center">
+                        <div id="vr_image_preview" class="bg-light mb-2 d-flex align-items-center justify-content-center" style="height: 150px; border-radius: 12px; border: 2px dashed #ddd;">
+                            <i class="bi bi-camera text-muted fs-1"></i>
+                        </div>
+                        <input type="file" id="vr_foto" name="foto" class="form-control form-control-sm" accept="image/*">
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2 rounded-pill" id="btnVRAnalyze">
+                            <i class="bi bi-stars me-1"></i>Analizar con IA
+                        </button>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Categoría</label>
+                            <input type="text" name="categoria" class="form-control" placeholder="Ej: Vestido" list="catOptions" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Color</label>
+                            <input type="text" name="color" class="form-control" placeholder="Ej: Rojo" list="colorOptions" required>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Talla</label>
+                            <select name="talla" class="form-select">
+                                <option value="U">Única</option>
+                                <option value="XS">XS</option>
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Precio *</label>
+                            <input type="number" name="precio" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Método de Pago</label>
+                        <select name="metodo" class="form-select">
+                            <option value="EFECTIVO">💵 Efectivo</option>
+                            <option value="TARJETA">💳 Tarjeta</option>
+                            <option value="TRANSFERENCIA">📱 Transferencia</option>
+                        </select>
+                    </div>
+
+                    <!-- Duplicate Alert for Venta Rápida -->
+                    <div id="vr_duplicateAlert" class="d-none mt-3">
+                        <div class="alert alert-warning mb-2" style="border-radius: 12px;">
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-exclamation-triangle fs-4 me-3"></i>
+                                <div class="flex-grow-1">
+                                    <strong id="vr_duplicateAlertTitle">Posible duplicado</strong>
+                                    <p class="mb-2 small" id="vr_duplicateAlertMsg"></p>
+                                    <div id="vr_aiAnalysisBox" class="ai-analysis small mb-2 d-none">
+                                        <i class="bi bi-robot me-1"></i> <span id="vr_aiAnalysisText"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="vr_forceCreate">
+                            <label class="form-check-label small" for="vr_forceCreate">
+                                Confirmar que es un producto nuevo
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">Cancelar</button>
+                <button type="button" class="btn btn-warning fw-bold" id="btnSubmitVentaRapida" style="border-radius: 100px;">
+                    <i class="bi bi-lightning-fill me-1"></i>Completar Venta
                 </button>
             </div>
         </div>
@@ -461,6 +553,136 @@
         document.getElementById('duplicateAlert').classList.add('d-none');
         document.getElementById('forceCreateBox').classList.add('d-none');
     }
+
+    // Venta Rápida logic
+    document.getElementById('vr_foto').addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(ex) {
+                document.getElementById('vr_image_preview').innerHTML = `<img src="${ex.target.result}" style="max-height: 100%; max-width: 100%; border-radius: 10px;">`;
+            }
+            reader.readAsDataURL(e.target.files[0]);
+        }
+    });
+
+    document.getElementById('btnVRAnalyze').addEventListener('click', function() {
+        const fileInput = document.getElementById('vr_foto');
+        if (!fileInput.files.length) return alert('Sube una foto primero');
+
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        const formData = new FormData();
+        formData.append('image', fileInput.files[0]);
+
+        fetch('/api/ai-analyze-image/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken},
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                const form = document.getElementById('ventaRapidaForm');
+                if (data.atributos.categoria) form.categoria.value = data.atributos.categoria;
+                if (data.atributos.color) form.color.value = data.atributos.color;
+                if (data.atributos.talla) form.talla.value = data.atributos.talla;
+                if (data.atributos.precio_sugerido) form.precio.value = data.atributos.precio_sugerido;
+            } else {
+                alert('Error en análisis: ' + data.message);
+            }
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-stars me-1"></i>Analizar con IA';
+        });
+    });
+
+    // Duplicate Detection for Venta Rápida
+    const vrCheckInputs = document.querySelectorAll('#ventaRapidaForm input[name="categoria"], #ventaRapidaForm input[name="color"]');
+    vrCheckInputs.forEach(input => {
+        input.addEventListener('input', function() {
+            clearTimeout(duplicateCheckTimeout);
+            duplicateCheckTimeout = setTimeout(checkDuplicatesVR, 500);
+        });
+    });
+
+    function checkDuplicatesVR() {
+        const form = document.getElementById('ventaRapidaForm');
+        const data = {
+            categoria: form.categoria.value,
+            color: form.color.value,
+            talla: form.talla.value,
+            rasgo1: '',
+            rasgo2: ''
+        };
+
+        if (!data.categoria || !data.color) {
+            document.getElementById('vr_duplicateAlert').classList.add('d-none');
+            return;
+        }
+
+        fetch('/api/check-duplicados/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.duplicados && result.duplicados.length > 0 && result.duplicados[0].score > 70) {
+                document.getElementById('vr_duplicateAlert').classList.remove('d-none');
+                document.getElementById('vr_duplicateAlertMsg').textContent = `Encontramos un producto similar: ${result.duplicados[0].text}`;
+                if (result.ai_analysis) {
+                    document.getElementById('vr_aiAnalysisBox').classList.remove('d-none');
+                    document.getElementById('vr_aiAnalysisText').textContent = result.ai_analysis;
+                }
+            } else {
+                document.getElementById('vr_duplicateAlert').classList.add('d-none');
+            }
+        });
+    }
+
+    document.getElementById('btnSubmitVentaRapida').addEventListener('click', function() {
+        const form = document.getElementById('ventaRapidaForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        const vrDuplicateAlert = document.getElementById('vr_duplicateAlert');
+        const vrForceCreate = document.getElementById('vr_forceCreate');
+        if (!vrDuplicateAlert.classList.contains('d-none') && !vrForceCreate.checked) {
+            alert('⚠️ Confirma que es un producto nuevo antes de completar la venta.');
+            return;
+        }
+
+        const formData = new FormData(form);
+        const btn = this;
+        btn.disabled = true;
+
+        fetch('/api/venta-rapida/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken},
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                lastSaleId = data.venta_id;
+                document.getElementById('saleSuccessMsg').textContent = `Venta Rápida #${data.venta_id} completada.`;
+                new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
+                bootstrap.Modal.getInstance(document.getElementById('ventaRapidaModal')).hide();
+                form.reset();
+                document.getElementById('vr_image_preview').innerHTML = '<i class="bi bi-camera text-muted fs-1"></i>';
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .finally(() => {
+            btn.disabled = false;
+        });
+    });
 
     // Save Quick Product with validation
     document.getElementById('btnSaveQuickProduct').addEventListener('click', function() {
