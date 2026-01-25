@@ -315,14 +315,41 @@
             </li>
             
             <li class="nav-item">
-                <a href="{% url 'agenda_view' %}" class="nav-link {% if request.resolver_match.url_name == 'agenda_view' %}active{% endif %}" data-testid="nav-agenda">
+                <a href="{% url 'agenda_view' %}" class="nav-link {% if 'agenda' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-agenda">
                     <i class="bi bi-calendar-event-fill"></i>Agenda
+                </a>
+            </li>
+            
+            <li class="nav-item">
+                <a href="{% url 'novias_list' %}" class="nav-link {% if 'novia' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-novias">
+                    <i class="bi bi-heart-fill"></i>Novias
+                </a>
+            </li>
+            
+            <li class="nav-item">
+                <a href="{% url 'pedidos_en_puerta' %}" class="nav-link {% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}" data-testid="nav-pedidos">
+                    <i class="bi bi-bag-fill"></i>Pedidos
                 </a>
             </li>
             
             <li class="nav-item">
                 <a href="{% url 'inventario_view' %}" class="nav-link {% if request.resolver_match.url_name == 'inventario_view' %}active{% endif %}" data-testid="nav-inventario">
                     <i class="bi bi-box-fill"></i>Inventario
+                </a>
+            </li>
+            
+            <!-- Catálogos -->
+            <li class="nav-item mt-3">
+                <span class="nav-link text-muted small" style="padding-bottom: 0.25rem;"><i class="bi bi-folder me-2"></i>Catálogos</span>
+            </li>
+            <li class="nav-item">
+                <a href="{% url 'catalogo_colores' %}" class="nav-link {% if request.resolver_match.url_name == 'catalogo_colores' %}active{% endif %}" style="padding-left: 2.5rem;">
+                    <i class="bi bi-palette"></i>Colores
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{% url 'catalogo_telas' %}" class="nav-link {% if request.resolver_match.url_name == 'catalogo_telas' %}active{% endif %}" style="padding-left: 2.5rem;">
+                    <i class="bi bi-layers"></i>Telas
                 </a>
             </li>
             
