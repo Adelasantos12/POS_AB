@@ -212,5 +212,27 @@
             }
         });
     }
+
+    function imprimirEtiqueta(id, sku) {
+        const cantidad = prompt(`¿Cuántas etiquetas de ${sku} deseas imprimir?`, '1');
+        if (!cantidad) return;
+        
+        fetch(`/api/imprimir-etiqueta/${id}/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ cantidad: parseInt(cantidad) })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                alert(res.message);
+            } else {
+                alert('⚠️ ' + res.message);
+            }
+        })
+        .catch(err => {
+            alert('Error al conectar con la impresora');
+        });
+    }
 </script>
 {% endblock %}
