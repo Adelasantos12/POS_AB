@@ -22,6 +22,7 @@ urlpatterns = [
     # API de productos y ventas
     path('api/producto-rapido/', views.api_crear_producto_rapido, name='api_crear_producto_rapido'),
     path('api/check-duplicados/', views.api_check_duplicados, name='api_check_duplicados'),
+    path('api/validar-crear-producto/', views.api_validar_crear_producto, name='api_validar_crear_producto'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),
     path('api/registrar-venta/', views.api_registrar_venta, name='api_registrar_venta'),
 
