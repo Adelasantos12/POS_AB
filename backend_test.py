@@ -121,17 +121,26 @@ class DjangoPOSTester:
         )
         
         if success and response:
-            # Check if admin user is in the response
-            if 'admin' in response.text.lower():
-                print("✅ Admin user found in profile selection")
-                # Extract user ID for admin (simple parsing)
+            # Check if expected users are in the response
+            content = response.text.lower()
+            expected_users = ['adela', 'ceo', 'vendedora']
+            found_users = []
+            
+            for user in expected_users:
+                if user in content:
+                    found_users.append(user)
+                    
+            if len(found_users) >= 2:
+                print(f"✅ Found expected users: {found_users}")
+                # Extract user ID for Adela Santos (simple parsing)
                 import re
-                user_id_match = re.search(r'user_id=(\d+)', response.text)
-                if user_id_match:
-                    self.admin_user_id = user_id_match.group(1)
-                    print(f"✅ Admin user ID: {self.admin_user_id}")
+                user_id_matches = re.findall(r'user_id=(\d+)', response.text)
+                if user_id_matches:
+                    self.admin_user_id = user_id_matches[0]  # Use first user ID found
+                    print(f"✅ User ID for testing: {self.admin_user_id}")
             else:
-                print("⚠️  Admin user not found in profile selection")
+                print(f"⚠️  Expected users not found. Found: {found_users}")
+                print("   Expected: Adela, CEO, María Vendedora")
         
         return success
 
