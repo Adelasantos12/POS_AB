@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
+from . import views_agenda
 
 urlpatterns = [
     # Rutas principales
@@ -38,8 +39,35 @@ urlpatterns = [
     path('api/preview-etiqueta/<int:pk>/', views.api_preview_etiqueta, name='api_preview_etiqueta'),
     path('api/verificar-impresora/', views.api_verificar_impresora, name='api_verificar_impresora'),
 
-    # Agenda
-    path('agenda/', views.agenda_view, name='agenda_view'),
+    # ============================================================
+    # CATÁLOGOS
+    # ============================================================
+    path('catalogos/colores/', views_agenda.catalogo_colores, name='catalogo_colores'),
+    path('catalogos/telas/', views_agenda.catalogo_telas, name='catalogo_telas'),
+    path('api/colores/', views_agenda.api_colores_list, name='api_colores_list'),
+    path('api/telas/', views_agenda.api_telas_list, name='api_telas_list'),
+    path('api/crear-color/', views_agenda.api_crear_color, name='api_crear_color'),
+    path('api/crear-tela/', views_agenda.api_crear_tela, name='api_crear_tela'),
+    
+    # ============================================================
+    # AGENDA Y CALENDARIO
+    # ============================================================
+    path('agenda/', views_agenda.agenda_calendario, name='agenda_view'),
+    path('agenda/dia/<int:year>/<int:month>/<int:day>/', views_agenda.agenda_dia, name='agenda_dia'),
+    path('api/citas/', views_agenda.api_citas_rango, name='api_citas_rango'),
+    path('api/crear-cita/', views_agenda.api_crear_cita, name='api_crear_cita'),
+    
+    # ============================================================
+    # NOVIAS Y PEDIDOS
+    # ============================================================
+    path('novias/', views_agenda.novias_list, name='novias_list'),
+    path('novias/<int:pk>/', views_agenda.novia_detalle, name='novia_detalle'),
+    path('api/crear-novia/', views_agenda.api_crear_novia, name='api_crear_novia'),
+    path('api/novia/<int:novia_id>/agregar-dama/', views_agenda.api_agregar_dama, name='api_agregar_dama'),
+    
+    # Pedidos en puerta
+    path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),
+    path('resumen-nocturno/', views_agenda.resumen_nocturno, name='resumen_nocturno'),
 
     # Dashboards y Analítica
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
