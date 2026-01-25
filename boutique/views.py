@@ -628,7 +628,7 @@ _Nota: Respuesta generada localmente (error de conexión con IA)_"""
 def exportar_inventario_csv(request):
     """Exporta el catálogo de productos a CSV"""
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="inventario_adele.csv"'
+    response['Content-Disposition'] = 'attachment; filename="inventario_byeasy.csv"'
 
     writer = csv.writer(response)
     writer.writerow(['SKU', 'Categoria', 'Rasgo 1', 'Rasgo 2', 'Color', 'Talla', 'Precio', 'Stock'])
@@ -652,7 +652,7 @@ def exportar_inventario_csv(request):
 def exportar_ventas_csv(request):
     """Exporta el historial de ventas a CSV"""
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="ventas_adele.csv"'
+    response['Content-Disposition'] = 'attachment; filename="ventas_byeasy.csv"'
 
     writer = csv.writer(response)
     writer.writerow(['ID Venta', 'Fecha', 'Vendedor', 'Total', 'Metodos de Pago'])
@@ -735,7 +735,7 @@ def exportar_inventario_excel(request):
         output.getvalue(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    response['Content-Disposition'] = 'attachment; filename="inventario_adele.xlsx"'
+    response['Content-Disposition'] = 'attachment; filename="inventario_byeasy.xlsx"'
     
     registrar_auditoria(
         usuario=request.active_profile,
@@ -798,7 +798,7 @@ def exportar_ventas_pdf(request):
     
     output.seek(0)
     response = HttpResponse(output.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = 'attachment; filename="ventas_adele.pdf"'
+    response['Content-Disposition'] = 'attachment; filename="ventas_byeasy.pdf"'
     
     registrar_auditoria(
         usuario=request.active_profile,
