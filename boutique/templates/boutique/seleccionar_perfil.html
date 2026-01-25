@@ -4,42 +4,206 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seleccionar Perfil - Adelé</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body { background-color: #f8f9fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .profile-card { cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border: none; border-radius: 15px; background: white; }
-        .profile-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        .avatar { width: 80px; height: 80px; background-color: #0070ba; color: white; display: flex; align-items: center; justify-content: center; font-size: 2rem; border-radius: 50%; margin: 0 auto 1rem; }
+        :root {
+            --primary: #2563EB;
+            --bg-page: #F8FAFC;
+            --bg-surface: #FFFFFF;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --border-default: #E2E8F0;
+        }
+        
+        * {
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        h1, h2, h3, .heading {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .header-section {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .logo {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            font-size: 2.5rem;
+            color: var(--primary);
+            letter-spacing: -0.05em;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+        }
+        
+        .profiles-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
+            max-width: 900px;
+        }
+        
+        .profile-card {
+            width: 160px;
+            background: var(--bg-surface);
+            border: 2px solid transparent;
+            border-radius: 24px;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: var(--text-primary);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+        }
+        
+        .profile-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+            color: var(--text-primary);
+        }
+        
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 700;
+            color: white;
+            position: relative;
+        }
+        
+        /* Colores diferentes para avatares */
+        .avatar-blue { background: linear-gradient(135deg, #2563EB, #60A5FA); }
+        .avatar-green { background: linear-gradient(135deg, #10B981, #34D399); }
+        .avatar-purple { background: linear-gradient(135deg, #7C3AED, #A78BFA); }
+        .avatar-orange { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+        .avatar-pink { background: linear-gradient(135deg, #EC4899, #F472B6); }
+        .avatar-teal { background: linear-gradient(135deg, #14B8A6, #2DD4BF); }
+        
+        .profile-name {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .profile-role {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            padding: 0.25rem 0.75rem;
+            background: var(--bg-page);
+            border-radius: 100px;
+            display: inline-block;
+        }
+        
+        .footer-section {
+            margin-top: 3rem;
+            text-align: center;
+        }
+        
+        .logout-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 100px;
+            transition: all 0.2s ease;
+        }
+        
+        .logout-btn:hover {
+            background: var(--bg-surface);
+            color: var(--text-primary);
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .profile-card {
+            animation: fadeInUp 0.4s ease forwards;
+        }
+        
+        .profile-card:nth-child(1) { animation-delay: 0.05s; }
+        .profile-card:nth-child(2) { animation-delay: 0.1s; }
+        .profile-card:nth-child(3) { animation-delay: 0.15s; }
+        .profile-card:nth-child(4) { animation-delay: 0.2s; }
+        .profile-card:nth-child(5) { animation-delay: 0.25s; }
+        .profile-card:nth-child(6) { animation-delay: 0.3s; }
     </style>
 </head>
 <body>
-    <div class="container text-center">
-        <h1 class="mb-5 fw-bold">¿Quién está trabajando hoy?</h1>
-        <div class="row justify-content-center">
-            {% for u in usuarios %}
-            <div class="col-6 col-sm-4 col-md-3 col-lg-2 mb-4">
-                <a href="{% url 'autenticar_perfil' %}?user_id={{ u.id }}" class="text-decoration-none text-dark">
-                    <div class="card p-4 profile-card shadow-sm h-100">
-                        <div class="avatar">{{ u.username|make_list|first|upper }}</div>
-                        <h5 class="mb-1 text-truncate">{{ u.username }}</h5>
-                        <small class="text-muted d-block">
-                            {% for g in u.groups.all %}
-                                {{ g.name }}{% if not forloop.last %}, {% endif %}
-                            {% empty %}
-                                Sin rol asignado
-                            {% endfor %}
-                        </small>
-                    </div>
-                </a>
+    <div class="header-section" data-testid="profile-selection-header">
+        <div class="logo">Adelé</div>
+        <p class="subtitle">¿Quién está trabajando hoy?</p>
+    </div>
+    
+    <div class="profiles-grid" data-testid="profiles-grid">
+        {% for u in usuarios %}
+        <a href="{% url 'autenticar_perfil' %}?user_id={{ u.id }}" 
+           class="profile-card" 
+           data-testid="profile-card-{{ u.username }}">
+            <div class="profile-avatar avatar-{% cycle 'blue' 'green' 'purple' 'orange' 'pink' 'teal' %}">
+                {{ u.username|make_list|first|upper }}
             </div>
-            {% endfor %}
+            <div class="profile-name">{{ u.get_full_name|default:u.username }}</div>
+            <span class="profile-role">
+                {% for g in u.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}Sin rol{% endfor %}
+            </span>
+        </a>
+        {% empty %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-people fs-1 d-block mb-3"></i>
+            <p>No hay usuarios registrados</p>
         </div>
-        <div class="mt-5">
-            <a href="{% url 'logout' %}" class="btn btn-link text-muted text-decoration-none">
-                <i class="bi bi-box-arrow-right me-1"></i>Cerrar sesión de terminal
-            </a>
-        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="footer-section">
+        <a href="{% url 'logout' %}" class="logout-btn" data-testid="logout-terminal-btn">
+            <i class="bi bi-box-arrow-right"></i>
+            Cerrar sesión de terminal
+        </a>
     </div>
 </body>
 </html>
