@@ -18,10 +18,15 @@ from decimal import Decimal
 import logging
 import json
 import csv
+import os
+import asyncio
 from io import BytesIO
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
+
+# Gemini API Key
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
 
 # ============================================================
