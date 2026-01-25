@@ -1,7 +1,11 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from boutique.models import Producto, Venta, ItemVenta, Pago, Cliente, Pedido, Grupo, IntegranteGrupo, Categoria, Modelo, Tela, Color
+from boutique.models import (
+    Producto, Venta, ItemVenta, Pago, Cliente, Pedido,
+    Grupo, IntegranteGrupo, Categoria, Modelo, Tela, Color,
+    Novia, Dama, CitaAgenda, PagoPedido, NotaPedido
+)
 
 class Command(BaseCommand):
     help = 'Configura los roles avanzados para la boutique (Caja, Inventario, Agenda, Superadmin)'
@@ -42,7 +46,7 @@ class Command(BaseCommand):
 
         # 4. Agenda
         agenda_group, _ = Group.objects.get_or_create(name='Agenda')
-        agenda_models = [Grupo, IntegranteGrupo, Pedido, Cliente]
+        agenda_models = [Grupo, IntegranteGrupo, Pedido, Cliente, Novia, Dama, CitaAgenda, PagoPedido, NotaPedido]
         agenda_perms = []
         for model in agenda_models:
             ct = ContentType.objects.get_for_model(model)

@@ -9,7 +9,7 @@ from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
-    Grupo, IntegranteGrupo, CorteCaja, Tienda, MovimientoInventario,
+    CorteCaja, Tienda, MovimientoInventario,
     registrar_auditoria
 )
 from .middleware import profile_permission_required
@@ -177,7 +177,7 @@ def signup(request):
 # VISTAS DE CAJA
 # ============================================================
 
-@login_required
+@profile_permission_required('Vendedor')
 def pos_dashboard(request):
     """Interfaz principal de Punto de Venta"""
     corte = get_caja_activa()
@@ -186,7 +186,7 @@ def pos_dashboard(request):
     return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
 
 
-@login_required
+@profile_permission_required('Caja')
 def apertura_caja(request):
     """Vista para abrir la caja del día"""
     if CorteCaja.objects.filter(cerrado=False).exists():
@@ -210,7 +210,7 @@ def apertura_caja(request):
     return render(request, 'boutique/apertura_caja.html')
 
 
-@login_required
+@profile_permission_required('Caja')
 def cierre_caja(request):
     """Vista para cerrar la caja y confirmar montos"""
     corte = get_caja_activa()
@@ -262,6 +262,7 @@ def cierre_caja(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Vendedor')
 def api_crear_producto_rapido(request):
     """Crea un producto de forma rápida desde la caja"""
     try:
@@ -288,6 +289,7 @@ def api_crear_producto_rapido(request):
 
 
 @login_required
+@profile_permission_required('Vendedor')
 def api_search_productos(request):
     """Buscador de productos para el POS"""
     q = request.GET.get('q', '')
@@ -303,6 +305,7 @@ def api_search_productos(request):
 
 @require_POST
 @login_required
+@profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta con pagos"""
     try:
@@ -483,7 +486,7 @@ Responde en máximo 2 oraciones:
 
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_validar_crear_producto(request):
     """Valida y crea producto solo si no hay duplicados confirmados"""
     data = json.loads(request.body)
@@ -547,6 +550,7 @@ def api_validar_crear_producto(request):
 # ============================================================
 
 @login_required
+@profile_permission_required('Inventario')
 def inventario_view(request):
     """Vista de gestión de inventario"""
     q = request.GET.get('q', '')
@@ -583,7 +587,7 @@ def inventario_view(request):
 # ============================================================
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_imprimir_etiqueta(request, pk):
     """Imprime etiqueta para un producto en la Brother QL-800"""
     from .services.printer_service import imprimir_etiqueta_brother
@@ -607,7 +611,7 @@ def api_imprimir_etiqueta(request, pk):
 
 
 @require_POST
-@login_required
+@profile_permission_required('Inventario')
 def api_imprimir_etiquetas_lote(request):
     """Imprime etiquetas para múltiples productos"""
     from .services.printer_service import imprimir_etiqueta_brother
@@ -660,7 +664,7 @@ def api_preview_etiqueta(request, pk):
     return JsonResponse(resultado)
 
 
-@login_required
+@profile_permission_required('Inventario')
 def api_verificar_impresora(request):
     """Verifica el estado de la impresora Brother"""
     from .services.printer_service import verificar_impresora
@@ -740,11 +744,6 @@ def imprimir_etiquetas(request):
 # VISTAS DE AGENDA
 # ============================================================
 
-@login_required
-def agenda_view(request):
-    """Vista de la agenda de grupos"""
-    grupos = Grupo.objects.all().order_by('fecha_entrega')
-    return render(request, 'boutique/agenda.html', {'grupos': grupos})
 
 
 # ============================================================

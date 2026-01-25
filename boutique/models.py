@@ -239,16 +239,6 @@ def registrar_auditoria(usuario, accion, detalles='', tienda=None, entidad=None,
         ip_address=ip
     )
 
-class Pedido(models.Model):
-    ESTADOS = [('PENDIENTE', 'Pendiente'), ('EN_PROCESO', 'En Proceso'), ('LISTO', 'Listo'), ('ENTREGADO', 'Entregado')]
-    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT)
-    producto = models.ForeignKey(Producto, on_delete=models.PROTECT)
-    cantidad = models.PositiveIntegerField(default=1)
-    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
-    fecha_pedido = models.DateTimeField(auto_now_add=True)
-    notas = models.TextField(blank=True)
-    def __str__(self): return f"Pedido #{self.id} - {self.cliente.nombre}"
-
 class Grupo(models.Model):
     ESTADOS = [('NEGOCIACION', 'En Negociación'), ('CONFIRMADO', 'Confirmado'), ('PRODUCCION', 'En Producción'), ('LISTO', 'Listo'), ('ENTREGADO', 'Entregado')]
     nombre = models.CharField(max_length=100)

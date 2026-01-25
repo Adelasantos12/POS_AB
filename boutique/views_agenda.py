@@ -27,7 +27,7 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 # CATÁLOGO DE COLORES Y TELAS
 # ============================================================
 
-@login_required
+@profile_permission_required('Inventario')
 def catalogo_colores(request):
     """Vista del catálogo de colores con muestras visuales"""
     colores = Color.objects.filter(activo=True).order_by('familia', 'orden', 'nombre')
@@ -44,7 +44,7 @@ def catalogo_colores(request):
     })
 
 
-@login_required
+@profile_permission_required('Inventario')
 def catalogo_telas(request):
     """Vista del catálogo de telas"""
     telas = Tela.objects.filter(activa=True).order_by('nombre')
@@ -248,7 +248,7 @@ def api_telas_list(request):
 # AGENDA - CALENDARIO
 # ============================================================
 
-@login_required
+@profile_permission_required('Agenda')
 def agenda_calendario(request):
     """Vista principal del calendario estilo iPhone"""
     year = int(request.GET.get('year', timezone.now().year))
@@ -292,7 +292,7 @@ def agenda_calendario(request):
     return render(request, 'boutique/agenda_calendario.html', context)
 
 
-@login_required
+@profile_permission_required('Agenda')
 def agenda_dia(request, year, month, day):
     """Vista de agenda por día - desglose por horas"""
     fecha = date(year, month, day)
@@ -426,7 +426,7 @@ def api_citas_rango(request):
 # NOVIAS Y PEDIDOS
 # ============================================================
 
-@login_required
+@profile_permission_required('Agenda')
 def novias_list(request):
     """Lista de todas las novias"""
     q = request.GET.get('q', '')
@@ -445,7 +445,7 @@ def novias_list(request):
     })
 
 
-@login_required
+@profile_permission_required('Agenda')
 def novia_detalle(request, pk):
     """Detalle de una novia con su grupo y pedidos"""
     novia = get_object_or_404(Novia, pk=pk)
@@ -545,7 +545,7 @@ def api_agregar_dama(request, novia_id):
 # PEDIDOS EN PUERTA - RESUMEN
 # ============================================================
 
-@login_required
+@profile_permission_required('Agenda')
 def pedidos_en_puerta(request):
     """Vista de todos los pedidos pendientes agrupados por novia"""
     from .models import Pedido
@@ -601,7 +601,7 @@ def pedidos_en_puerta(request):
 # RESUMEN NOCTURNO
 # ============================================================
 
-@login_required
+@profile_permission_required('Agenda')
 def resumen_nocturno(request):
     """Resumen de citas para mañana y resto de la semana"""
     hoy = timezone.now().date()
