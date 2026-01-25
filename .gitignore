@@ -16,3 +16,7 @@ server.log
 # Static & Media
 staticfiles/
 media/
+-e 
+# Environment files
+*.env
+*.env.*
