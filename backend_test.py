@@ -171,15 +171,15 @@ class DjangoPOSTester:
                 self.csrf_token = csrf_match.group(1)
                 print(f"✅ Updated CSRF token from auth page")
             
-        # Test POST authentication with admin password
+        # Test POST authentication with Adela Santos password
         auth_data = {
             'user_id': self.admin_user_id,
-            'password': 'admin123',
+            'password': 'Karinakakapopo1',
             'csrfmiddlewaretoken': self.csrf_token
         }
         
         success, response = self.run_test(
-            "Profile authentication with admin123",
+            "Profile authentication with Karinakakapopo1",
             "POST",
             "/perfiles/autenticar/",
             302,  # Should redirect to dashboard
