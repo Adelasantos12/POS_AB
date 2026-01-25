@@ -343,3 +343,264 @@ class MovimientoInventario(models.Model):
         # Actualizar stock del producto
         self.producto.cantidad_actual = self.stock_resultante
         self.producto.save(update_fields=['cantidad_actual'])
+
+
+
+# ============================================================
+# SISTEMA DE AGENDA Y NOVIAS
+# ============================================================
+
+class Novia(models.Model):
+    """Perfil de novia - cabeza de grupo"""
+    nombre = models.CharField(max_length=200)
+    telefono = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    
+    # Fechas importantes
+    fecha_boda = models.DateField()
+    fecha_prueba = models.DateField(null=True, blank=True, help_text="Día de prueba/ajustes")
+    fecha_entrega = models.DateField(null=True, blank=True, help_text="Día de entrega")
+    fecha_limite = models.DateField(null=True, blank=True, help_text="Fecha límite (antes de boda)")
+    
+    # Grupo de damas
+    cantidad_damas = models.PositiveIntegerField(default=0)
+    
+    # Preferencias generales del grupo
+    color_principal = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_color')
+    tela_principal = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_tela')
+    modelo_principal = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_modelo')
+    
+    notas = models.TextField(blank=True)
+    creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['fecha_boda']
+    
+    def __str__(self):
+        return f"{self.nombre} - Boda: {self.fecha_boda}"
+    
+    @property
+    def total_pedidos(self):
+        return self.pedidos.count()
+    
+    @property
+    def total_pagado(self):
+        return sum(p.total_pagado for p in self.pedidos.all())
+    
+    @property
+    def total_pendiente(self):
+        return sum(p.saldo_pendiente for p in self.pedidos.all())
+    
+    @property
+    def resumen_grupo(self):
+        """Genera resumen de todos los pedidos del grupo"""
+        pedidos = self.pedidos.all()
+        colores = set()
+        telas = set()
+        modelos = set()
+        tallas = {}
+        
+        for p in pedidos:
+            if p.color:
+                colores.add(p.color.nombre)
+            if p.tela:
+                telas.add(p.tela.nombre)
+            if p.modelo:
+                modelos.add(p.modelo.nombre)
+            if p.talla:
+                tallas[p.talla] = tallas.get(p.talla, 0) + 1
+        
+        return {
+            'colores': list(colores),
+            'telas': list(telas),
+            'modelos': list(modelos),
+            'tallas': tallas,
+            'total': pedidos.count()
+        }
+
+
+class Dama(models.Model):
+    """Integrante del grupo de la novia"""
+    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='damas')
+    nombre = models.CharField(max_length=200)
+    telefono = models.CharField(max_length=20, blank=True)
+    
+    # Personalización (puede diferir del grupo)
+    color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True)
+    tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
+    modelo = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True)
+    talla = models.CharField(max_length=10, blank=True)
+    
+    notas_ajustes = models.TextField(blank=True, help_text="Notas de ajustes específicos")
+    
+    def __str__(self):
+        return f"{self.nombre} (Grupo de {self.novia.nombre})"
+
+
+class Pedido(models.Model):
+    """Pedido de vestido - puede ser de novia o dama"""
+    ESTADOS = [
+        ('NUEVO', 'Nuevo'),
+        ('PENDIENTE_TELA', 'Falta comprar tela'),
+        ('TELA_COMPRADA', 'Tela comprada'),
+        ('EN_CONFECCION', 'En confección'),
+        ('LISTO', 'Listo en tienda'),
+        ('ENTREGADO', 'Entregado'),
+        ('CANCELADO', 'Cancelado'),
+    ]
+    
+    ESTADOS_PAGO = [
+        ('SIN_PAGO', 'Sin pago'),
+        ('APARTADO', 'Apartado'),
+        ('PARCIAL', 'Pago parcial'),
+        ('LIQUIDADO', 'Liquidado'),
+    ]
+    
+    # Puede ser para la novia o para una dama
+    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='pedidos')
+    dama = models.ForeignKey(Dama, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
+    es_vestido_novia = models.BooleanField(default=False, help_text="Es el vestido de la novia")
+    
+    # Producto/características
+    producto = models.ForeignKey(Producto, on_delete=models.SET_NULL, null=True, blank=True, help_text="Si ya existe en inventario")
+    modelo = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True)
+    color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True)
+    tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
+    talla = models.CharField(max_length=10, blank=True)
+    
+    # Imagen de referencia
+    imagen_referencia = models.ImageField(upload_to='pedidos/', blank=True, null=True)
+    
+    # Precio y pagos
+    precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    # Estados
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='NUEVO')
+    estado_pago = models.CharField(max_length=20, choices=ESTADOS_PAGO, default='SIN_PAGO')
+    
+    # Fechas
+    fecha_entrega_estimada = models.DateField(null=True, blank=True)
+    fecha_entrega_real = models.DateField(null=True, blank=True)
+    
+    # Notas
+    notas = models.TextField(blank=True)
+    notas_ajustes = models.TextField(blank=True)
+    
+    # Ticket/referencia
+    numero_ticket = models.CharField(max_length=20, unique=True, blank=True)
+    
+    # Tracking
+    creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, related_name='pedidos_creados')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-fecha_creacion']
+    
+    def save(self, *args, **kwargs):
+        if not self.numero_ticket:
+            import uuid
+            self.numero_ticket = f"PED-{uuid.uuid4().hex[:8].upper()}"
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        quien = "Novia" if self.es_vestido_novia else (self.dama.nombre if self.dama else "Dama")
+        return f"{self.numero_ticket} - {quien} ({self.novia.nombre})"
+    
+    @property
+    def total_pagado(self):
+        return sum(p.monto for p in self.pagos_pedido.all())
+    
+    @property
+    def saldo_pendiente(self):
+        return self.precio - self.total_pagado
+    
+    @property
+    def esta_pagado(self):
+        return self.saldo_pendiente <= 0
+
+
+class PagoPedido(models.Model):
+    """Pagos asociados a un pedido"""
+    METODOS = [
+        ('EFECTIVO', 'Efectivo'),
+        ('TARJETA', 'Tarjeta'),
+        ('TRANSFERENCIA', 'Transferencia'),
+    ]
+    
+    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='pagos_pedido')
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo = models.CharField(max_length=20, choices=METODOS, default='EFECTIVO')
+    fecha = models.DateTimeField(auto_now_add=True)
+    registrado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    notas = models.CharField(max_length=200, blank=True)
+    
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Actualizar estado de pago del pedido
+        pedido = self.pedido
+        total_pagado = pedido.total_pagado
+        if total_pagado >= pedido.precio:
+            pedido.estado_pago = 'LIQUIDADO'
+        elif total_pagado > 0:
+            pedido.estado_pago = 'PARCIAL' if total_pagado > pedido.precio * 0.3 else 'APARTADO'
+        pedido.save(update_fields=['estado_pago'])
+    
+    def __str__(self):
+        return f"${self.monto} - {self.pedido.numero_ticket}"
+
+
+class CitaAgenda(models.Model):
+    """Citas en el calendario"""
+    TIPOS = [
+        ('PRUEBA', 'Prueba de vestido'),
+        ('AJUSTE', 'Ajustes'),
+        ('ENTREGA', 'Entrega'),
+        ('RECOGIDA', 'Recogida'),
+        ('CONSULTA', 'Consulta nueva novia'),
+        ('OTRO', 'Otro'),
+    ]
+    
+    titulo = models.CharField(max_length=200)
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='CONSULTA')
+    
+    # Fecha y hora
+    fecha = models.DateField()
+    hora_inicio = models.TimeField()
+    hora_fin = models.TimeField(null=True, blank=True)
+    
+    # Relacionado a novia/pedido (opcional)
+    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, null=True, blank=True, related_name='citas')
+    pedido = models.ForeignKey(Pedido, on_delete=models.SET_NULL, null=True, blank=True, related_name='citas')
+    
+    # Info adicional para consultas nuevas
+    nombre_cliente = models.CharField(max_length=200, blank=True)
+    telefono_cliente = models.CharField(max_length=20, blank=True)
+    cantidad_damas_esperadas = models.PositiveIntegerField(default=0)
+    
+    notas = models.TextField(blank=True)
+    completada = models.BooleanField(default=False)
+    
+    creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['fecha', 'hora_inicio']
+    
+    def __str__(self):
+        return f"{self.fecha} {self.hora_inicio} - {self.titulo}"
+
+
+class NotaPedido(models.Model):
+    """Notas de seguimiento de pedidos"""
+    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='notas_seguimiento')
+    texto = models.TextField()
+    creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-fecha']
+    
+    def __str__(self):
+        return f"Nota {self.fecha.strftime('%d/%m')} - {self.pedido.numero_ticket}"
