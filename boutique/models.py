@@ -200,7 +200,9 @@ class IntegranteGrupo(models.Model):
     def __str__(self): return f"{self.cliente.nombre} en {self.grupo.nombre}"
 
 class CorteCaja(models.Model):
-    abierto_por = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+    """Caja desacoplada del usuario - pertenece a tienda y fecha"""
+    tienda = models.ForeignKey(Tienda, on_delete=models.PROTECT, null=True, blank=True)
+    abierto_por = models.ForeignKey('auth.User', on_delete=models.PROTECT, related_name='cajas_abiertas')
     fecha_apertura = models.DateTimeField(auto_now_add=True)
     fecha_cierre = models.DateTimeField(null=True, blank=True)
     monto_apertura = models.DecimalField(max_digits=10, decimal_places=2)
