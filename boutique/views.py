@@ -19,14 +19,31 @@ import logging
 import json
 import csv
 import os
-import asyncio
 from io import BytesIO
 from difflib import SequenceMatcher
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Gemini API Key
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+@login_required
+@profile_permission_required('Vendedor')
+def api_ai_extract_attributes(request):
+    """Extrae atributos de producto desde una descripción usando Gemini"""
+    from .ai_utils import extract_product_attributes
+    try:
+        data = json.loads(request.body)
+        descripcion = data.get('descripcion', '')
+        if not descripcion:
+            return JsonResponse({'status': 'error', 'message': 'Descripción vacía'}, status=400)
+
+        atributos = extract_product_attributes(descripcion)
+        if atributos:
+            return JsonResponse({'status': 'ok', 'atributos': atributos})
+        else:
+            return JsonResponse({'status': 'error', 'message': 'No se pudo procesar la descripción'}, status=500)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 # ============================================================
@@ -186,7 +203,7 @@ def pos_dashboard(request):
     return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
 
 
-@profile_permission_required('Caja')
+@profile_permission_required(['Caja', 'Vendedor'])
 def apertura_caja(request):
     """Vista para abrir la caja del día"""
     if CorteCaja.objects.filter(cerrado=False).exists():
@@ -210,7 +227,7 @@ def apertura_caja(request):
     return render(request, 'boutique/apertura_caja.html')
 
 
-@profile_permission_required('Caja')
+@profile_permission_required(['Caja', 'Vendedor'])
 def cierre_caja(request):
     """Vista para cerrar la caja y confirmar montos"""
     corte = get_caja_activa()
@@ -373,7 +390,7 @@ def fuzzy_match(s1, s2):
 @login_required
 def api_check_duplicados(request):
     """Verifica posibles duplicados con IA antes de crear un producto"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from .ai_utils import analyze_duplicate_ai
     
     data = json.loads(request.body)
     cat = data.get('categoria', '')
@@ -430,40 +447,14 @@ def api_check_duplicados(request):
     ai_analysis = None
     if top_coincidencias and top_coincidencias[0]['score'] > 60:
         try:
-            async def analyze_duplicates():
-                chat = LlmChat(
-                    api_key=GEMINI_API_KEY,
-                    session_id=f"dup_check_{request.active_profile.id}",
-                    system_message="Eres un asistente de inventario de boutique. Ayudas a identificar si un producto nuevo es duplicado de uno existente. Sé breve y claro."
-                ).with_model("gemini", "gemini-2.0-flash")
-                
-                prompt = f"""Analiza si este producto NUEVO podría ser duplicado de alguno existente:
-
-PRODUCTO NUEVO:
-- Categoría: {cat}
-- Rasgo 1: {r1}
-- Rasgo 2: {r2}
-- Color: {color}
-- Talla: {talla}
-
-PRODUCTOS EXISTENTES SIMILARES:
-{chr(10).join(productos_texto[:5])}
-
-IMPORTANTE sobre colores:
-- "Rosa palo" y "Rosa mauve" son DIFERENTES tonos de rosa (NO son duplicados por color)
-- Mismo modelo en diferente tela/material = productos DIFERENTES
-- Mismo modelo, misma tela, mismo color, misma talla = POSIBLE DUPLICADO
-
-Responde en máximo 2 oraciones:
-1. ¿Es probable que sea duplicado? (Sí/No/Verificar)
-2. Si hay que verificar, ¿cuál producto específico revisar?"""
-
-                user_message = UserMessage(text=prompt)
-                response = await chat.send_message(user_message)
-                return response
-            
-            ai_analysis = asyncio.run(analyze_duplicates())
-            
+            nuevo_prod = {
+                'categoria': cat,
+                'rasgo1': r1,
+                'rasgo2': r2,
+                'color': color,
+                'talla': talla
+            }
+            ai_analysis = analyze_duplicate_ai(nuevo_prod, "\n".join(productos_texto[:5]))
         except Exception as e:
             logger.error(f"Error en análisis IA de duplicados: {e}")
             ai_analysis = None
@@ -788,7 +779,7 @@ def admin_dashboard(request):
 @profile_permission_required('Admin')
 def api_ai_strategy(request):
     """Genera una estrategia de venta usando IA con Gemini"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from .ai_utils import generate_sales_strategy
     
     # Recopilar datos de ventas
     cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
@@ -808,31 +799,14 @@ def api_ai_strategy(request):
     categorias = ', '.join([f"{c['producto__categoria__nombre']} ({c['c']} vendidos)" for c in cat_top]) if cat_top else 'Sin datos'
     colores = ', '.join([f"{c['producto__color__nombre']} ({c['c']} vendidos)" for c in color_top]) if color_top else 'Sin datos'
     
-    prompt = f"""Eres un consultor de retail experto. Analiza estos datos de Adelé Boutique (Gdl) y da 3-4 recomendaciones concretas y accionables.
-
-DATOS DE LA BOUTIQUE:
+    contexto = f"""DATOS DE LA BOUTIQUE:
 - Categorías más vendidas: {categorias}
 - Colores más vendidos: {colores}
 - Productos con stock bajo: {stock_bajo} de {total_productos}
-- Mes actual: Enero 2026
-
-Responde en español, de forma directa y práctica. Usa emojis para hacer la lectura más amigable. Máximo 200 palabras."""
+- Mes actual: Enero 2026"""
 
     try:
-        # Usar Gemini con la API key del usuario
-        async def get_ai_response():
-            chat = LlmChat(
-                api_key=GEMINI_API_KEY,
-                session_id=f"strategy_{request.active_profile.id}",
-                system_message="Eres un consultor de retail experto en boutiques de moda. Das consejos prácticos y concretos."
-            ).with_model("gemini", "gemini-2.0-flash")
-            
-            user_message = UserMessage(text=prompt)
-            response = await chat.send_message(user_message)
-            return response
-        
-        estrategia = asyncio.run(get_ai_response())
-        
+        estrategia = generate_sales_strategy(contexto)
     except Exception as e:
         logger.error(f"Error con Gemini AI: {e}")
         # Fallback a respuesta simulada

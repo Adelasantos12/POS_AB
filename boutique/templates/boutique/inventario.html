@@ -120,6 +120,15 @@
             </div>
             <div class="modal-body p-4">
                 <form id="formNuevoProducto">
+                    <!-- AI Magic Box -->
+                    <div class="mb-4 p-3 bg-light" style="border-radius: 15px; border: 1px dashed #2563EB;">
+                        <label class="form-label small fw-bold text-primary"><i class="bi bi-stars me-1"></i>Descripción Mágica (IA)</label>
+                        <textarea id="ai_description" class="form-control mb-2" rows="2" placeholder="Ej: Vestido de seda largo con manga francesa en color rojo, talla 8, precio 1500"></textarea>
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill w-100" id="btnMagicFill">
+                            <i class="bi bi-magic me-1"></i>Auto-completar con IA
+                        </button>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Categoría</label>
                         <select name="categoria" class="form-select" required>
@@ -310,6 +319,45 @@
             }
         });
     }
+
+    // AI Magic Fill
+    document.getElementById('btnMagicFill').addEventListener('click', function() {
+        const desc = document.getElementById('ai_description').value;
+        if (!desc) return alert('Escribe una descripción primero');
+
+        const btn = this;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+        fetch('{% url "api_ai_extract_attributes" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ descripcion: desc })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.status === 'ok') {
+                const form = document.getElementById('formNuevoProducto');
+                const attrs = res.atributos;
+
+                if (attrs.categoria) form.querySelector('[name="categoria"]').value = attrs.categoria;
+                if (attrs.color) form.querySelector('[name="color"]').value = attrs.color;
+                if (attrs.rasgo1) form.querySelector('[name="rasgo1"]').value = attrs.rasgo1;
+                if (attrs.rasgo2) form.querySelector('[name="rasgo2"]').value = attrs.rasgo2;
+                if (attrs.talla) form.querySelector('[name="talla"]').value = attrs.talla;
+                if (attrs.precio) form.querySelector('[name="precio"]').value = attrs.precio;
+
+                alert('✨ Atributos extraídos con éxito');
+            } else {
+                alert('Error IA: ' + res.message);
+            }
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+    });
 
     function imprimirEtiqueta(id, sku) {
         const cantidad = prompt(`¿Cuántas etiquetas de ${sku} deseas imprimir?`, '1');

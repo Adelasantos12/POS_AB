@@ -63,7 +63,7 @@ class ProfileFlowTest(TestCase):
         self.assertEqual(float(prod.precio_venta), 200.0)
 
         # Verificar auditoría
-        self.assertTrue(Auditoria.objects.filter(usuario=self.admin_user, accion='Edición de Producto').exists())
+        self.assertTrue(Auditoria.objects.filter(usuario=self.admin_user, accion='EDICION_PRODUCTO').exists())
 
         # 7. Volver a vendedora
         self.client.get(reverse('cambiar_perfil'))
