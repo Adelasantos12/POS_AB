@@ -42,8 +42,8 @@ def tiene_permiso(usuario, permiso_codigo):
     """Verifica si el perfil activo tiene un permiso específico"""
     if usuario.is_superuser:
         return True
-    # Admin y Superadmin tienen todos los permisos
-    if usuario.groups.filter(name__in=['Admin', 'Superadmin']).exists():
+    # Admin, Superadmin y CEO tienen todos los permisos
+    if usuario.groups.filter(name__in=['Admin', 'Superadmin', 'CEO']).exists():
         return True
     # Verificar permisos específicos según rol
     permisos_rol = {
@@ -51,6 +51,7 @@ def tiene_permiso(usuario, permiso_codigo):
         'Vendedor': ['vender', 'cobrar'],
         'Inventario': ['editar_inventario'],
         'Admin': ['abrir_caja', 'vender', 'cobrar', 'editar_inventario', 'ver_reportes', 'gestionar_usuarios'],
+        'CEO': ['abrir_caja', 'vender', 'cobrar', 'editar_inventario', 'ver_reportes', 'gestionar_usuarios', 'ver_todo'],
     }
     for grupo in usuario.groups.all():
         if permiso_codigo in permisos_rol.get(grupo.name, []):
@@ -59,8 +60,13 @@ def tiene_permiso(usuario, permiso_codigo):
 
 
 def es_admin(usuario):
-    """Verifica si el usuario tiene rol admin"""
-    return usuario.is_superuser or usuario.groups.filter(name__in=['Admin', 'Superadmin']).exists()
+    """Verifica si el usuario tiene rol admin o CEO"""
+    return usuario.is_superuser or usuario.groups.filter(name__in=['Admin', 'Superadmin', 'CEO']).exists()
+
+
+def puede_gestionar_usuarios(usuario):
+    """Solo Superadmin y CEO pueden crear/gestionar usuarios"""
+    return usuario.is_superuser or usuario.groups.filter(name__in=['Superadmin', 'CEO']).exists()
 
 
 # ============================================================
