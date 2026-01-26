@@ -1,0 +1,184 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Catálogo de Colores - ByEasy POS{% endblock %}
+
+{% block extra_css %}
+.color-swatch {
+    width: 60px;
+    height: 60px;
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.color-swatch:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.color-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+.color-card:hover {
+    border-color: var(--primary);
+}
+.familia-header {
+    background: linear-gradient(135deg, var(--bg-subtle), white);
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start" data-testid="colores-header">
+    <div>
+        <h1 class="page-title">Catálogo de Colores</h1>
+        <p class="page-subtitle">{{ total_colores }} colores disponibles</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevoColorModal" data-testid="btn-nuevo-color">
+        <i class="bi bi-plus-lg me-2"></i>Nuevo Color
+    </button>
+</div>
+
+{% for familia, colores in colores_por_familia.items %}
+<div class="mb-4">
+    <div class="familia-header d-flex align-items-center">
+        <span class="me-3" style="width: 20px; height: 20px; border-radius: 50%; background: {% if familia == 'Rosa' %}#E8B4B8{% elif familia == 'Azul' %}#4169E1{% elif familia == 'Verde' %}#50C878{% elif familia == 'Rojo' %}#DC143C{% elif familia == 'Morado' %}#800080{% elif familia == 'Tierra' %}#E3BC9A{% elif familia == 'Amarillo' %}#FFDB58{% else %}#808080{% endif %};"></span>
+        {{ familia }}
+        <span class="badge bg-secondary ms-2 rounded-pill">{{ colores|length }}</span>
+    </div>
+    
+    <div class="row g-3">
+        {% for color in colores %}
+        <div class="col-6 col-md-4 col-lg-2">
+            <div class="color-card" data-testid="color-{{ color.nombre|slugify }}">
+                <div class="color-swatch mx-auto mb-2" style="background-color: {{ color.codigo_hex }};{% if color.nombre == 'Blanco' %} border: 2px solid #ddd;{% endif %}"></div>
+                <div class="fw-semibold small">{{ color.nombre }}</div>
+                <div class="text-muted" style="font-size: 0.7rem;">{{ color.codigo_hex }}</div>
+                {% if not color.es_predefinido %}
+                <span class="badge bg-primary rounded-pill mt-1" style="font-size: 0.6rem;">Personalizado</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% empty %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-palette fs-1 d-block mb-3"></i>
+    <p>No hay colores en el catálogo</p>
+</div>
+{% endfor %}
+
+<!-- Modal Nuevo Color -->
+<div class="modal fade" id="nuevoColorModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">Nuevo Color</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="nuevoColorForm">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nombre del Color *</label>
+                        <input type="text" name="nombre" class="form-control" placeholder="Ej: Rosa Coral, Verde Menta" required data-testid="input-nombre-color">
+                        <small class="text-muted">La IA verificará si ya existe un color similar</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Muestra de Color</label>
+                        <div class="d-flex align-items-center gap-3">
+                            <input type="color" name="codigo_hex" class="form-control form-control-color" value="#E8B4B8" style="width: 60px; height: 60px; border-radius: 12px;" data-testid="input-hex-color">
+                            <input type="text" name="codigo_hex_text" class="form-control" value="#E8B4B8" pattern="^#[0-9A-Fa-f]{6}$" style="max-width: 120px;">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Familia de Color</label>
+                        <select name="familia" class="form-select" data-testid="select-familia">
+                            <option value="Rosa">Rosa</option>
+                            <option value="Rojo">Rojo</option>
+                            <option value="Azul">Azul</option>
+                            <option value="Verde">Verde</option>
+                            <option value="Morado">Morado</option>
+                            <option value="Amarillo">Amarillo / Naranja</option>
+                            <option value="Tierra">Tierra / Nude</option>
+                            <option value="Neutro">Neutro (Negro, Blanco, Gris)</option>
+                        </select>
+                    </div>
+                </form>
+                <div id="colorAiWarning" class="alert alert-warning d-none" style="border-radius: 12px;">
+                    <i class="bi bi-robot me-2"></i>
+                    <span id="colorAiWarningText"></span>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="crearColor()" style="border-radius: 100px;" data-testid="btn-guardar-color">
+                    <i class="bi bi-check-lg me-1"></i>Crear Color
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+// Sincronizar inputs de color
+document.querySelector('input[name="codigo_hex"]').addEventListener('input', function() {
+    document.querySelector('input[name="codigo_hex_text"]').value = this.value;
+});
+document.querySelector('input[name="codigo_hex_text"]').addEventListener('input', function() {
+    if (/^#[0-9A-Fa-f]{6}$/.test(this.value)) {
+        document.querySelector('input[name="codigo_hex"]').value = this.value;
+    }
+});
+
+function crearColor() {
+    const form = document.getElementById('nuevoColorForm');
+    const data = {
+        nombre: form.nombre.value,
+        codigo_hex: form.codigo_hex.value,
+        familia: form.familia.value
+    };
+    
+    if (!data.nombre) {
+        alert('El nombre es requerido');
+        return;
+    }
+    
+    fetch('/api/crear-color/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status === 'ok') {
+            if (result.warning) {
+                document.getElementById('colorAiWarning').classList.remove('d-none');
+                document.getElementById('colorAiWarningText').textContent = result.warning;
+            }
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.message);
+        }
+    })
+    .catch(err => {
+        alert('Error al crear color');
+    });
+}
+</script>
+{% endblock %}

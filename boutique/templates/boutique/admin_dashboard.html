@@ -1,0 +1,275 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Dashboard - ByEasy POS{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start" data-testid="dashboard-header">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">
+            <span class="badge" style="background: linear-gradient(135deg, #2563EB, #60A5FA); color: white; border-radius: 100px; padding: 0.35rem 0.75rem; font-size: 0.75rem;">
+                <i class="bi bi-shop me-1"></i>Adelé Boutique (Gdl)
+            </span>
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-testid="export-dropdown">
+                <i class="bi bi-download me-2"></i>Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'exportar_inventario_csv' %}"><i class="bi bi-filetype-csv me-2"></i>Inventario CSV</a></li>
+                <li><a class="dropdown-item" href="{% url 'exportar_inventario_excel' %}"><i class="bi bi-file-earmark-excel me-2"></i>Inventario Excel</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'exportar_ventas_csv' %}"><i class="bi bi-filetype-csv me-2"></i>Ventas CSV</a></li>
+                <li><a class="dropdown-item" href="{% url 'exportar_ventas_pdf' %}"><i class="bi bi-filetype-pdf me-2"></i>Ventas PDF</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs Row -->
+<div class="row g-4 mb-4" data-testid="kpis-row">
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">Ventas este mes</span>
+                    <span class="badge bg-success-subtle text-success rounded-pill" style="background: #D1FAE5 !important;">
+                        <i class="bi bi-arrow-up"></i>
+                    </span>
+                </div>
+                <h2 class="mb-0">${{ total_mensual|floatformat:0 }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">Transacciones</span>
+                    <span class="badge bg-primary-subtle text-primary rounded-pill" style="background: #DBEAFE !important;">
+                        <i class="bi bi-receipt"></i>
+                    </span>
+                </div>
+                <h2 class="mb-0">{{ ventas_dia|length }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">Categoría Top</span>
+                    <span class="badge bg-warning-subtle text-warning rounded-pill" style="background: #FEF3C7 !important;">
+                        <i class="bi bi-star"></i>
+                    </span>
+                </div>
+                <h2 class="mb-0" style="font-size: 1.25rem;">
+                    {% if ventas_cat %}{{ ventas_cat.0.producto__categoria__nombre }}{% else %}—{% endif %}
+                </h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">Color Top</span>
+                    <span class="badge bg-info-subtle text-info rounded-pill" style="background: #CFFAFE !important;">
+                        <i class="bi bi-palette"></i>
+                    </span>
+                </div>
+                <h2 class="mb-0" style="font-size: 1.25rem;">
+                    {% if ventas_color %}{{ ventas_color.0.producto__color__nombre }}{% else %}—{% endif %}
+                </h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-8">
+        <div class="card h-100" data-testid="ventas-chart-card">
+            <div class="card-body p-4">
+                <h5 class="mb-4">Ventas por Día</h5>
+                <canvas id="ventasChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100" data-testid="categorias-chart-card">
+            <div class="card-body p-4">
+                <h5 class="mb-4">Por Categoría</h5>
+                <canvas id="categoriasChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tables Row -->
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card" data-testid="top-categorias-card">
+            <div class="card-body p-4">
+                <h5 class="mb-4">Top Categorías</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Categoría</th>
+                                <th class="text-end">Vendidos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cat in ventas_cat|slice:":5" %}
+                            <tr>
+                                <td>{{ cat.producto__categoria__nombre }}</td>
+                                <td class="text-end fw-semibold">{{ cat.total }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="2" class="text-muted text-center py-3">Sin datos</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card" data-testid="top-colores-card">
+            <div class="card-body p-4">
+                <h5 class="mb-4">Top Colores</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Color</th>
+                                <th class="text-end">Vendidos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for color in ventas_color|slice:":5" %}
+                            <tr>
+                                <td>
+                                    <span class="d-inline-block rounded-circle me-2" style="width: 12px; height: 12px; background-color: {% if color.producto__color__nombre == 'Negro' %}#000{% elif color.producto__color__nombre == 'Blanco' %}#fff; border: 1px solid #ddd{% elif color.producto__color__nombre == 'Rojo' %}#EF4444{% elif color.producto__color__nombre == 'Azul' %}#3B82F6{% else %}#64748B{% endif %};"></span>
+                                    {{ color.producto__color__nombre }}
+                                </td>
+                                <td class="text-end fw-semibold">{{ color.total }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="2" class="text-muted text-center py-3">Sin datos</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI Strategy Button -->
+<div class="card mt-4" data-testid="ai-strategy-card">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-1">Sugerencias de IA</h5>
+                <p class="text-muted mb-0 small">Obtén recomendaciones basadas en tus datos de ventas</p>
+            </div>
+            <button class="btn btn-primary" onclick="obtenerEstrategia()" data-testid="btn-ai-strategy">
+                <i class="bi bi-lightbulb me-2"></i>Generar Estrategia
+            </button>
+        </div>
+        <div id="estrategiaResult" class="mt-3 d-none">
+            <div class="alert mb-0" style="background: var(--bg-subtle); border-radius: 12px; border: none;">
+                <pre class="mb-0" style="white-space: pre-wrap; font-family: inherit;" id="estrategiaText"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+// Datos para gráficos
+const ventasDia = {{ ventas_dia|safe }};
+const ventasCat = {{ ventas_cat|safe }};
+
+// Gráfico de ventas por día
+const ventasCtx = document.getElementById('ventasChart');
+if (ventasCtx && ventasDia.length > 0) {
+    new Chart(ventasCtx, {
+        type: 'line',
+        data: {
+            labels: ventasDia.map(v => v.dia),
+            datasets: [{
+                label: 'Ventas ($)',
+                data: ventasDia.map(v => v.total),
+                borderColor: '#2563EB',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+// Gráfico de categorías
+const catCtx = document.getElementById('categoriasChart');
+if (catCtx && ventasCat.length > 0) {
+    new Chart(catCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ventasCat.slice(0, 5).map(c => c.producto__categoria__nombre),
+            datasets: [{
+                data: ventasCat.slice(0, 5).map(c => c.total),
+                backgroundColor: ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+}
+
+function obtenerEstrategia() {
+    fetch('/api/ai-strategy/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('estrategiaText').textContent = data.estrategia;
+        document.getElementById('estrategiaResult').classList.remove('d-none');
+    })
+    .catch(err => {
+        alert('Error al generar estrategia');
+    });
+}
+</script>
+{% endblock %}

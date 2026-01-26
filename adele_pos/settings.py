@@ -11,14 +11,18 @@ DEBUG = ENVIRONMENT != 'production'
 
 ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS')
 if ALLOWED_HOSTS_STRING:
-    ALLOWED_HOSTS = ALLOWED_HOSTS_STRING.split(',')
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STRING.split(',')]
+    if 'testserver' not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append('testserver')
 else:
-    ALLOWED_HOSTS = ['*'] if DEBUG else []
+    ALLOWED_HOSTS = ['*', 'testserver'] if DEBUG else []
 
 CSRF_TRUSTED_ORIGINS = []
 if ALLOWED_HOSTS_STRING:
     for host in ALLOWED_HOSTS_STRING.split(','):
-        CSRF_TRUSTED_ORIGINS.append(f"https://{host.strip()}")
+        h = host.strip()
+        CSRF_TRUSTED_ORIGINS.append(f"https://{h}")
+        CSRF_TRUSTED_ORIGINS.append(f"http://{h}")
 
 INSTALLED_APPS = [
     'boutique.apps.BoutiqueConfig',
@@ -28,6 +32,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',
 ]
 
 # El middleware de WhiteNoise debe ir después del de Seguridad.
@@ -38,6 +43,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'boutique.middleware.ProfileMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -62,8 +68,9 @@ TEMPLATES = [
 WSGI_APPLICATION = 'adele_pos.wsgi.application'
 
 if 'DATABASE_URL' in os.environ:
+    db_ssl_require = os.environ.get('DB_SSL_REQUIRE', 'True').lower() == 'true'
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
+        'default': dj_database_url.config(conn_max_age=600, ssl_require=db_ssl_require)
     }
 else:
     DATABASES = {
@@ -90,4 +97,13 @@ STATIC_URL = 'static/'
 # Directorio donde `collectstatic` recogerá los archivos estáticos para producción.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Motor de almacenamiento para WhiteNoise.
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# --- Configuración de Archivos Media ---
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'index'
+LOGOUT_REDIRECT_URL = 'index'

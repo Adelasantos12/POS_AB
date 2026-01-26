@@ -1,0 +1,136 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Catálogo de Telas - ByEasy POS{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start" data-testid="telas-header">
+    <div>
+        <h1 class="page-title">Catálogo de Telas</h1>
+        <p class="page-subtitle">{{ total_telas }} tipos de tela disponibles</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevaTelaModal" data-testid="btn-nueva-tela">
+        <i class="bi bi-plus-lg me-2"></i>Nueva Tela
+    </button>
+</div>
+
+<div class="row g-3">
+    {% for tela in telas %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100" data-testid="tela-{{ tela.nombre|slugify }}">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h5 class="card-title mb-0 fw-bold">{{ tela.nombre }}</h5>
+                    {% if not tela.es_predefinida %}
+                    <span class="badge bg-primary rounded-pill" style="font-size: 0.7rem;">Personalizada</span>
+                    {% endif %}
+                </div>
+                <p class="card-text text-muted small mb-3">{{ tela.descripcion|default:"Sin descripción" }}</p>
+                {% if tela.codigo_proveedor %}
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">
+                        <i class="bi bi-tag me-1"></i>{{ tela.codigo_proveedor }}
+                    </small>
+                    {% if tela.proveedor %}
+                    <small class="text-muted">
+                        <i class="bi bi-building me-1"></i>{{ tela.proveedor.nombre }}
+                    </small>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-layers fs-1 d-block mb-3"></i>
+            <p>No hay telas en el catálogo</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Modal Nueva Tela -->
+<div class="modal fade" id="nuevaTelaModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">Nueva Tela</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="nuevaTelaForm">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nombre de la Tela *</label>
+                        <input type="text" name="nombre" class="form-control" placeholder="Ej: Encaje Italiano, Satín Duquesa" required data-testid="input-nombre-tela">
+                        <small class="text-muted">La IA verificará si ya existe una tela similar</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Descripción</label>
+                        <textarea name="descripcion" class="form-control" rows="2" placeholder="Características de la tela..." data-testid="input-desc-tela"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Código de Proveedor (opcional)</label>
+                        <input type="text" name="codigo_proveedor" class="form-control" placeholder="Ej: SAT-001" data-testid="input-codigo-tela">
+                    </div>
+                </form>
+                <div id="telaAiWarning" class="alert alert-warning d-none" style="border-radius: 12px;">
+                    <i class="bi bi-robot me-2"></i>
+                    <span id="telaAiWarningText"></span>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="crearTela()" style="border-radius: 100px;" data-testid="btn-guardar-tela">
+                    <i class="bi bi-check-lg me-1"></i>Crear Tela
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+function crearTela() {
+    const form = document.getElementById('nuevaTelaForm');
+    const data = {
+        nombre: form.nombre.value,
+        descripcion: form.descripcion.value,
+        codigo_proveedor: form.codigo_proveedor.value
+    };
+    
+    if (!data.nombre) {
+        alert('El nombre es requerido');
+        return;
+    }
+    
+    fetch('/api/crear-tela/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status === 'ok') {
+            if (result.warning) {
+                document.getElementById('telaAiWarning').classList.remove('d-none');
+                document.getElementById('telaAiWarningText').textContent = result.warning;
+            }
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.message);
+        }
+    })
+    .catch(err => {
+        alert('Error al crear tela');
+    });
+}
+</script>
+{% endblock %}
