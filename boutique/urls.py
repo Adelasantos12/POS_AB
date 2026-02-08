@@ -6,6 +6,7 @@ from . import views_agenda
 urlpatterns = [
     # Rutas principales
     path('', views.index, name='index'),
+    path('health/', views.health_check, name='health_check'),
     path('signup/', views.signup, name='signup'),
     path('login/', auth_views.LoginView.as_view(template_name='boutique/login.html'), name='login'),
     path('logout/', views.logout_view, name='logout'),
@@ -29,6 +30,7 @@ urlpatterns = [
     path('api/ai-analyze-image/', views.api_ai_analyze_image, name='api_ai_analyze_image'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),
     path('api/registrar-venta/', views.api_registrar_venta, name='api_registrar_venta'),
+    path('api/sync/', views.api_sync, name='api_sync'),
 
     # Inventario
     path('inventario/', views.inventario_view, name='inventario_view'),
@@ -80,6 +82,7 @@ urlpatterns = [
     path('api/dama/<int:pk>/editar/', views_agenda.api_editar_dama, name='api_editar_dama'),
     path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
     path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
+    path('api/pedido/<int:pk>/liquidar/', views.api_liquidar_pedido, name='api_liquidar_pedido'),
     
     # Pedidos en puerta
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),
@@ -94,6 +97,7 @@ urlpatterns = [
     path('exportar/inventario/excel/', views.exportar_inventario_excel, name='exportar_inventario_excel'),
     path('exportar/ventas/csv/', views.exportar_ventas_csv, name='exportar_ventas_csv'),
     path('exportar/ventas/pdf/', views.exportar_ventas_pdf, name='exportar_ventas_pdf'),
+    path('importar-excel/', views.importar_excel, name='importar_excel'),
 
     # Gestión de Usuarios
     path('usuarios/', views.gestion_usuarios, name='gestion_usuarios'),

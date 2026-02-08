@@ -1,8 +1,15 @@
 from django.contrib import admin
 from .models import (
     Proveedor, Categoria, Modelo, Tela, Color, Producto, Cliente, 
-    Venta, ItemVenta, Novia, Dama, Pedido, PagoPedido, CitaAgenda, NotaPedido
+    Venta, ItemVenta, Novia, Dama, Pedido, PagoPedido, CitaAgenda, NotaPedido,
+    Ticket
 )
+
+@admin.register(Ticket)
+class TicketAdmin(admin.ModelAdmin):
+    list_display = ('folio', 'tipo', 'fecha', 'cliente_nombre', 'novia')
+    list_filter = ('tipo', 'fecha')
+    search_fields = ('folio', 'cliente_nombre', 'novia__nombre')
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
@@ -15,7 +22,7 @@ class ItemVentaInline(admin.TabularInline):
 
 @admin.register(Venta)
 class VentaAdmin(admin.ModelAdmin):
-    list_display = ('id', 'fecha', 'vendedor', 'cliente', 'total')
+    list_display = ('id', 'fecha', 'vendedor', 'cliente', 'total', 'ticket')
     list_filter = ('fecha', 'vendedor')
     inlines = [ItemVentaInline]
 
@@ -86,10 +93,14 @@ class NotaPedidoInline(admin.TabularInline):
 
 @admin.register(Pedido)
 class PedidoAdmin(admin.ModelAdmin):
-    list_display = ('numero_ticket', 'novia', 'dama', 'modelo', 'color', 'talla', 'precio', 'estado', 'estado_pago', 'fecha_entrega_estimada')
+    list_display = ('get_folio', 'novia', 'dama', 'modelo', 'color', 'talla', 'precio', 'anticipo', 'estado', 'estado_pago')
     list_filter = ('estado', 'estado_pago', 'fecha_creacion')
-    search_fields = ('numero_ticket', 'novia__nombre', 'dama__nombre')
-    readonly_fields = ('numero_ticket', 'fecha_creacion', 'fecha_actualizacion')
+    search_fields = ('ticket__folio', 'numero_ticket', 'novia__nombre', 'dama__nombre')
+    readonly_fields = ('fecha_creacion', 'fecha_actualizacion')
+
+    def get_folio(self, obj):
+        return obj.ticket.folio if obj.ticket else obj.numero_ticket
+    get_folio.short_description = 'Folio/Ticket'
     inlines = [PagoPedidoInline, NotaPedidoInline]
 
 @admin.register(CitaAgenda)

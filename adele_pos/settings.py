@@ -25,6 +25,7 @@ if ALLOWED_HOSTS_STRING:
         CSRF_TRUSTED_ORIGINS.append(f"http://{h}")
 
 INSTALLED_APPS = [
+    'whitenoise.runserver_nostatic',
     'boutique.apps.BoutiqueConfig',
     'django.contrib.admin',
     'django.contrib.auth',

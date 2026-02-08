@@ -44,6 +44,9 @@ class Categoria(models.Model):
 class Modelo(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True)
+    class Meta:
+        verbose_name = "Modelo de Producto"
+        verbose_name_plural = "Modelos de Productos"
     def __str__(self): return self.nombre
 
 class Tela(models.Model):
@@ -107,7 +110,10 @@ class Producto(models.Model):
 
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
-    class Meta: unique_together = ('categoria', 'modelo', 'tela', 'color', 'talla', 'rasgo1', 'rasgo2')
+    class Meta:
+        unique_together = ('categoria', 'modelo', 'tela', 'color', 'talla', 'rasgo1', 'rasgo2')
+        verbose_name = "Variante (SKU)"
+        verbose_name_plural = "Variantes (SKU)"
     def save(self, *args, **kwargs):
         is_new = self.pk is None
 
@@ -184,11 +190,34 @@ class Cliente(models.Model):
     telefono = models.CharField(max_length=20, blank=True)
     def __str__(self): return self.nombre
 
+class Ticket(models.Model):
+    """Módulo de numeración de tickets para apartados"""
+    TIPOS = [('NOVIA', 'Novia'), ('DAMA', 'Dama')]
+    tipo = models.CharField(max_length=10, choices=TIPOS)
+    folio = models.CharField(max_length=20, unique=True, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    tienda = models.ForeignKey(Tienda, on_delete=models.SET_NULL, null=True, blank=True)
+    cliente_nombre = models.CharField(max_length=200, blank=True)
+    novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
+
+    def save(self, *args, **kwargs):
+        if not self.folio:
+            prefix = 'NV-' if self.tipo == 'NOVIA' else 'DM-'
+            count = Ticket.objects.filter(tipo=self.tipo).count() + 1
+            self.folio = f"{prefix}{count:05d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self): return self.folio
+
 class Venta(models.Model):
     vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    notas = models.TextField(blank=True)
+    offline_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name='ventas')
+    pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='ventas_asociadas')
     def __str__(self): return f"Venta #{self.id} - {self.fecha.strftime('%Y-%m-%d')}"
 
 class ItemVenta(models.Model):
@@ -502,6 +531,7 @@ class Pedido(models.Model):
     
     # Precio y pagos
     precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     # Estados
     estado = models.CharField(max_length=20, choices=ESTADOS, default='NUEVO')
@@ -516,7 +546,9 @@ class Pedido(models.Model):
     notas_ajustes = models.TextField(blank=True)
     
     # Ticket/referencia
+    ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     numero_ticket = models.CharField(max_length=20, unique=True, blank=True)
+    offline_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
     
     # Tracking
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, related_name='pedidos_creados')
