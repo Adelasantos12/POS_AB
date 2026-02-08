@@ -11,7 +11,7 @@ from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
     CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
-    registrar_auditoria
+    registrar_auditoria, Ticket, Pedido
 )
 from .middleware import profile_permission_required
 from django.utils import timezone
@@ -383,7 +383,7 @@ def api_sync(request):
 @profile_permission_required('Vendedor')
 def api_liquidar_pedido(request, pk):
     """Convierte un pedido en venta al ser liquidado"""
-    from .models import Pedido, PagoPedido, Venta, Pago, ItemVenta
+    from .models import PagoPedido
     pedido = get_object_or_404(Pedido, pk=pk)
     try:
         data = json.loads(request.body)
@@ -428,6 +428,14 @@ def api_liquidar_pedido(request, pk):
                     registrado_por=request.active_profile
                 )
 
+                # Emitir Ticket
+                ticket = Ticket.objects.create(
+                    tipo='VENTA',
+                    venta=venta,
+                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
+                )
+                ticket.populate_from_obj(venta)
+
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
@@ -448,7 +456,7 @@ def api_liquidar_pedido(request, pk):
 @profile_permission_required('Vendedor')
 def api_venta_rapida(request):
     """Crea producto al vuelo + registra venta/apartado + movimiento en una sola transacción"""
-    from .models import Ticket, Pedido, Novia, PagoPedido
+    from .models import Novia, PagoPedido
     try:
         # Usar multipart/form-data para recibir foto
         cat_nombre = request.POST.get('categoria', 'General')
@@ -471,10 +479,14 @@ def api_venta_rapida(request):
             if not color:
                 color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
+            # Intentar asociar Tela desde rasgo2 si coincide con el catálogo
+            tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
             # 1. Crear producto con stock 0
             producto = Producto.objects.create(
                 categoria=categoria,
                 color=color,
+                tela=tela_obj,
                 rasgo1=rasgo1,
                 rasgo2=rasgo2,
                 talla=talla,
@@ -556,6 +568,14 @@ def api_venta_rapida(request):
                     registrado_por=request.active_profile
                 )
 
+                # Emitir Ticket
+                ticket = Ticket.objects.create(
+                    tipo='VENTA',
+                    venta=venta,
+                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
+                )
+                ticket.populate_from_obj(venta)
+
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
@@ -568,6 +588,7 @@ def api_venta_rapida(request):
                     'status': 'ok',
                     'tipo': 'venta',
                     'venta_id': venta.id,
+                    'folio': ticket.folio,
                     'producto': {
                         'id': producto.id,
                         'sku': producto.sku,
@@ -597,11 +618,15 @@ def api_crear_producto_rapido(request):
         if not color:
             color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
+        rasgo2 = data.get('rasgo2', '')
+        tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
         producto = Producto.objects.create(
             categoria=categoria,
             color=color,
+            tela=tela_obj,
             rasgo1=data.get('rasgo1', ''),
-            rasgo2=data.get('rasgo2', ''),
+            rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
@@ -632,7 +657,7 @@ def api_search_productos(request):
 @profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta o un apartado"""
-    from .models import Ticket, Pedido, Novia, PagoPedido
+    from .models import Novia, PagoPedido
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
@@ -726,6 +751,14 @@ def api_registrar_venta(request):
                     registrado_por=request.active_profile
                 )
 
+                # Emitir Ticket
+                ticket = Ticket.objects.create(
+                    tipo='VENTA',
+                    venta=venta,
+                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
+                )
+                ticket.populate_from_obj(venta)
+
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
@@ -734,7 +767,7 @@ def api_registrar_venta(request):
                     request=request
                 )
 
-                return JsonResponse({'status': 'ok', 'tipo': 'venta', 'venta_id': venta.id})
+                return JsonResponse({'status': 'ok', 'tipo': 'venta', 'venta_id': venta.id, 'folio': ticket.folio})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
@@ -877,11 +910,15 @@ def api_validar_crear_producto(request):
         if not color_obj:
             color_obj, _ = Color.objects.get_or_create(nombre="Sin definir")
         
+        rasgo2 = data.get('rasgo2', '')
+        tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
         producto = Producto.objects.create(
             categoria=categoria,
             color=color_obj,
+            tela=tela_obj,
             rasgo1=data.get('rasgo1', ''),
-            rasgo2=data.get('rasgo2', ''),
+            rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
@@ -1678,4 +1715,45 @@ def historial_usuario(request, pk):
     return render(request, 'boutique/usuario_historial.html', {
         'u': usuario,
         'historial': historial
+    })
+
+
+@login_required
+def print_ticket_pdf(request, folio):
+    """Retorna el PDF del ticket para impresión"""
+    from .models import Ticket
+    from .services.ticket_service import generate_pdf_ticket
+    ticket = get_object_or_404(Ticket, folio=folio)
+
+    pdf_buffer = generate_pdf_ticket(ticket.id)
+    response = HttpResponse(pdf_buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="ticket_{folio}.pdf"'
+    return response
+
+@login_required
+def get_ticket_escpos(request, folio):
+    """Retorna los datos ESC/POS binarios"""
+    from .models import Ticket
+    from .services.ticket_service import generate_escpos_data
+    ticket = get_object_or_404(Ticket, folio=folio)
+
+    escpos_data = generate_escpos_data(ticket.id)
+    return HttpResponse(escpos_data, content_type='application/octet-stream')
+
+
+@login_required
+def api_ticket_detalle(request, folio):
+    """Retorna el detalle de un ticket por folio"""
+    from .models import Ticket
+    ticket = get_object_or_404(Ticket, folio=folio)
+    return JsonResponse({
+        'status': 'ok',
+        'ticket': {
+            'folio': ticket.folio,
+            'tipo': ticket.get_tipo_display(),
+            'fecha': ticket.fecha_hora.isoformat(),
+            'cliente': ticket.cliente_nombre,
+            'total': float(ticket.total),
+            'items': ticket.snapshot_json.get('items', []) if ticket.snapshot_json else []
+        }
     })

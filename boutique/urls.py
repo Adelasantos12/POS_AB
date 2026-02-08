@@ -2,6 +2,7 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
 from . import views_agenda
+from . import views_apartados
 
 urlpatterns = [
     # Rutas principales
@@ -83,6 +84,16 @@ urlpatterns = [
     path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
     path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
     path('api/pedido/<int:pk>/liquidar/', views.api_liquidar_pedido, name='api_liquidar_pedido'),
+
+    # Tickets e Impresión
+    path('api/tickets/<str:folio>/detalle/', views.api_ticket_detalle, name='api_ticket_detalle'),
+    path('api/tickets/<str:folio>/pdf/', views.print_ticket_pdf, name='print_ticket_pdf'),
+    path('api/tickets/<str:folio>/escpos/', views.get_ticket_escpos, name='get_ticket_escpos'),
+
+    # Apartados independientes
+    path('apartados/', views_apartados.lista_apartados, name='lista_apartados'),
+    path('apartados/<int:pk>/', views_apartados.detalle_apartado, name='detalle_apartado'),
+    path('api/apartado/crear/', views_apartados.api_crear_apartado, name='api_crear_apartado'),
     
     # Pedidos en puerta
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),

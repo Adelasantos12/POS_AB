@@ -39,9 +39,19 @@
             </div>
         </div>
 
-        <div class="input-group mb-4 shadow-sm" style="border-radius: 12px; overflow: hidden;">
-            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-            <input type="text" id="productSearch" class="form-control border-start-0 ps-0" placeholder="Escanear QR o buscar por rasgo/SKU..." data-testid="product-search">
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="input-group shadow-sm" style="border-radius: 12px; overflow: hidden;">
+                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+                    <input type="text" id="productSearch" class="form-control border-start-0 ps-0" placeholder="Escanear QR o buscar por rasgo/SKU..." data-testid="product-search">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="input-group shadow-sm" style="border-radius: 12px; overflow: hidden;">
+                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-receipt"></i></span>
+                    <input type="text" id="folioSearch" class="form-control border-start-0 ps-0" placeholder="Buscar folio...">
+                </div>
+            </div>
         </div>
 
         <div id="searchResults" class="list-group shadow-sm" style="border-radius: 12px; overflow: hidden;" data-testid="search-results">
@@ -361,6 +371,25 @@
     let duplicateCheckTimeout = null;
     const csrfToken = '{{ csrf_token }}';
 
+    // Folio Search
+    document.getElementById('folioSearch').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            const folio = e.target.value;
+            if (!folio) return;
+            fetch(`/api/tickets/${folio}/detalle/`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        lastFolio = data.ticket.folio;
+                        document.getElementById('saleSuccessMsg').textContent = `Folio encontrado: ${lastFolio} - ${data.ticket.cliente}`;
+                        new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
+                    } else {
+                        alert('Folio no encontrado');
+                    }
+                });
+        }
+    });
+
     // Product Search
     document.getElementById('productSearch').addEventListener('input', function(e) {
         const q = e.target.value;
@@ -546,12 +575,13 @@
         .then(r => r.json())
         .then(data => {
             if (data.status === 'ok') {
+                lastFolio = data.folio || data.ticket;
                 if (data.tipo === 'apartado') {
                     lastSaleId = null;
-                    document.getElementById('saleSuccessMsg').textContent = `Apartado registrado. Ticket: ${data.ticket}`;
+                    document.getElementById('saleSuccessMsg').textContent = `Apartado registrado. Ticket: ${lastFolio}`;
                 } else {
                     lastSaleId = data.venta_id;
-                    document.getElementById('saleSuccessMsg').textContent = `Venta #${data.venta_id} por $${total.toLocaleString()}`;
+                    document.getElementById('saleSuccessMsg').textContent = `Venta registrada. Folio: ${lastFolio}`;
                 }
                 new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
                 cart = [];
@@ -782,12 +812,13 @@
         .then(r => r.json())
         .then(data => {
             if (data.status === 'ok') {
+                lastFolio = data.folio || data.ticket;
                 if (data.tipo === 'apartado') {
                     lastSaleId = null;
-                    document.getElementById('saleSuccessMsg').textContent = `Apartado Rápido registrado. Ticket: ${data.ticket}`;
+                    document.getElementById('saleSuccessMsg').textContent = `Apartado Rápido registrado. Ticket: ${lastFolio}`;
                 } else {
                     lastSaleId = data.venta_id;
-                    document.getElementById('saleSuccessMsg').textContent = `Venta Rápida #${data.venta_id} completada.`;
+                    document.getElementById('saleSuccessMsg').textContent = `Venta Rápida completada. Folio: ${lastFolio}`;
                 }
                 new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
                 bootstrap.Modal.getInstance(document.getElementById('ventaRapidaModal')).hide();
@@ -877,9 +908,13 @@
             });
     }
 
+    let lastFolio = null;
+
     function imprimirUltimaVenta() {
-        if (lastSaleId) {
-            alert('Función de impresión de ticket en desarrollo. Venta ID: ' + lastSaleId);
+        if (lastFolio) {
+            window.open(`/api/tickets/${lastFolio}/pdf/`, '_blank');
+        } else if (lastSaleId) {
+            alert('Venta registrada sin folio generado.');
         }
     }
 </script>

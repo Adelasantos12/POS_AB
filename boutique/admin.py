@@ -2,14 +2,25 @@ from django.contrib import admin
 from .models import (
     Proveedor, Categoria, Modelo, Tela, Color, Producto, Cliente, 
     Venta, ItemVenta, Novia, Dama, Pedido, PagoPedido, CitaAgenda, NotaPedido,
-    Ticket
+    Ticket, ConfiguracionTienda, Apartado, ApartadoItem
 )
+
+@admin.register(ConfiguracionTienda)
+class ConfiguracionTiendaAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return not ConfiguracionTienda.objects.exists()
 
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
-    list_display = ('folio', 'tipo', 'fecha', 'cliente_nombre', 'novia')
-    list_filter = ('tipo', 'fecha')
+    list_display = ('folio', 'tipo', 'estado', 'fecha_hora', 'cliente_nombre', 'total')
+    list_filter = ('tipo', 'estado', 'fecha_hora')
     search_fields = ('folio', 'cliente_nombre', 'novia__nombre')
+
+@admin.register(Apartado)
+class ApartadoAdmin(admin.ModelAdmin):
+    list_display = ('cliente_nombre', 'estado', 'fecha_creacion', 'total', 'anticipo', 'saldo')
+    list_filter = ('estado', 'fecha_creacion')
+    search_fields = ('cliente_nombre', 'cliente_telefono')
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):

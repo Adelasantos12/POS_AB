@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from decimal import Decimal
 
 
 class Tienda(models.Model):
@@ -12,6 +13,36 @@ class Tienda(models.Model):
     
     def __str__(self):
         return self.nombre
+
+
+class ConfiguracionTienda(models.Model):
+    """Configuración global de la tienda (Singleton)"""
+    nombre_comercial = models.CharField(max_length=200, default="Adelé Boutique")
+    razon_social = models.CharField(max_length=200, blank=True)
+    rfc = models.CharField(max_length=20, blank=True, verbose_name="RFC")
+    direccion = models.TextField(blank=True)
+    telefono_whatsapp = models.CharField(max_length=20, blank=True, verbose_name="Teléfono/WhatsApp")
+    email = models.EmailField(blank=True)
+    logo = models.ImageField(upload_to='logos/', blank=True, null=True)
+
+    # Políticas
+    politica_cambios = models.TextField(blank=True, verbose_name="Políticas de Cambios/Devoluciones")
+    politica_apartados = models.TextField(blank=True, verbose_name="Políticas de Apartados")
+
+    # Folios
+    prefijo_sucursal = models.CharField(max_length=10, default="GDL", help_text="Ej: GDL")
+
+    class Meta:
+        verbose_name = "Configuración de la Tienda"
+        verbose_name_plural = "Configuración de la Tienda"
+
+    def __str__(self):
+        return self.nombre_comercial
+
+    @classmethod
+    def get_solo(cls):
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
 
 
 class Permiso(models.Model):
@@ -191,23 +222,117 @@ class Cliente(models.Model):
     def __str__(self): return self.nombre
 
 class Ticket(models.Model):
-    """Módulo de numeración de tickets para apartados"""
-    TIPOS = [('NOVIA', 'Novia'), ('DAMA', 'Dama')]
-    tipo = models.CharField(max_length=10, choices=TIPOS)
-    folio = models.CharField(max_length=20, unique=True, blank=True)
-    fecha = models.DateTimeField(auto_now_add=True)
-    tienda = models.ForeignKey(Tienda, on_delete=models.SET_NULL, null=True, blank=True)
+    """Tickets persistentes y reimprimibles (snapshot)"""
+    TIPOS = [
+        ('VENTA', 'Venta'),
+        ('APARTADO', 'Apartado'),
+        ('PEDIDO', 'Pedido/Hechura'),
+        ('AJUSTE', 'Ajuste'),
+        ('DEVOLUCION', 'Devolución'),
+    ]
+    ESTADOS = [
+        ('EMITIDO', 'Emitido'),
+        ('CANCELADO', 'Cancelado'),
+        ('REIMPRESO', 'Reimpreso'),
+    ]
+
+    folio = models.CharField(max_length=30, unique=True, blank=True)
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='VENTA')
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='EMITIDO')
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+
+    # Datos de la Tienda al momento de emitir (snapshot parcial)
+    sucursal_nombre = models.CharField(max_length=100, blank=True)
+    cajero_nombre = models.CharField(max_length=100, blank=True)
+
+    # Totales
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    descuento_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    impuestos = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_pagado = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    cambio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Datos del Cliente al momento
     cliente_nombre = models.CharField(max_length=200, blank=True)
-    novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
+    cliente_telefono = models.CharField(max_length=20, blank=True)
+
+    # Snapshot completo en JSON para máxima fidelidad histórica
+    snapshot_json = models.JSONField(null=True, blank=True, help_text="Copia íntegra de ítems, precios y datos al emitir")
+
+    # Relaciones (opcionales para trazabilidad viva)
+    venta = models.ForeignKey('Venta', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_asociados')
+    apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_asociados')
+    pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
+    novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
 
     def save(self, *args, **kwargs):
         if not self.folio:
-            prefix = 'NV-' if self.tipo == 'NOVIA' else 'DM-'
-            count = Ticket.objects.filter(tipo=self.tipo).count() + 1
-            self.folio = f"{prefix}{count:05d}"
+            config = ConfiguracionTienda.get_solo()
+            prefix = config.prefijo_sucursal
+            today_str = timezone.now().strftime('%Y%m%d')
+
+            # Formato: PREFIX-YYYYMMDD-####
+            from django.db import transaction
+            with transaction.atomic():
+                # Contar tickets del mismo día para el consecutivo
+                count = Ticket.objects.filter(fecha_hora__date=timezone.now().date()).count() + 1
+                self.folio = f"{prefix}-{today_str}-{count:04d}"
         super().save(*args, **kwargs)
 
     def __str__(self): return self.folio
+
+    def populate_from_obj(self, obj):
+        """Pobla el ticket desde una Venta o Apartado"""
+        from django.core.serializers.json import DjangoJSONEncoder
+        import json
+
+        self.total = obj.total
+        self.subtotal = obj.total # Ajustar si hay desglose real
+        self.cliente_nombre = getattr(obj, 'cliente_nombre', '') or (obj.cliente.nombre if hasattr(obj, 'cliente') and obj.cliente else '')
+
+        if hasattr(obj, 'anticipo'):
+            self.total_pagado = obj.anticipo
+            self.cambio = 0
+
+        # Generar snapshot JSON
+        items_data = []
+        if hasattr(obj, 'items'):
+            for item in obj.items.all():
+                desc = str(item.producto) if hasattr(item, 'producto') and item.producto else item.descripcion
+                items_data.append({
+                    'descripcion': desc,
+                    'cantidad': item.cantidad,
+                    'precio_unitario': float(item.precio_unitario),
+                    'subtotal': float(item.subtotal if hasattr(item, 'subtotal') else item.cantidad * item.precio_unitario)
+                })
+
+        snapshot = {
+            'folio': self.folio,
+            'fecha': self.fecha_hora.isoformat(),
+            'cliente': self.cliente_nombre,
+            'total': float(self.total),
+            'items': items_data
+        }
+        self.snapshot_json = snapshot
+        self.save()
+
+class TicketItem(models.Model):
+    """Desglose de ítems en el ticket (snapshot)"""
+    ticket = models.ForeignKey(Ticket, related_name='items', on_delete=models.CASCADE)
+    descripcion = models.CharField(max_length=255)
+    sku_snapshot = models.CharField(max_length=100, blank=True)
+    cantidad = models.PositiveIntegerField(default=1)
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+    descuento = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+
+    # Atributos snapshot
+    modelo = models.CharField(max_length=100, blank=True)
+    color = models.CharField(max_length=100, blank=True)
+    talla = models.CharField(max_length=50, blank=True)
+
+    def __str__(self): return f"{self.descripcion} x {self.cantidad}"
 
 class Venta(models.Model):
     vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
@@ -314,6 +439,54 @@ class IntegranteGrupo(models.Model):
     saldo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     def __str__(self): return f"{self.cliente.nombre} en {self.grupo.nombre}"
 
+class Apartado(models.Model):
+    """Módulo independiente de apartados"""
+    ESTADOS = [
+        ('VIGENTE', 'Vigente'),
+        ('VENCIDO', 'Vencido'),
+        ('CANCELADO', 'Cancelado'),
+        ('ENTREGADO', 'Entregado'),
+    ]
+
+    cliente_nombre = models.CharField(max_length=200)
+    cliente_telefono = models.CharField(max_length=20)
+    notas = models.TextField(blank=True)
+
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='VIGENTE')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_vencimiento = models.DateField(null=True, blank=True)
+
+    # Totales
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    saldo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    # Links opcionales
+    novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_independientes')
+    pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados')
+
+    def save(self, *args, **kwargs):
+        self.saldo = self.total - self.anticipo
+        super().save(*args, **kwargs)
+
+    def __str__(self): return f"Apartado {self.cliente_nombre} - {self.estado}"
+
+class ApartadoItem(models.Model):
+    apartado = models.ForeignKey(Apartado, related_name='items', on_delete=models.CASCADE)
+    producto = models.ForeignKey(Producto, on_delete=models.PROTECT, null=True, blank=True)
+
+    # Snapshots de atributos por si el producto cambia o se elimina
+    descripcion = models.CharField(max_length=255)
+    modelo = models.CharField(max_length=100, blank=True)
+    color = models.CharField(max_length=100, blank=True)
+    talla = models.CharField(max_length=50, blank=True)
+
+    cantidad = models.PositiveIntegerField(default=1)
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self): return self.descripcion
+
 class CorteCaja(models.Model):
     """Caja desacoplada del usuario - pertenece a tienda y fecha"""
     tienda = models.ForeignKey(Tienda, on_delete=models.PROTECT, null=True, blank=True)
@@ -419,6 +592,18 @@ class Novia(models.Model):
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
+    # Medidas
+    m_busto = models.CharField(max_length=50, blank=True, verbose_name="Busto")
+    m_cintura = models.CharField(max_length=50, blank=True, verbose_name="Cintura")
+    m_cadera = models.CharField(max_length=50, blank=True, verbose_name="Cadera")
+    m_largo_total = models.CharField(max_length=50, blank=True, verbose_name="Largo Total")
+    m_ancho_espalda = models.CharField(max_length=50, blank=True, verbose_name="Ancho Espalda")
+    m_talle_delantero = models.CharField(max_length=50, blank=True, verbose_name="Talle Delantero")
+    m_talle_trasero = models.CharField(max_length=50, blank=True, verbose_name="Talle Trasero")
+    m_altura_busto = models.CharField(max_length=50, blank=True, verbose_name="Altura Busto")
+    m_separacion_busto = models.CharField(max_length=50, blank=True, verbose_name="Separación Busto")
+    m_notas_medidas = models.TextField(blank=True, verbose_name="Notas de Medidas")
+
     # Detalles para Hechura Especial
     modelo_especial = models.CharField(max_length=200, blank=True, help_text="Para modelos no en catálogo")
     color_especial = models.CharField(max_length=200, blank=True)
@@ -489,6 +674,18 @@ class Dama(models.Model):
     color_especial = models.CharField(max_length=200, blank=True)
     tela_especial = models.CharField(max_length=200, blank=True)
     
+    # Medidas
+    m_busto = models.CharField(max_length=50, blank=True, verbose_name="Busto")
+    m_cintura = models.CharField(max_length=50, blank=True, verbose_name="Cintura")
+    m_cadera = models.CharField(max_length=50, blank=True, verbose_name="Cadera")
+    m_largo_total = models.CharField(max_length=50, blank=True, verbose_name="Largo Total")
+    m_ancho_espalda = models.CharField(max_length=50, blank=True, verbose_name="Ancho Espalda")
+    m_talle_delantero = models.CharField(max_length=50, blank=True, verbose_name="Talle Delantero")
+    m_talle_trasero = models.CharField(max_length=50, blank=True, verbose_name="Talle Trasero")
+    m_altura_busto = models.CharField(max_length=50, blank=True, verbose_name="Altura Busto")
+    m_separacion_busto = models.CharField(max_length=50, blank=True, verbose_name="Separación Busto")
+    m_notas_medidas = models.TextField(blank=True, verbose_name="Notas de Medidas")
+
     notas_ajustes = models.TextField(blank=True, help_text="Notas de ajustes específicos")
     
     def __str__(self):
@@ -604,7 +801,7 @@ class PagoPedido(models.Model):
         if total_pagado >= pedido.precio:
             pedido.estado_pago = 'LIQUIDADO'
         elif total_pagado > 0:
-            pedido.estado_pago = 'PARCIAL' if total_pagado > pedido.precio * 0.3 else 'APARTADO'
+            pedido.estado_pago = 'PARCIAL' if total_pagado > pedido.precio * Decimal('0.3') else 'APARTADO'
         pedido.save(update_fields=['estado_pago'])
     
     def __str__(self):

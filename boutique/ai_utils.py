@@ -19,11 +19,12 @@ def extract_product_attributes(description):
     """
     Usa Gemini para extraer atributos de un producto desde una descripción textual normalizados al catálogo.
     """
-    from .models import Categoria, Color
+    from .models import Categoria, Color, Tela
 
     # Obtener valores del catálogo para normalización
     categorias = list(Categoria.objects.exclude(nombre="Sin definir").values_list('nombre', flat=True))
     colores = list(Color.objects.exclude(nombre="Sin definir").values_list('nombre', flat=True))
+    telas = list(Tela.objects.all().values_list('nombre', flat=True))
     tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
 
     model = get_gemini_model()
@@ -38,13 +39,14 @@ DESCRIPCIÓN: "{description}"
 CATÁLOGO DE REFERENCIA:
 - Categorías: {', '.join(categorias)}
 - Colores: {', '.join(colores)}
+- Telas: {', '.join(telas)}
 - Tallas: {', '.join(tallas)}
 
 FORMATO JSON ESPERADO:
 {{
   "categoria": "Valor del catálogo o null",
   "rasgo1": "Texto libre corto (Modelo/Estilo)",
-  "rasgo2": "Texto libre corto (Material/Tela)",
+  "rasgo2": "Valor del catálogo de telas o null",
   "color": "Valor del catálogo o null",
   "talla": "Valor del catálogo o null (Default: U)",
   "precio": 0,
@@ -71,11 +73,12 @@ def analyze_product_image(image_data):
     """
     Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos normalizados al catálogo.
     """
-    from .models import Categoria, Color
+    from .models import Categoria, Color, Tela
 
     # Obtener valores del catálogo para normalización
     categorias = list(Categoria.objects.values_list('nombre', flat=True))
     colores = list(Color.objects.values_list('nombre', flat=True))
+    telas = list(Tela.objects.all().values_list('nombre', flat=True))
     tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
 
     model = get_gemini_model()
@@ -88,19 +91,20 @@ Debes normalizar los valores basándote ÚNICAMENTE en las opciones del catálog
 CATÁLOGO:
 - Categorías: {', '.join(categorias)} (Prioriza Novias, Damas, Accesorios si aplica)
 - Colores: {', '.join(colores)}
+- Telas: {', '.join(telas)}
 - Tallas: {', '.join(tallas)}
 
 REGLAS:
 1. Si el valor no se parece razonablemente a una opción del catálogo, devuelve null para ese campo.
 2. 'rasgo1' debe ser el modelo/corte (ej: Sirena, Escote V).
-3. 'rasgo2' debe ser el tipo de tela (ej: Satín, Encaje).
+3. 'rasgo2' debe ser el valor del catálogo de telas o null.
 4. El precio debe ser un número sugerido basado en la calidad percibida.
 
 FORMATO JSON ESPERADO:
 {{
   "categoria": "Valor del catálogo o null",
   "rasgo1": "Texto libre corto",
-  "rasgo2": "Texto libre corto",
+  "rasgo2": "Valor del catálogo de telas o null",
   "color": "Valor del catálogo o null",
   "talla": "Valor del catálogo o null (Default: U)",
   "precio_sugerido": 0,
