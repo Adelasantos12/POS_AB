@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Imprimir Etiquetas - Adelé</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #eee;
+        }
+        .etiqueta {
+            background: white;
+            width: 62mm;
+            height: 29mm;
+            padding: 2mm;
+            margin: 10px auto;
+            border: 1px dashed #ccc;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            overflow: hidden;
+            page-break-after: always;
+        }
+        .header {
+            font-size: 10pt;
+            font-weight: bold;
+            text-align: center;
+            width: 100%;
+        }
+        .traits {
+            font-size: 7pt;
+            text-align: center;
+            color: #444;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+        }
+        .barcode-container img {
+            max-width: 55mm;
+            max-height: 12mm;
+        }
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            font-size: 9pt;
+            font-weight: bold;
+        }
+        @media print {
+            body { background: white; }
+            .etiqueta {
+                margin: 0;
+                border: none;
+                box-shadow: none;
+            }
+            .no-print { display: none; }
+        }
+        .no-print-header {
+            background: #333;
+            color: white;
+            padding: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print no-print-header">
+        Presiona Ctrl+P para imprimir. Configura el tamaño a 62mm x 29mm (o similar).
+        <button onclick="window.print()">Imprimir Ahora</button>
+    </div>
+
+    {% for p in productos %}
+    <div class="etiqueta">
+        <div class="header">ADELÉ BOUTIQUE</div>
+        <div class="traits">{{ p.rasgo1 }} | {{ p.rasgo2 }} | {{ p.color.nombre }}</div>
+        <div class="barcode-container">
+            {% if p.barcode_image %}
+                <img src="{{ p.barcode_image.url }}" alt="{{ p.sku }}">
+            {% else %}
+                <div style="font-size: 8pt;">SKU: {{ p.sku }}</div>
+            {% endif %}
+        </div>
+        <div class="footer">
+            <span>TALLA: {{ p.talla }}</span>
+            <span>${{ p.precio_venta }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html>

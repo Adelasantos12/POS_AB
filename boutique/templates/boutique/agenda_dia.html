@@ -1,0 +1,240 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}{{ dia_semana }} {{ fecha.day }} de {{ mes_nombre }} - ByEasy POS{% endblock %}
+
+{% block extra_css %}
+.hour-slot {
+    display: flex;
+    border-bottom: 1px solid var(--border-default);
+    min-height: 70px;
+}
+.hour-label {
+    width: 70px;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-align: right;
+    border-right: 1px solid var(--border-default);
+    flex-shrink: 0;
+}
+.hour-content {
+    flex-grow: 1;
+    padding: 0.5rem;
+}
+.cita-block {
+    background: linear-gradient(135deg, var(--primary), #60A5FA);
+    color: white;
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.cita-block:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+.cita-block.prueba { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+.cita-block.entrega { background: linear-gradient(135deg, #10B981, #34D399); }
+.cita-block.ajuste { background: linear-gradient(135deg, #8B5CF6, #A78BFA); }
+.day-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.day-nav .btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start mb-4" data-testid="agenda-dia-header">
+    <div class="day-nav">
+        <a href="{% url 'agenda_dia' prev_day.year prev_day.month prev_day.day %}" class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i>
+        </a>
+        <div>
+            <h1 class="page-title mb-0">{{ dia_semana }} {{ fecha.day }}</h1>
+            <p class="page-subtitle mb-0">{{ mes_nombre }} {{ fecha.year }}</p>
+        </div>
+        <a href="{% url 'agenda_dia' next_day.year next_day.month next_day.day %}" class="btn btn-outline-secondary">
+            <i class="bi bi-chevron-right"></i>
+        </a>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'agenda_view' %}?year={{ fecha.year }}&month={{ fecha.month }}" class="btn btn-outline-secondary">
+            <i class="bi bi-calendar3 me-2"></i>Volver al Mes
+        </a>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevaCitaModal" data-testid="btn-nueva-cita-dia">
+            <i class="bi bi-plus-lg me-2"></i>Nueva Cita
+        </button>
+    </div>
+</div>
+
+<!-- Resumen del día -->
+{% if citas %}
+<div class="alert alert-info mb-4" style="border-radius: 12px; border: none; background: linear-gradient(135deg, #f0f9ff, #e0f2fe);">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-calendar-check fs-4 me-3"></i>
+        <div>
+            <strong>{{ citas.count }} cita{{ citas.count|pluralize:"s" }} agendada{{ citas.count|pluralize:"s" }}</strong>
+            <span class="text-muted ms-2">
+                {% for cita in citas %}
+                {{ cita.titulo }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+            </span>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Timeline de horas -->
+<div class="card">
+    <div class="card-body p-0">
+        {% for slot in horas %}
+        <div class="hour-slot" data-testid="hour-{{ slot.hora }}">
+            <div class="hour-label">{{ slot.hora }}</div>
+            <div class="hour-content">
+                {% for cita in slot.citas %}
+                <div class="cita-block {% if cita.tipo == 'PRUEBA' %}prueba{% elif cita.tipo == 'ENTREGA' %}entrega{% elif cita.tipo == 'AJUSTE' %}ajuste{% endif %}"
+                     onclick="verDetalleCita({{ cita.id }})" data-testid="cita-{{ cita.id }}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="fw-bold">{{ cita.titulo }}</div>
+                            <div class="small opacity-75">
+                                {{ cita.hora_inicio|time:"H:i" }}{% if cita.hora_fin %} - {{ cita.hora_fin|time:"H:i" }}{% endif %}
+                                {% if cita.novia %}• {{ cita.novia.nombre }}{% endif %}
+                            </div>
+                        </div>
+                        <span class="badge bg-white text-dark rounded-pill">{{ cita.get_tipo_display }}</span>
+                    </div>
+                    {% if cita.notas %}
+                    <div class="small mt-2 opacity-75">
+                        <i class="bi bi-sticky me-1"></i>{{ cita.notas|truncatechars:50 }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Modal Nueva Cita -->
+<div class="modal fade" id="nuevaCitaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">Nueva Cita - {{ dia_semana }} {{ fecha.day }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="nuevaCitaForm">
+                    <input type="hidden" name="fecha" value="{{ fecha|date:'Y-m-d' }}">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Título *</label>
+                                <input type="text" name="titulo" class="form-control" placeholder="Ej: Consulta Grupo María" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Tipo</label>
+                                <select name="tipo" class="form-select">
+                                    <option value="CONSULTA">🗓️ Consulta</option>
+                                    <option value="PRUEBA">👗 Prueba</option>
+                                    <option value="AJUSTE">✂️ Ajustes</option>
+                                    <option value="ENTREGA">🎁 Entrega</option>
+                                    <option value="RECOGIDA">📦 Recogida</option>
+                                </select>
+                            </div>
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">Hora Inicio *</label>
+                                        <input type="time" name="hora_inicio" class="form-control" value="11:00" required>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">Hora Fin</label>
+                                        <input type="time" name="hora_fin" class="form-control">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Nombre Cliente</label>
+                                <input type="text" name="nombre_cliente" class="form-control" placeholder="Nombre de la novia">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Teléfono</label>
+                                <input type="tel" name="telefono_cliente" class="form-control">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Notas</label>
+                                <textarea name="notas" class="form-control" rows="2"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="crearCita()" style="border-radius: 100px;">
+                    <i class="bi bi-check-lg me-1"></i>Agendar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+function crearCita() {
+    const form = document.getElementById('nuevaCitaForm');
+    const data = {
+        titulo: form.titulo.value,
+        tipo: form.tipo.value,
+        fecha: form.fecha.value,
+        hora_inicio: form.hora_inicio.value,
+        hora_fin: form.hora_fin.value,
+        nombre_cliente: form.nombre_cliente.value,
+        telefono_cliente: form.telefono_cliente.value,
+        notas: form.notas.value
+    };
+    
+    fetch('/api/crear-cita/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status === 'ok') {
+            location.reload();
+        } else {
+            alert(result.message);
+        }
+    });
+}
+
+function verDetalleCita(id) {
+    // TODO: Modal de detalle
+    console.log('Ver cita:', id);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Resumen Nocturno - ByEasy POS{% endblock %}
+
+{% block extra_css %}
+@media print {
+    .sidebar, .no-print { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+    .card { break-inside: avoid; }
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start mb-4 no-print" data-testid="resumen-header">
+    <div>
+        <h1 class="page-title">Resumen Nocturno</h1>
+        <p class="page-subtitle">Citas para mañana y resto de la semana</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="bi bi-printer me-2"></i>Imprimir
+        </button>
+        <button class="btn btn-outline-secondary" onclick="compartir()">
+            <i class="bi bi-share me-2"></i>Compartir
+        </button>
+        <a href="{% url 'agenda_view' %}" class="btn btn-primary">
+            <i class="bi bi-calendar3 me-2"></i>Ver Agenda
+        </a>
+    </div>
+</div>
+
+<!-- Citas de mañana -->
+<div class="card mb-4" data-testid="citas-manana">
+    <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-4">
+            <div class="rounded-circle bg-primary text-white p-3 me-3">
+                <i class="bi bi-sun fs-4"></i>
+            </div>
+            <div>
+                <h4 class="mb-0 fw-bold">Mañana</h4>
+                <p class="mb-0 text-muted">{{ manana|date:"l d \d\e F" }}</p>
+            </div>
+            <span class="badge bg-primary rounded-pill ms-auto" style="font-size: 1rem;">{{ citas_manana.count }} cita{{ citas_manana.count|pluralize:"s" }}</span>
+        </div>
+        
+        {% if citas_manana %}
+        <div class="list-group list-group-flush">
+            {% for cita in citas_manana %}
+            <div class="list-group-item px-0 py-3 border-0 border-bottom">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="d-flex">
+                        <div class="text-center me-4" style="min-width: 60px;">
+                            <div class="fw-bold text-primary" style="font-size: 1.5rem;">{{ cita.hora_inicio|time:"H:i" }}</div>
+                            {% if cita.hora_fin %}<small class="text-muted">{{ cita.hora_fin|time:"H:i" }}</small>{% endif %}
+                        </div>
+                        <div>
+                            <h5 class="mb-1 fw-semibold">{{ cita.titulo }}</h5>
+                            <div class="d-flex gap-3 text-muted small">
+                                <span><i class="bi bi-tag me-1"></i>{{ cita.get_tipo_display }}</span>
+                                {% if cita.novia %}
+                                <span><i class="bi bi-person-heart me-1"></i>{{ cita.novia.nombre }}</span>
+                                {% endif %}
+                                {% if cita.telefono_cliente %}
+                                <span><i class="bi bi-telephone me-1"></i>{{ cita.telefono_cliente }}</span>
+                                {% endif %}
+                            </div>
+                            {% if cita.notas %}
+                            <p class="mb-0 mt-2 small text-muted"><i class="bi bi-sticky me-1"></i>{{ cita.notas }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if cita.cantidad_damas_esperadas > 0 %}
+                    <span class="badge bg-light text-dark">{{ cita.cantidad_damas_esperadas }} damas</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">
+            <i class="bi bi-calendar-check fs-1 d-block mb-3 opacity-50"></i>
+            <p>No hay citas agendadas para mañana</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Resto de la semana -->
+<div class="card" data-testid="citas-semana">
+    <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-4">
+            <div class="rounded-circle bg-secondary text-white p-3 me-3">
+                <i class="bi bi-calendar-week fs-4"></i>
+            </div>
+            <div>
+                <h4 class="mb-0 fw-bold">Resto de la Semana</h4>
+                <p class="mb-0 text-muted">Próximos 7 días</p>
+            </div>
+        </div>
+        
+        {% for fecha, citas in citas_por_dia.items %}
+        <div class="mb-4">
+            <div class="d-flex align-items-center mb-2">
+                <h6 class="mb-0 fw-bold text-muted">{{ fecha|date:"l d \d\e F" }}</h6>
+                <span class="badge bg-secondary rounded-pill ms-2">{{ citas|length }}</span>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for cita in citas %}
+                <div class="list-group-item px-3 py-2 bg-light" style="border-radius: 8px; margin-bottom: 4px;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-semibold me-2">{{ cita.hora_inicio|time:"H:i" }}</span>
+                            {{ cita.titulo }}
+                            {% if cita.novia %}
+                            <span class="text-muted">- {{ cita.novia.nombre }}</span>
+                            {% endif %}
+                        </div>
+                        <span class="badge {% if cita.tipo == 'PRUEBA' %}bg-warning{% elif cita.tipo == 'ENTREGA' %}bg-success{% elif cita.tipo == 'AJUSTE' %}bg-info{% else %}bg-primary{% endif %} rounded-pill">{{ cita.get_tipo_display }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-4 text-muted">
+            <i class="bi bi-calendar-x fs-1 d-block mb-3 opacity-50"></i>
+            <p>No hay citas agendadas para el resto de la semana</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Footer para impresión -->
+<div class="mt-4 text-center text-muted small">
+    <p>ByEasy POS - Adelé Boutique (Gdl) | Generado: {{ hoy|date:"d/m/Y H:i" }}</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function compartir() {
+    if (navigator.share) {
+        navigator.share({
+            title: 'Resumen de Citas - Adelé Boutique',
+            text: 'Citas para mañana y resto de la semana',
+            url: window.location.href
+        });
+    } else {
+        // Copiar URL al clipboard
+        navigator.clipboard.writeText(window.location.href);
+        alert('Enlace copiado al portapapeles');
+    }
+}
+</script>
+{% endblock %}

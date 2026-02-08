@@ -1,0 +1,354 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Detalle Novia - {{ novia.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'novias_list' %}">Novias</a></li>
+                <li class="breadcrumb-item active">{{ novia.nombre }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">{{ novia.nombre }}</h1>
+        <p class="page-subtitle"><i class="bi bi-calendar-heart me-2"></i>Boda: {{ novia.fecha_boda|date:"d F, Y" }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-danger" onclick="eliminarNovia({{ novia.id }})">
+            <i class="bi bi-trash"></i>
+        </button>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaDama">
+            <i class="bi bi-person-plus me-2"></i>Agregar Dama
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarNovia">
+            <i class="bi bi-pencil me-2"></i>Editar Perfil
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Resumen del Grupo -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-body">
+                <h5 class="heading mb-4">Resumen del Grupo</h5>
+
+                <div class="mb-4">
+                    <label class="text-muted small d-block mb-1">Total Pedidos</label>
+                    <div class="h3 fw-bold">{{ resumen.total }}</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="text-muted small d-block mb-1">Pagos Totales</label>
+                    <div class="d-flex justify-content-between align-items-end">
+                        <div class="h4 fw-bold text-success mb-0">${{ novia.total_pagado }}</div>
+                        <small class="text-muted">Pendiente: ${{ novia.total_pendiente }}</small>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="text-muted small d-block mb-2">Colores del Grupo</label>
+                    {% for col in resumen.colores %}
+                        <span class="badge bg-light text-dark border me-1 mb-1">{{ col }}</span>
+                    {% empty %}
+                        <span class="text-muted small italic">Sin definir</span>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="text-muted small d-block mb-2">Telas del Grupo</label>
+                    {% for tela in resumen.telas %}
+                        <span class="badge bg-light text-dark border me-1 mb-1">{{ tela }}</span>
+                    {% empty %}
+                        <span class="text-muted small italic">Sin definir</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Damas y Pedidos -->
+    <div class="col-md-8 mb-4">
+        <!-- Lista de Damas -->
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between">
+                <h5 class="heading mb-0">Damas del Grupo</h5>
+            </div>
+            <div class="card-body px-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr class="bg-light">
+                                <th class="ps-4">Nombre</th>
+                                <th>Info</th>
+                                <th>Modelo/Color</th>
+                                <th class="pe-4 text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in damas %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ d.nombre }}</td>
+                                <td class="small">{{ d.telefono|default:"-" }}<br>Talla: {{ d.talla|default:"-" }}</td>
+                                <td class="small">{{ d.modelo_especial|default:"-" }}<br>{{ d.color_especial|default:"" }}</td>
+                                <td class="pe-4 text-end">
+                                    <button class="btn btn-sm btn-link text-primary" onclick="generarPedido({{ d.id }}, false)">Pedido</button>
+                                    <button class="btn btn-sm btn-outline-danger border-0" onclick="eliminarDama({{ d.id }})">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-3 text-muted">No hay damas registradas</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pedidos y Apartados -->
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <h5 class="heading mb-0">Pedidos y Apartados</h5>
+            </div>
+
+            {% for p in pedidos %}
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm border-0" style="border-radius: 15px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="badge bg-primary-subtle text-primary mb-2" style="font-size: 0.7rem;">PEDIDO</span>
+                                <h6 class="fw-bold mb-0">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</h6>
+                                <small class="text-muted">{{ p.numero_ticket }}</small>
+                            </div>
+                            <span class="status-badge {% if p.estado == 'ENTREGADO' %}status-active{% else %}status-warning{% endif %}">
+                                {{ p.get_estado_display }}
+                            </span>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="small text-muted">{{ p.modelo.nombre|default:"Sin modelo" }}</div>
+                            <div class="small">{{ p.tela.nombre|default:"Sin tela" }} / {{ p.color.nombre|default:"-" }} / Talla: {{ p.talla|default:"-" }}</div>
+                        </div>
+
+                        <div class="row g-2 mb-3 bg-light p-3 rounded-3 mx-0">
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Total</small>
+                                <span class="fw-bold">${{ p.precio }}</span>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Pagado</small>
+                                <span class="fw-bold text-success">${{ p.total_pagado }}</span>
+                            </div>
+                            <div class="col-12 mt-2 pt-2 border-top">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Saldo Pendiente</small>
+                                <span class="h5 fw-bold text-danger mb-0">${{ p.saldo_pendiente }}</span>
+                            </div>
+                        </div>
+
+                        {% with last_pa=p.pagos_pedido.last %}
+                        {% if last_pa %}
+                        <div class="mb-3 small border-start ps-3 py-1" style="background: #fdfdfd;">
+                            <div class="text-muted" style="font-size: 0.7rem;">Último pago:</div>
+                            <div class="fw-medium">${{ last_pa.monto }} - {{ last_pa.get_metodo_display }}</div>
+                            <div class="text-muted" style="font-size: 0.7rem;">{{ last_pa.fecha|date:"d/m/Y" }}</div>
+                        </div>
+                        {% endif %}
+                        {% endwith %}
+
+                        <div class="d-flex gap-2 mt-auto">
+                            {% if p.saldo_pendiente > 0 %}
+                            <button class="btn btn-primary flex-grow-1 rounded-pill shadow-sm" onclick="abrirModalCobro('pedido', {{ p.id }}, '{{ p.saldo_pendiente|stringformat:".2f" }}', '{{ p.numero_ticket }}')">
+                                <i class="bi bi-cash-stack me-2"></i>Cobrar
+                            </button>
+                            {% endif %}
+
+                            <a href="{% url 'print_ticket_pdf' p.numero_ticket %}" target="_blank" class="btn btn-outline-secondary rounded-pill" title="Ticket">
+                                <i class="bi bi-printer"></i>
+                            </a>
+
+                            <button class="btn btn-outline-secondary rounded-pill" title="Medidas" onclick="openMedidasModal({{ p.id }})">
+                                <i class="bi bi-rulers"></i>
+                            </button>
+
+                            {% if p.saldo_pendiente <= 0 and p.estado != 'ENTREGADO' %}
+                            <button class="btn btn-success rounded-pill" title="Entregar" onclick="entregarItem('pedido', {{ p.id }})">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            {% for a in apartados_vinculados %}
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm border-0" style="border-radius: 15px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="badge bg-info-subtle text-info mb-2" style="font-size: 0.7rem;">APARTADO</span>
+                                <h6 class="fw-bold mb-0">{{ a.cliente_nombre }}</h6>
+                                <small class="text-muted">Independiente</small>
+                            </div>
+                            <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% else %}status-warning{% endif %}">
+                                {{ a.estado }}
+                            </span>
+                        </div>
+
+                        <div class="row g-2 mb-3 bg-light p-3 rounded-3 mx-0">
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Total</small>
+                                <span class="fw-bold">${{ a.total }}</span>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Pagado</small>
+                                <span class="fw-bold text-success">${{ a.anticipo }}</span>
+                            </div>
+                            <div class="col-12 mt-2 pt-2 border-top">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Saldo Pendiente</small>
+                                <span class="h5 fw-bold text-danger mb-0">${{ a.saldo }}</span>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-auto">
+                            {% if a.saldo > 0 %}
+                            <button class="btn btn-primary flex-grow-1 rounded-pill shadow-sm" onclick="abrirModalCobro('apartado', {{ a.id }}, '{{ a.saldo|stringformat:".2f" }}', 'Apartado {{ a.folio }}')">
+                                <i class="bi bi-cash-stack me-2"></i>Cobrar
+                            </button>
+                            {% endif %}
+
+                            {% if a.saldo <= 0 and a.estado != 'ENTREGADO' %}
+                            <button class="btn btn-success rounded-pill" title="Entregar" onclick="entregarItem('apartado', {{ a.id }})">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+
+<!-- MODAL MEDIDAS -->
+<div class="modal fade" id="modalMedidas" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Medidas</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="text-end mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="reutilizarMedidas()">Copiar anteriores</button>
+                </div>
+                <form id="formMedidas">
+                    <input type="hidden" id="medidas_pedido_id">
+                    <div class="row g-2">
+                        <div class="col-md-3 col-6"><label class="small">Busto</label><input type="number" step="0.1" name="busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cintura</label><input type="number" step="0.1" name="cintura" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cadera</label><input type="number" step="0.1" name="cadera" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro</label><input type="number" step="0.1" name="hombro" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Largo</label><input type="number" step="0.1" name="largo" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Brazo</label><input type="number" step="0.1" name="brazo" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Espalda</label><input type="number" step="0.1" name="espalda" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Talle Del.</label><input type="number" step="0.1" name="talle_delantero" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Talle Tras.</label><input type="number" step="0.1" name="talle_trasero" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Altura Busto</label><input type="number" step="0.1" name="altura_busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Sep. Busto</label><input type="number" step="0.1" name="separacion_busto" class="form-control form-control-sm"></div>
+                        <div class="col-12"><label class="small">Notas</label><textarea name="observaciones" class="form-control form-control-sm"></textarea></div>
+                    </div>
+                    <div class="text-end mt-4"><button type="submit" class="btn btn-primary rounded-pill px-5">Guardar</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Dama -->
+<div class="modal fade" id="modalNuevaDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Agregar Dama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevaDama">
+                    <div class="mb-3"><label class="form-label">Nombre</label><input type="text" name="nombre" class="form-control" required></div>
+                    <div class="mb-3"><label class="form-label">Talla Base</label><select name="talla" class="form-select"><option value="M">M</option><option value="XS">XS</option><option value="S">S</option><option value="L">L</option><option value="XL">XL</option><option value="2XL">2XL</option><option value="U">Unitalla</option></select></div>
+                    <div class="text-end"><button type="submit" class="btn btn-primary rounded-pill px-4">Guardar</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openMedidasModal(pedidoId) {
+        document.getElementById('medidas_pedido_id').value = pedidoId;
+        new bootstrap.Modal(document.getElementById('modalMedidas')).show();
+    }
+    async function reutilizarMedidas() {
+        const res = await fetch(`/api/pedido/${document.getElementById('medidas_pedido_id').value}/medidas/reutilizar/`);
+        if(res.ok) {
+            const data = await res.json();
+            const form = document.getElementById('formMedidas');
+            for (const [key, val] of Object.entries(data.medidas)) {
+                const input = form.querySelector(`[name="${key}"]`);
+                if(input) input.value = val;
+            }
+        }
+    }
+    document.getElementById('formMedidas').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        await fetch(`/api/pedido/${document.getElementById('medidas_pedido_id').value}/medidas/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify(data)
+        });
+        alert('Medidas guardadas');
+        bootstrap.Modal.getInstance(document.getElementById('modalMedidas')).hide();
+    });
+    async function entregarItem(tipo, id) {
+        if(!confirm('¿Confirmar entrega?')) return;
+        const res = await fetch(`/api/entregar/${tipo}/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } });
+        if(res.ok) location.reload();
+    }
+    document.getElementById('formNuevaDama').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        await fetch('{% url "api_agregar_dama" novia.id %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(data) });
+        location.reload();
+    });
+    async function generarPedido(damaId, esNovia) {
+        const precio = prompt('Precio:', '0');
+        if (precio === null) return;
+        await fetch('/api/pedido/crear/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify({ novia_id: {{ novia.id }}, dama_id: damaId, es_vestido_novia: esNovia, precio: parseFloat(precio) || 0 }) });
+        location.reload();
+    }
+    async function eliminarNovia(id) {
+        if (!confirm('¿Eliminar novia?')) return;
+        await fetch(`/api/novia/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });
+        window.location.href = "{% url 'novias_list' %}";
+    }
+    async function eliminarDama(id) {
+        if (!confirm('¿Quitar dama?')) return;
+        await fetch(`/api/dama/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });
+        location.reload();
+    }
+</script>
+{% endblock %}

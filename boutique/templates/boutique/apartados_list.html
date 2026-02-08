@@ -1,0 +1,88 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Apartados - Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">Apartados Globales</h1>
+        <p class="page-subtitle">Gestión de apartados independientes y vinculados</p>
+    </div>
+</div>
+
+<!-- Buscador -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{% url 'lista_apartados' %}" class="d-flex gap-2">
+            <input type="text" name="q" class="form-control" placeholder="Buscar por folio, cliente o teléfono..." value="{{ q }}">
+            <button type="submit" class="btn btn-primary px-4">Buscar</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Cliente</th>
+                    <th>Total</th>
+                    <th>Pagado</th>
+                    <th>Saldo</th>
+                    <th>Estado</th>
+                    <th>Fecha Límite</th>
+                    <th>Novia</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in apartados %}
+                <tr>
+                    <td><span class="fw-bold">{{ a.folio }}</span></td>
+                    <td>
+                        <div>{{ a.cliente_nombre }}</div>
+                        <small class="text-muted">{{ a.cliente_telefono }}</small>
+                    </td>
+                    <td>${{ a.total }}</td>
+                    <td class="text-success">${{ a.anticipo }}</td>
+                    <td class="text-danger fw-bold">${{ a.saldo }}</td>
+                    <td>
+                        <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% elif a.estado == 'CANCELADO' %}status-error{% else %}status-warning{% endif %}">
+                            {{ a.get_estado_display }}
+                        </span>
+                    </td>
+                    <td>{{ a.fecha_vencimiento|date:"d/m/Y"|default:"-" }}</td>
+                    <td>
+                        {% if a.novia %}
+                            <a href="{% url 'novia_detalle' a.novia.id %}" class="small">{{ a.novia.nombre }}</a>
+                        {% else %}
+                            <span class="text-muted small">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            {% if a.saldo > 0 %}
+                            <button class="btn btn-sm btn-primary" onclick="abrirModalCobro('apartado', {{ a.id }}, {{ a.saldo }}, '{{ a.folio }}')">
+                                Cobrar
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ a.folio }}')">
+                                <i class="bi bi-printer"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="text-center py-5">No hay apartados registrados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+
+{% endblock %}
