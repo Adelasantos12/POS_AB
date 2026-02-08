@@ -184,7 +184,17 @@
                     <div class="row">
                         <div class="col-4 mb-3">
                             <label class="form-label small fw-bold">Talla</label>
-                            <input type="text" name="talla" class="form-control" placeholder="U" required>
+                            <select name="talla" class="form-select" required>
+                                <option value="XS">XS</option>
+                                <option value="S">S</option>
+                                <option value="M" selected>M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="2XL">2XL</option>
+                                <option value="3XL">3XL</option>
+                                <option value="4XL">4XL</option>
+                                <option value="U">Unitalla</option>
+                            </select>
                         </div>
                         <div class="col-4 mb-3">
                             <label class="form-label small fw-bold">Precio</label>
@@ -195,13 +205,19 @@
                             <input type="number" name="stock" class="form-control" value="1" required>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Estado</label>
-                        <select name="estado" class="form-select">
-                            <option value="TIENDA">En Tienda</option>
-                            <option value="APARTADO">Apartado</option>
-                            <option value="PEDIDO">Sobre Pedido</option>
-                        </select>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-bold">Estado</label>
+                            <select name="estado" class="form-select">
+                                <option value="TIENDA">En Tienda</option>
+                                <option value="APARTADO">Apartado</option>
+                                <option value="PEDIDO">Sobre Pedido</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-bold">Talla Especial</label>
+                            <input type="text" name="talla_especial" class="form-control" placeholder="Opcional">
+                        </div>
                     </div>
                 </form>
             </div>

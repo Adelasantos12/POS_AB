@@ -5,17 +5,23 @@ from django.views.decorators.http import require_POST
 from django.db import transaction
 from .models import Apartado, ApartadoItem, Ticket, Producto, ConfiguracionTienda
 from .middleware import profile_permission_required
+from .services.payment_service import registrar_pago_apartado
 import json
 from decimal import Decimal
 
 @login_required
-@profile_permission_required(['Vendedor', 'Caja'])
+@profile_permission_required(['Vendedor', 'Caja', 'Admin', 'CEO'])
 def lista_apartados(request):
     """Vista de lista de apartados independientes"""
     q = request.GET.get('q', '')
     apartados = Apartado.objects.all().order_by('-fecha_creacion')
     if q:
-        apartados = apartados.filter(cliente_nombre__icontains=q)
+        from django.db.models import Q
+        apartados = apartados.filter(
+            Q(cliente_nombre__icontains=q) |
+            Q(folio__icontains=q) |
+            Q(cliente_telefono__icontains=q)
+        )
     return render(request, 'boutique/apartados_list.html', {'apartados': apartados, 'q': q})
 
 @require_POST
@@ -70,6 +76,24 @@ def api_crear_apartado(request):
             ticket.populate_from_obj(apartado)
 
         return JsonResponse({'status': 'ok', 'id': apartado.id, 'folio': ticket.folio})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@require_POST
+@login_required
+@profile_permission_required(['Vendedor', 'Caja', 'Admin', 'CEO'])
+def api_apartado_editar(request, pk):
+    """API para editar datos básicos de un apartado"""
+    apartado = get_object_or_404(Apartado, pk=pk)
+    try:
+        data = json.loads(request.body)
+        apartado.cliente_nombre = data.get('cliente_nombre', apartado.cliente_nombre)
+        apartado.cliente_telefono = data.get('cliente_telefono', apartado.cliente_telefono)
+        apartado.notas = data.get('notas', apartado.notas)
+        if data.get('fecha_vencimiento'):
+            apartado.fecha_vencimiento = data.get('fecha_vencimiento')
+        apartado.save()
+        return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 

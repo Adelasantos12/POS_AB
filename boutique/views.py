@@ -628,6 +628,7 @@ def api_crear_producto_rapido(request):
             rasgo1=data.get('rasgo1', ''),
             rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
+            talla_especial=data.get('talla_especial', ''),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
             cantidad_actual=int(data.get('stock', 1))
@@ -1757,3 +1758,119 @@ def api_ticket_detalle(request, folio):
             'items': ticket.snapshot_json.get('items', []) if ticket.snapshot_json else []
         }
     })
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_cobrar_item(request, tipo, pk):
+    """
+    Endpoint unificado para cobrar Pedidos o Apartados.
+    """
+    from .services.payment_service import registrar_pago_pedido, registrar_pago_apartado
+    from .models import Pedido, Apartado
+
+    try:
+        data = json.loads(request.body)
+        monto = Decimal(str(data.get('monto', 0)))
+        metodo = data.get('metodo', 'EFECTIVO')
+        referencia = data.get('referencia', '')
+        notas = data.get('notas', '')
+
+        if monto <= 0:
+            return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
+
+        if tipo == 'pedido':
+            item = get_object_or_404(Pedido, pk=pk)
+            ticket = registrar_pago_pedido(item, monto, metodo, request.user, notas, referencia)
+        elif tipo == 'apartado':
+            item = get_object_or_404(Apartado, pk=pk)
+            ticket = registrar_pago_apartado(item, monto, metodo, request.user, notas, referencia)
+        else:
+            return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
+        return JsonResponse({
+            'status': 'ok',
+            'ticket_folio': ticket.folio,
+            'ticket_print_url': f"/tickets/reimprimir/{ticket.folio}/"
+        })
+    except Exception as e:
+        logger.exception("Error en api_cobrar_item")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_guardar_medidas(request, pedido_id):
+    """Guarda o actualiza medidas asociadas a un pedido"""
+    from .models import Medidas, Pedido
+    pedido = get_object_or_404(Pedido, pk=pedido_id)
+    try:
+        data = json.loads(request.body)
+        medidas, _ = Medidas.objects.get_or_create(pedido=pedido)
+
+        for field in ['busto', 'cintura', 'cadera', 'hombro', 'largo', 'brazo', 'espalda',
+                      'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']:
+            if field in data:
+                val = data.get(field)
+                setattr(medidas, field, Decimal(str(val)) if val and val != '' else None)
+
+        medidas.observaciones = data.get('observaciones', '')
+        if pedido.novia:
+            medidas.cliente_nombre = pedido.novia.nombre
+
+        medidas.save()
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_obtener_medidas_reutilizar(request, pedido_id):
+    """Busca medidas previas de la misma novia/dama para copiar"""
+    from .models import Pedido
+    pedido = get_object_or_404(Pedido, pk=pedido_id)
+    prev_pedido = None
+    if pedido.dama:
+        prev_pedido = Pedido.objects.filter(dama=pedido.dama).exclude(pk=pedido.pk).order_by('-id').first()
+    elif pedido.novia:
+        prev_pedido = Pedido.objects.filter(novia=pedido.novia, dama__isnull=True).exclude(pk=pedido.pk).order_by('-id').first()
+
+    if prev_pedido and hasattr(prev_pedido, 'medidas'):
+        m = prev_pedido.medidas
+        data = {
+            'busto': float(m.busto) if m.busto else None,
+            'cintura': float(m.cintura) if m.cintura else None,
+            'cadera': float(m.cadera) if m.cadera else None,
+            'hombro': float(m.hombro) if m.hombro else None,
+            'largo': float(m.largo) if m.largo else None,
+            'brazo': float(m.brazo) if m.brazo else None,
+            'espalda': float(m.espalda) if m.espalda else None,
+            'talle_delantero': float(m.talle_delantero) if m.talle_delantero else None,
+            'talle_trasero': float(m.talle_trasero) if m.talle_trasero else None,
+            'altura_busto': float(m.altura_busto) if m.altura_busto else None,
+            'separacion_busto': float(m.separacion_busto) if m.separacion_busto else None,
+            'observaciones': m.observaciones
+        }
+        return JsonResponse({'medidas': data})
+
+    return JsonResponse({'status': 'error', 'message': 'No se encontraron medidas previas'}, status=404)
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_entregar_item(request, tipo, pk):
+    """Marca un Pedido o Apartado como ENTREGADO."""
+    from .models import Pedido, Apartado
+    if tipo == 'pedido':
+        item = get_object_or_404(Pedido, pk=pk)
+        saldo = item.saldo_pendiente
+    else:
+        item = get_object_or_404(Apartado, pk=pk)
+        saldo = item.saldo
+
+    if saldo > 0:
+        return JsonResponse({'status': 'error', 'message': 'No se puede entregar con saldo pendiente'}, status=400)
+
+    item.estado = 'ENTREGADO'
+    item.save()
+    return JsonResponse({'status': 'ok'})

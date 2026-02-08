@@ -98,6 +98,34 @@ class Tela(models.Model):
         return self.nombre
 
 
+class Medidas(models.Model):
+    """Medidas detalladas del cliente (en cm)"""
+    pedido = models.OneToOneField('Pedido', on_delete=models.CASCADE, related_name='medidas', null=True, blank=True)
+    cliente = models.ForeignKey('Cliente', on_delete=models.CASCADE, related_name='medidas_historicas', null=True, blank=True)
+
+    # Datos snapshot o para reuso
+    cliente_nombre = models.CharField(max_length=200, blank=True)
+
+    # Medidas en cm
+    busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    cintura = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    cadera = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    hombro = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    largo = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    brazo = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    espalda = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    talle_delantero = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    talle_trasero = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    altura_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    separacion_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    observaciones = models.TextField(blank=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Medidas {self.cliente_nombre or (self.pedido.numero_ticket if self.pedido else 'S/N')}"
+
+
 class Color(models.Model):
     """Catálogo de colores con muestra visual"""
     nombre = models.CharField(max_length=100, unique=True)
@@ -119,12 +147,17 @@ class Producto(models.Model):
         ('APARTADO', 'Apartado'),
         ('PEDIDO', 'Sobre Pedido'),
     ]
+    TALLAS = [
+        ('XS', 'XS'), ('S', 'S'), ('M', 'M'), ('L', 'L'),
+        ('XL', 'XL'), ('2XL', '2XL'), ('3XL', '3XL'), ('4XL', '4XL'), ('U', 'Unitalla')
+    ]
     sku = models.CharField(max_length=100, unique=True, blank=True)
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT)
     modelo = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True)
     tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
     color = models.ForeignKey(Color, on_delete=models.PROTECT)
-    talla = models.CharField(max_length=10)
+    talla = models.CharField(max_length=10, choices=TALLAS, default='M')
+    talla_especial = models.CharField(max_length=50, blank=True, help_text="Para casos no estándar")
     precio_venta = models.DecimalField(max_digits=10, decimal_places=2)
     cantidad_actual = models.PositiveIntegerField(default=0)
     stock_teorico = models.IntegerField(default=0)
@@ -299,19 +332,28 @@ class Ticket(models.Model):
         items_data = []
         if hasattr(obj, 'items'):
             for item in obj.items.all():
-                desc = str(item.producto) if hasattr(item, 'producto') and item.producto else item.descripcion
+                desc = str(item.producto) if hasattr(item, 'producto') and item.producto else getattr(item, 'descripcion', 'Sin descripción')
                 items_data.append({
                     'descripcion': desc,
+                    'modelo': getattr(item, 'modelo', ''),
+                    'color': getattr(item, 'color', ''),
+                    'talla': getattr(item, 'talla', ''),
                     'cantidad': item.cantidad,
                     'precio_unitario': float(item.precio_unitario),
                     'subtotal': float(item.subtotal if hasattr(item, 'subtotal') else item.cantidad * item.precio_unitario)
                 })
 
+        # Datos de pago si es abono
+        pago_actual = float(getattr(obj, 'monto_abono', 0)) # Si viene de un servicio que lo inyecta
+
         snapshot = {
             'folio': self.folio,
+            'tipo': self.tipo,
             'fecha': self.fecha_hora.isoformat(),
             'cliente': self.cliente_nombre,
             'total': float(self.total),
+            'total_pagado': float(self.total_pagado),
+            'saldo_pendiente': float(self.total - self.total_pagado),
             'items': items_data
         }
         self.snapshot_json = snapshot
@@ -448,6 +490,7 @@ class Apartado(models.Model):
         ('ENTREGADO', 'Entregado'),
     ]
 
+    folio = models.CharField(max_length=30, unique=True, blank=True)
     cliente_nombre = models.CharField(max_length=200)
     cliente_telefono = models.CharField(max_length=20)
     notas = models.TextField(blank=True)
@@ -466,10 +509,17 @@ class Apartado(models.Model):
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados')
 
     def save(self, *args, **kwargs):
+        if not self.folio:
+            today_str = timezone.now().strftime('%Y%m%d')
+            prefix = "AP"
+            # Conteo simple para el consecutivo del día
+            count = Apartado.objects.filter(fecha_creacion__date=timezone.now().date()).count() + 1
+            self.folio = f"{prefix}-{today_str}-{count:04d}"
+
         self.saldo = self.total - self.anticipo
         super().save(*args, **kwargs)
 
-    def __str__(self): return f"Apartado {self.cliente_nombre} - {self.estado}"
+    def __str__(self): return f"{self.folio} - {self.cliente_nombre}"
 
 class ApartadoItem(models.Model):
     apartado = models.ForeignKey(Apartado, related_name='items', on_delete=models.CASCADE)
@@ -778,6 +828,32 @@ class Pedido(models.Model):
         return self.saldo_pendiente <= 0
 
 
+class PagoApartado(models.Model):
+    """Pagos asociados a un apartado independiente"""
+    METODOS = [
+        ('EFECTIVO', 'Efectivo'),
+        ('TARJETA', 'Tarjeta'),
+        ('TRANSFERENCIA', 'Transferencia'),
+    ]
+    apartado = models.ForeignKey('Apartado', on_delete=models.CASCADE, related_name='pagos_apartado')
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo = models.CharField(max_length=20, choices=METODOS, default='EFECTIVO')
+    referencia = models.CharField(max_length=100, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    registrado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    notas = models.CharField(max_length=200, blank=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Actualizar anticipo del apartado
+        apartado = self.apartado
+        apartado.anticipo = sum(p.monto for p in apartado.pagos_apartado.all())
+        apartado.save()
+
+    def __str__(self):
+        return f"${self.monto} - Apartado {self.apartado.id}"
+
+
 class PagoPedido(models.Model):
     """Pagos asociados a un pedido"""
     METODOS = [
@@ -789,6 +865,7 @@ class PagoPedido(models.Model):
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='pagos_pedido')
     monto = models.DecimalField(max_digits=10, decimal_places=2)
     metodo = models.CharField(max_length=20, choices=METODOS, default='EFECTIVO')
+    referencia = models.CharField(max_length=100, blank=True)
     fecha = models.DateTimeField(auto_now_add=True)
     registrado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     notas = models.CharField(max_length=200, blank=True)

@@ -69,10 +69,14 @@ Si no estás seguro de un campo según el catálogo, devuelve null. Responde ÚN
         logger.error(f"Error extraendo atributos con Gemini: {e}")
         return None
 
+import time
+
 def analyze_product_image(image_data):
     """
     Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos normalizados al catálogo.
     """
+    start_time = time.time()
+    logger.info("AI Analysis: Starting image analysis with Gemini Vision")
     from .models import Categoria, Color, Tela
 
     # Obtener valores del catálogo para normalización
@@ -118,6 +122,9 @@ Responde ÚNICAMENTE el JSON."""
             prompt,
             {'mime_type': 'image/jpeg', 'data': image_data}
         ])
+        duration = time.time() - start_time
+        logger.info(f"AI Analysis: Gemini Vision response received in {duration:.2f}s")
+
         text = response.text.strip()
         if text.startswith('```json'):
             text = text[7:-3].strip()
@@ -126,7 +133,8 @@ Responde ÚNICAMENTE el JSON."""
 
         return json.loads(text)
     except Exception as e:
-        logger.error(f"Error analizando imagen con Gemini: {e}")
+        duration = time.time() - start_time
+        logger.error(f"AI Analysis: Error after {duration:.2f}s: {e}")
         return None
 
 def analyze_duplicate_ai(new_product, existing_products):

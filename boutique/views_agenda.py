@@ -506,6 +506,10 @@ def novia_detalle(request, pk):
     pedidos = novia.pedidos.all().order_by('-fecha_creacion')
     citas = novia.citas.all().order_by('fecha', 'hora_inicio')
     
+    # Apartados vinculados
+    from boutique.models import Apartado
+    apartados_vinculados = Apartado.objects.filter(novia=novia).order_by('-fecha_creacion')
+
     # Resumen del grupo
     resumen = novia.resumen_grupo
     
@@ -514,7 +518,8 @@ def novia_detalle(request, pk):
         'damas': damas,
         'pedidos': pedidos,
         'citas': citas,
-        'resumen': resumen
+        'resumen': resumen,
+        'apartados_vinculados': apartados_vinculados
     })
 
 
