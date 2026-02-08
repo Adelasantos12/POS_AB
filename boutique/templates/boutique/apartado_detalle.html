@@ -1,0 +1,102 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Detalle Apartado - ByEasy POS{% endblock %}
+
+{% block content %}
+<div class="page-header mb-4">
+    <a href="{% url 'lista_apartados' %}" class="btn btn-sm btn-outline-secondary mb-2 rounded-pill">
+        <i class="bi bi-arrow-left me-1"></i>Volver
+    </a>
+    <h1 class="page-title">{{ apartado.cliente_nombre }}</h1>
+    <p class="page-subtitle">Folio: {{ apartado.tickets_asociados.first.folio|default:"S/N" }}</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm mb-4" style="border-radius: 16px;">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-3">Ítems Apartados</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Descripción</th>
+                                <th class="text-center">Cant.</th>
+                                <th class="text-end">Precio</th>
+                                <th class="text-end">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in apartado.items.all %}
+                            <tr>
+                                <td>
+                                    <div>{{ item.descripcion }}</div>
+                                    <small class="text-muted">{{ item.modelo }} | {{ item.color }} | Talla {{ item.talla }}</small>
+                                </td>
+                                <td class="text-center">{{ item.cantidad }}</td>
+                                <td class="text-end">${{ item.precio_unitario }}</td>
+                                <td class="text-end">${{ item.subtotal }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm" style="border-radius: 16px;">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-4">Resumen de Cuenta</h5>
+
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Total</span>
+                    <span class="fw-bold h5">${{ apartado.total }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2 text-success">
+                    <span>Anticipo</span>
+                    <span>-${{ apartado.anticipo }}</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between mb-4">
+                    <span class="h5 fw-bold">Saldo Pendiente</span>
+                    <span class="h5 text-danger fw-bold">${{ apartado.saldo }}</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="small text-muted d-block mb-1">Estado</label>
+                    <span class="badge rounded-pill {% if apartado.estado == 'VIGENTE' %}bg-success{% else %}bg-secondary{% endif %}">
+                        {{ apartado.estado }}
+                    </span>
+                </div>
+
+                {% if apartado.saldo > 0 %}
+                <button class="btn btn-primary w-100 py-2 rounded-pill" onclick="liquidarApartado()">
+                    Liquidar Apartado
+                </button>
+                {% endif %}
+
+                <button class="btn btn-outline-secondary w-100 mt-2 py-2 rounded-pill" onclick="imprimirTicket()">
+                    <i class="bi bi-printer me-2"></i>Imprimir Ticket
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function liquidarApartado() {
+        alert('Funcionalidad de liquidación en desarrollo para apartados independientes.');
+    }
+
+    function imprimirTicket() {
+        const folio = '{{ apartado.tickets_asociados.first.folio }}';
+        if (folio) {
+            window.open(`/api/tickets/${folio}/print/`, '_blank');
+        } else {
+            alert('No hay ticket asociado.');
+        }
+    }
+</script>
+{% endblock %}

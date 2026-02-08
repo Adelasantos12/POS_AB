@@ -1,0 +1,452 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Detalle Novia - {{ novia.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'novias_list' %}">Novias</a></li>
+                <li class="breadcrumb-item active">{{ novia.nombre }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">{{ novia.nombre }}</h1>
+        <p class="page-subtitle"><i class="bi bi-calendar-heart me-2"></i>Boda: {{ novia.fecha_boda|date:"d F, Y" }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-danger" onclick="eliminarNovia({{ novia.id }})">
+            <i class="bi bi-trash"></i>
+        </button>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaDama">
+            <i class="bi bi-person-plus me-2"></i>Agregar Dama
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarNovia">
+            <i class="bi bi-pencil me-2"></i>Editar Perfil
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Resumen del Grupo -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="heading mb-4">Resumen del Grupo</h5>
+
+                <div class="mb-4">
+                    <label class="text-muted small d-block mb-1">Total Pedidos</label>
+                    <div class="h3 fw-bold">{{ resumen.total }}</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="text-muted small d-block mb-1">Pagos Totales</label>
+                    <div class="d-flex justify-content-between align-items-end">
+                        <div class="h4 fw-bold text-success mb-0">${{ novia.total_pagado }}</div>
+                        <small class="text-muted">Pendiente: ${{ novia.total_pendiente }}</small>
+                    </div>
+                    <div class="progress mt-2" style="height: 8px;">
+                        {% widthratio novia.total_pagado novia.total_pedidos 1 as pct %}
+                        <div class="progress-bar bg-success" style="width: 50%;"></div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="text-muted small d-block mb-2">Colores del Grupo</label>
+                    {% for col in resumen.colores %}
+                        <span class="badge bg-light text-dark border me-1 mb-1">{{ col }}</span>
+                    {% empty %}
+                        <span class="text-muted small italic">Sin definir</span>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="text-muted small d-block mb-2">Telas del Grupo</label>
+                    {% for tela in resumen.telas %}
+                        <span class="badge bg-light text-dark border me-1 mb-1">{{ tela }}</span>
+                    {% empty %}
+                        <span class="text-muted small italic">Sin definir</span>
+                    {% endfor %}
+                </div>
+
+                <hr>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <label class="text-muted small d-block mb-0">Hechura Especial (Novia)</label>
+                        <button class="btn btn-sm btn-link p-0 text-primary" onclick="generarPedido(null, true)">Generar Pedido</button>
+                    </div>
+                    {% if novia.modelo_especial %}
+                        <div class="small fw-bold">{{ novia.modelo_especial }}</div>
+                        <div class="small text-muted">{{ novia.color_especial }} / {{ novia.tela_especial }}</div>
+                        {% if novia.talla_especial %}<div class="small">Talla: {{ novia.talla_especial }}</div>{% endif %}
+                    {% else %}
+                        <div class="small italic text-muted">No especificado</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Damas y Pedidos -->
+    <div class="col-md-8 mb-4">
+        <!-- Lista de Damas -->
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between">
+                <h5 class="heading mb-0">Damas del Grupo</h5>
+            </div>
+            <div class="card-body px-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr class="bg-light">
+                                <th class="ps-4">Nombre</th>
+                                <th>Info</th>
+                                <th>Modelo/Color</th>
+                                <th class="pe-4 text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in damas %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ d.nombre }}</td>
+                                <td class="small">{{ d.telefono|default:"-" }}<br>Talla: {{ d.talla|default:"-" }}</td>
+                                <td class="small">{{ d.modelo_especial|default:"-" }}<br>{{ d.color_especial|default:"" }}</td>
+                                <td class="pe-4 text-end">
+                                    <button class="btn btn-sm btn-link text-primary" onclick="generarPedido({{ d.id }}, false)">Pedido</button>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditDama({{ d.id }}, '{{ d.nombre }}', '{{ d.telefono }}', '{{ d.talla }}', '{{ d.modelo_especial }}', '{{ d.color_especial }}', '{{ d.tela_especial }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger border-0" onclick="eliminarDama({{ d.id }})">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-3 text-muted">No hay damas registradas</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="heading mb-0">Pedidos del Grupo</h5>
+            </div>
+            <div class="card-body px-0">
+                <div class="table-responsive">
+                    <table class="table mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Beneficiaria</th>
+                                <th>Ticket</th>
+                                <th>Modelo/Tela</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th class="pe-4"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in pedidos %}
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="fw-bold">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</div>
+                                </td>
+                                <td><small class="text-muted">{{ p.numero_ticket }}</small></td>
+                                <td>
+                                    <div>{{ p.modelo.nombre|default:"Sin modelo" }}</div>
+                                    <small class="text-muted">{{ p.tela.nombre|default:"Sin tela" }}</small>
+                                </td>
+                                <td>
+                                    <div class="fw-bold">${{ p.precio }}</div>
+                                    <small class="{% if p.esta_pagado %}text-success{% else %}text-danger{% endif %}">
+                                        {{ p.get_estado_pago_display }}
+                                    </small>
+                                </td>
+                                <td>
+                                    <span class="status-badge {% if p.estado == 'ENTREGADO' %}status-active{% else %}status-warning{% endif %}">
+                                        {{ p.get_estado_display }}
+                                    </span>
+                                </td>
+                                <td class="pe-4 text-end">
+                                    <button class="btn btn-sm btn-light"><i class="bi bi-eye"></i></button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="6" class="text-center py-4 text-muted">No hay pedidos registrados</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Citas Próximas -->
+        <div class="card">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="heading mb-0">Citas y Pruebas</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% for cita in citas %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <div>
+                            <div class="fw-bold">{{ cita.titulo }}</div>
+                            <small class="text-muted">{{ cita.fecha|date:"d M" }} @ {{ cita.hora_inicio|time:"H:i" }}</small>
+                        </div>
+                        <span class="badge {% if cita.completada %}bg-success{% else %}bg-primary{% endif %} rounded-pill">
+                            {{ cita.get_tipo_display }}
+                        </span>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted small">No hay citas agendadas</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Dama -->
+<div class="modal fade" id="modalNuevaDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Agregar Dama al Grupo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevaDama">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre de la Dama</label>
+                        <input type="text" name="nombre" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" name="telefono" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Talla / Medidas</label>
+                        <input type="text" name="talla" class="form-control">
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Detalles Hechura Especial (Opcional)</label>
+                        <input type="text" name="modelo_especial" class="form-control form-control-sm mb-2" placeholder="Modelo específico">
+                        <input type="text" name="color_especial" class="form-control form-control-sm mb-2" placeholder="Color específico">
+                        <input type="text" name="tela_especial" class="form-control form-control-sm" placeholder="Tela específica">
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">Guardar Dama</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Novia -->
+<div class="modal fade" id="modalEditarNovia" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Perfil de Novia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarNovia">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <input type="text" name="nombre" class="form-control" value="{{ novia.nombre }}" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Fecha Boda</label>
+                            <input type="date" name="fecha_boda" class="form-control" value="{{ novia.fecha_boda|date:'Y-m-d' }}" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" name="telefono" class="form-control" value="{{ novia.telefono }}">
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Detalles del Vestido (Hechura Especial)</label>
+                        <div class="row g-2">
+                            <div class="col-6"><input type="text" name="modelo_especial" class="form-control form-control-sm" placeholder="Modelo" value="{{ novia.modelo_especial }}"></div>
+                            <div class="col-6"><input type="text" name="color_especial" class="form-control form-control-sm" placeholder="Color" value="{{ novia.color_especial }}"></div>
+                            <div class="col-6"><input type="text" name="tela_especial" class="form-control form-control-sm" placeholder="Tela" value="{{ novia.tela_especial }}"></div>
+                            <div class="col-6"><input type="text" name="talla_especial" class="form-control form-control-sm" placeholder="Talla" value="{{ novia.talla_especial }}"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notas Generales</label>
+                        <textarea name="notas" class="form-control" rows="3">{{ novia.notas }}</textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">Actualizar Perfil</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('formNuevaDama').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+
+    const response = await fetch('{% url "api_agregar_dama" novia.id %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (response.ok) location.reload();
+});
+
+document.getElementById('formEditarNovia').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+
+    const response = await fetch('/api/novia/{{ novia.id }}/editar/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (response.ok) location.reload();
+    else alert('Error al actualizar');
+});
+
+async function eliminarNovia(id) {
+    if (!confirm('¿Seguro que deseas eliminar el perfil de esta novia?')) return;
+    const res = await fetch(`/api/novia/${id}/eliminar/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    });
+    if (res.ok) window.location.href = "{% url 'novias_list' %}";
+}
+
+async function eliminarDama(id) {
+    if (!confirm('¿Quitar dama del grupo?')) return;
+    const res = await fetch(`/api/dama/${id}/eliminar/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    });
+    if (res.ok) location.reload();
+}
+
+function openEditDama(id, nombre, tel, talla, mod, col, tela) {
+    // Podría usar otro modal o el mismo adaptado. Por brevedad, adaptaré un modal dinámico si fuera necesario.
+    // Pero implementaré el modal de edición de dama aquí.
+    document.getElementById('edit_dama_id').value = id;
+    document.getElementById('edit_dama_nombre').value = nombre;
+    document.getElementById('edit_dama_telefono').value = tel;
+    document.getElementById('edit_dama_talla').value = talla;
+    document.getElementById('edit_dama_modelo').value = mod;
+    document.getElementById('edit_dama_color').value = col;
+    document.getElementById('edit_dama_tela').value = tela;
+    new bootstrap.Modal(document.getElementById('modalEditarDama')).show();
+}
+
+async function saveEditDama() {
+    const id = document.getElementById('edit_dama_id').value;
+    const data = {
+        nombre: document.getElementById('edit_dama_nombre').value,
+        telefono: document.getElementById('edit_dama_telefono').value,
+        talla: document.getElementById('edit_dama_talla').value,
+        modelo_especial: document.getElementById('edit_dama_modelo').value,
+        color_especial: document.getElementById('edit_dama_color').value,
+        tela_especial: document.getElementById('edit_dama_tela').value
+    };
+    const res = await fetch(`/api/dama/${id}/editar/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+    if (res.ok) location.reload();
+}
+
+async function generarPedido(damaId, esNovia) {
+    const precio = prompt('Ingrese el precio del pedido:', '0');
+    if (precio === null) return;
+
+    const data = {
+        novia_id: {{ novia.id }},
+        dama_id: damaId,
+        es_vestido_novia: esNovia,
+        precio: parseFloat(precio) || 0
+    };
+
+    const res = await fetch('/api/pedido/crear/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    });
+
+    if (res.ok) {
+        const json = await res.json();
+        alert('Pedido generado: ' + json.ticket);
+        location.reload();
+    }
+}
+</script>
+
+<!-- Modal Editar Dama -->
+<div class="modal fade" id="modalEditarDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Dama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_dama_id">
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" id="edit_dama_nombre" class="form-control">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" id="edit_dama_telefono" class="form-control">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Talla</label>
+                        <input type="text" id="edit_dama_talla" class="form-control">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Hechura Especial</label>
+                    <input type="text" id="edit_dama_modelo" class="form-control form-control-sm mb-2" placeholder="Modelo">
+                    <input type="text" id="edit_dama_color" class="form-control form-control-sm mb-2" placeholder="Color">
+                    <input type="text" id="edit_dama_tela" class="form-control form-control-sm" placeholder="Tela">
+                </div>
+                <div class="text-end">
+                    <button type="button" class="btn btn-primary rounded-pill px-4" onclick="saveEditDama()">Guardar Cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
