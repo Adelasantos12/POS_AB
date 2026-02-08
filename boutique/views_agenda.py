@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Sum, Count
 from django.utils import timezone
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 import json
 import calendar
 from django.conf import settings
@@ -479,9 +480,9 @@ def api_citas_rango(request):
 
 @profile_permission_required(['Agenda', 'Vendedor'])
 def novias_list(request):
-    """Lista de todas las novias"""
+    """Lista de todas las novias activas"""
     q = request.GET.get('q', '')
-    novias = Novia.objects.all()
+    novias = Novia.objects.filter(activo=True)
     
     if q:
         novias = novias.filter(
@@ -499,8 +500,8 @@ def novias_list(request):
 @profile_permission_required(['Agenda', 'Vendedor'])
 def novia_detalle(request, pk):
     """Detalle de una novia con su grupo y pedidos"""
-    novia = get_object_or_404(Novia, pk=pk)
-    damas = novia.damas.all()
+    novia = get_object_or_404(Novia, pk=pk, activo=True)
+    damas = novia.damas.filter(activo=True)
     pedidos = novia.pedidos.all().order_by('-fecha_creacion')
     citas = novia.citas.all().order_by('fecha', 'hora_inicio')
     
@@ -609,8 +610,14 @@ def api_editar_novia(request, pk):
     try:
         novia.nombre = data.get('nombre', novia.nombre)
         novia.telefono = data.get('telefono', novia.telefono)
+        novia.email = data.get('email', novia.email)
+
         if data.get('fecha_boda'):
             novia.fecha_boda = datetime.strptime(data['fecha_boda'], '%Y-%m-%d').date()
+        if data.get('fecha_prueba'):
+            novia.fecha_prueba = datetime.strptime(data['fecha_prueba'], '%Y-%m-%d').date()
+        if data.get('fecha_entrega'):
+            novia.fecha_entrega = datetime.strptime(data['fecha_entrega'], '%Y-%m-%d').date()
 
         novia.modelo_especial = data.get('modelo_especial', novia.modelo_especial)
         novia.color_especial = data.get('color_especial', novia.color_especial)
@@ -619,9 +626,83 @@ def api_editar_novia(request, pk):
         novia.notas = data.get('notas', novia.notas)
 
         novia.save()
-        return JsonResponse({'status': 'ok'})
+        return JsonResponse({'status': 'ok', 'message': 'Novia actualizada'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_eliminar_novia(request, pk):
+    """Soft delete de novia"""
+    novia = get_object_or_404(Novia, pk=pk)
+    novia.activo = False
+    novia.save()
+    return JsonResponse({'status': 'ok', 'message': 'Novia eliminada'})
+
+
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_editar_dama(request, pk):
+    """Actualiza datos de una dama"""
+    dama = get_object_or_404(Dama, pk=pk)
+    data = json.loads(request.body)
+    try:
+        dama.nombre = data.get('nombre', dama.nombre)
+        dama.telefono = data.get('telefono', dama.telefono)
+        dama.talla = data.get('talla', dama.talla)
+        dama.modelo_especial = data.get('modelo_especial', dama.modelo_especial)
+        dama.color_especial = data.get('color_especial', dama.color_especial)
+        dama.tela_especial = data.get('tela_especial', dama.tela_especial)
+        dama.notas_ajustes = data.get('notas', dama.notas_ajustes)
+        dama.save()
+        return JsonResponse({'status': 'ok', 'message': 'Dama actualizada'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_eliminar_dama(request, pk):
+    """Soft delete de dama"""
+    dama = get_object_or_404(Dama, pk=pk)
+    dama.activo = False
+    dama.save()
+
+    # Actualizar contador de la novia
+    novia = dama.novia
+    novia.cantidad_damas = novia.damas.filter(activo=True).count()
+    novia.save(update_fields=['cantidad_damas'])
+
+    return JsonResponse({'status': 'ok', 'message': 'Dama eliminada'})
+
+
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_crear_pedido(request):
+    """Crea un pedido para novia o dama"""
+    from .models import Pedido
+    data = json.loads(request.body)
+
+    novia = get_object_or_404(Novia, pk=data.get('novia_id'))
+    dama_id = data.get('dama_id')
+    dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
+
+    pedido = Pedido.objects.create(
+        novia=novia,
+        dama=dama,
+        es_vestido_novia=data.get('es_vestido_novia', False),
+        precio=Decimal(data.get('precio', 0)),
+        notas=data.get('notas', ''),
+        creado_por=request.active_profile
+    )
+
+    return JsonResponse({
+        'status': 'ok',
+        'id': pedido.id,
+        'ticket': pedido.numero_ticket,
+        'message': 'Pedido generado con éxito'
+    })
 
 
 # ============================================================

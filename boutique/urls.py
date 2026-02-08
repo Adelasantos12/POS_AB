@@ -21,6 +21,7 @@ urlpatterns = [
     path('caja/cierre/', views.cierre_caja, name='cierre_caja'),
     
     # API de productos y ventas
+    path('api/venta-rapida/', views.api_venta_rapida, name='api_venta_rapida'),
     path('api/producto-rapido/', views.api_crear_producto_rapido, name='api_crear_producto_rapido'),
     path('api/check-duplicados/', views.api_check_duplicados, name='api_check_duplicados'),
     path('api/validar-crear-producto/', views.api_validar_crear_producto, name='api_validar_crear_producto'),
@@ -31,7 +32,11 @@ urlpatterns = [
 
     # Inventario
     path('inventario/', views.inventario_view, name='inventario_view'),
+    path('inventario/pendientes/', views.pendientes_regularizacion, name='pendientes_regularizacion'),
     path('api/producto-editar/<int:pk>/', views.api_editar_producto, name='api_editar_producto'),
+    path('api/producto-clonar-variante/<int:pk>/', views.api_clonar_variante, name='api_clonar_variante'),
+    path('api/producto-variantes/<int:pk>/', views.api_get_variantes, name='api_get_variantes'),
+    path('api/producto-regularizar/<int:pk>/', views.api_producto_regularizar, name='api_producto_regularizar'),
     path('api/producto-eliminar/<int:pk>/', views.api_eliminar_producto, name='api_eliminar_producto'),
     path('imprimir-etiquetas/', views.imprimir_etiquetas, name='imprimir_etiquetas'),
     
@@ -69,8 +74,12 @@ urlpatterns = [
     path('novias/', views_agenda.novias_list, name='novias_list'),
     path('novias/<int:pk>/', views_agenda.novia_detalle, name='novia_detalle'),
     path('api/novia/<int:pk>/editar/', views_agenda.api_editar_novia, name='api_editar_novia'),
+    path('api/novia/<int:pk>/eliminar/', views_agenda.api_eliminar_novia, name='api_eliminar_novia'),
     path('api/crear-novia/', views_agenda.api_crear_novia, name='api_crear_novia'),
     path('api/novia/<int:novia_id>/agregar-dama/', views_agenda.api_agregar_dama, name='api_agregar_dama'),
+    path('api/dama/<int:pk>/editar/', views_agenda.api_editar_dama, name='api_editar_dama'),
+    path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
+    path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
     
     # Pedidos en puerta
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),

@@ -7,6 +7,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Colores
         colores_base = [
+            ('Sin definir', '#CCCCCC', 'N/A'),
             ('Blanco', '#FFFFFF', 'Neutro'),
             ('Negro', '#000000', 'Neutro'),
             ('Rosa Palo', '#E8B4B8', 'Rosa'),
@@ -45,7 +46,10 @@ class Command(BaseCommand):
             )
 
         # Categorías
-        categorias = ['Vestido Novia', 'Vestido Dama', 'Velo', 'Tocado', 'Accesorio', 'Ajuste']
+        categorias = [
+            'Sin definir', 'Novias', 'Damas', 'Accesorios', 'Servicios',
+            'Vestido Novia', 'Vestido Dama', 'Velo', 'Tocado', 'Ajuste'
+        ]
         for cat in categorias:
             Categoria.objects.get_or_create(nombre=cat)
 

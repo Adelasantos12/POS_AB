@@ -93,7 +93,9 @@ class Producto(models.Model):
     talla = models.CharField(max_length=10)
     precio_venta = models.DecimalField(max_digits=10, decimal_places=2)
     cantidad_actual = models.PositiveIntegerField(default=0)
+    stock_teorico = models.IntegerField(default=0)
     vendible_sin_stock = models.BooleanField(default=False)
+    pendiente_regularizacion = models.BooleanField(default=False)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='TIENDA')
     foto = models.ImageField(upload_to='productos/', blank=True, null=True)
     qr_code = models.ImageField(upload_to='qrs/', blank=True, null=True)
@@ -113,8 +115,16 @@ class Producto(models.Model):
         if not self.sku:
             import uuid
             # Usamos un prefijo amigable + parte de UUID para asegurar unicidad si faltan campos
-            prefix = self.categoria.nombre[:3].upper() if self.categoria else "PROD"
+            prefix = "PROD"
+            if self.categoria and hasattr(self.categoria, 'nombre'):
+                prefix = self.categoria.nombre[:3].upper()
             self.sku = f"{prefix}-{uuid.uuid4().hex[:6].upper()}"
+
+        # Marcar como pendiente si tiene valores placeholder
+        cat_nombre = getattr(self.categoria, 'nombre', '') if self.categoria else ''
+        color_nombre = getattr(self.color, 'nombre', '') if self.color else ''
+        if cat_nombre == "Sin definir" or color_nombre == "Sin definir":
+            self.pendiente_regularizacion = True
 
         # Generar QR si no existe
         if not self.qr_code:
@@ -127,6 +137,7 @@ class Producto(models.Model):
             img = qr.make_image(fill='black', back_color='white')
             buffer = BytesIO()
             img.save(buffer, format='PNG')
+            buffer.seek(0)
             filename = f"qr-{self.sku}.png"
             self.qr_code.save(filename, File(buffer), save=False)
 
@@ -148,6 +159,7 @@ class Producto(models.Model):
                     "text_distance": 5.0,
                     "font_size": 10
                 })
+                buffer.seek(0)
 
                 filename = f"barcode-{self.sku}.png"
                 # Eliminar imagen previa si existe y es cambio
@@ -160,9 +172,11 @@ class Producto(models.Model):
 
         super().save(*args, **kwargs)
     def __str__(self):
+        cat_nombre = self.categoria.nombre if self.categoria else "Sin Categoria"
         modelo_str = self.modelo.nombre if self.modelo else "Sin Modelo"
         tela_str = self.tela.nombre if self.tela else "Sin Tela"
-        return f"{self.categoria.nombre} - {modelo_str} {tela_str} {self.color.nombre} ({self.talla})"
+        color_nombre = self.color.nombre if self.color else "Sin Color"
+        return f"{cat_nombre} - {modelo_str} {tela_str} {color_nombre} ({self.talla})"
 
 class Cliente(models.Model):
     nombre = models.CharField(max_length=100)
@@ -337,13 +351,13 @@ class MovimientoInventario(models.Model):
         return f"{self.get_tipo_display()} {self.cantidad} x {self.producto.sku}"
     
     def save(self, *args, **kwargs):
-        # Calcular stock resultante
+        # Calcular stock resultante (basado en stock_teorico para permitir negativos)
         if not self.stock_resultante:
-            self.stock_resultante = self.producto.cantidad_actual + self.cantidad
+            self.stock_resultante = self.producto.stock_teorico + self.cantidad
         super().save(*args, **kwargs)
-        # Actualizar stock del producto
-        self.producto.cantidad_actual = self.stock_resultante
-        self.producto.save(update_fields=['cantidad_actual'])
+        # Actualizar stock teórico del producto
+        self.producto.stock_teorico = self.stock_resultante
+        self.producto.save(update_fields=['stock_teorico'])
 
 
 
@@ -354,6 +368,7 @@ class MovimientoInventario(models.Model):
 class Novia(models.Model):
     """Perfil de novia - cabeza de grupo"""
     nombre = models.CharField(max_length=200)
+    activo = models.BooleanField(default=True)
     telefono = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     
@@ -431,6 +446,7 @@ class Dama(models.Model):
     """Integrante del grupo de la novia"""
     novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='damas')
     nombre = models.CharField(max_length=200)
+    activo = models.BooleanField(default=True)
     telefono = models.CharField(max_length=20, blank=True)
     
     # Personalización (puede diferir del grupo)
