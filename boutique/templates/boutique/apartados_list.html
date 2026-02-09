@@ -1,68 +1,88 @@
 {% extends 'boutique/base.html' %}
 
-{% block title %}Apartados - ByEasy POS{% endblock %}
+{% block title %}Apartados - Adelé Boutique{% endblock %}
 
 {% block content %}
-<div class="page-header d-flex justify-content-between align-items-center mb-4">
+<div class="page-header d-flex justify-content-between align-items-center">
     <div>
-        <h1 class="page-title">Apartados</h1>
-        <p class="page-subtitle">Gestión de apartados independientes</p>
+        <h1 class="page-title">Apartados Globales</h1>
+        <p class="page-subtitle">Gestión de apartados independientes y vinculados</p>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm" style="border-radius: 16px;">
-    <div class="card-body p-4">
-        <form method="get" class="mb-4">
-            <div class="input-group">
-                <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                <input type="text" name="q" class="form-control border-start-0" placeholder="Buscar por cliente..." value="{{ q }}">
-                <button type="submit" class="btn btn-primary">Buscar</button>
-            </div>
+<!-- Buscador -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{% url 'lista_apartados' %}" class="d-flex gap-2">
+            <input type="text" name="q" class="form-control" placeholder="Buscar por folio, cliente o teléfono..." value="{{ q }}">
+            <button type="submit" class="btn btn-primary px-4">Buscar</button>
         </form>
-
-        <div class="table-responsive">
-            <table class="table align-middle">
-                <thead>
-                    <tr>
-                        <th>Cliente</th>
-                        <th>Fecha</th>
-                        <th>Total</th>
-                        <th>Anticipo</th>
-                        <th>Saldo</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for a in apartados %}
-                    <tr>
-                        <td>
-                            <div class="fw-bold">{{ a.cliente_nombre }}</div>
-                            <small class="text-muted">{{ a.cliente_telefono }}</small>
-                        </td>
-                        <td>{{ a.fecha_creacion|date:"d/m/Y" }}</td>
-                        <td>${{ a.total }}</td>
-                        <td>${{ a.anticipo }}</td>
-                        <td class="text-danger fw-bold">${{ a.saldo }}</td>
-                        <td>
-                            <span class="badge rounded-pill {% if a.estado == 'VIGENTE' %}bg-success{% elif a.estado == 'VENCIDO' %}bg-danger{% else %}bg-secondary{% endif %}">
-                                {{ a.estado }}
-                            </span>
-                        </td>
-                        <td>
-                            <a href="{% url 'detalle_apartado' a.pk %}" class="btn btn-sm btn-outline-primary rounded-pill">
-                                Ver Detalle
-                            </a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center py-4 text-muted">No hay apartados registrados</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
     </div>
 </div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Cliente</th>
+                    <th>Total</th>
+                    <th>Pagado</th>
+                    <th>Saldo</th>
+                    <th>Estado</th>
+                    <th>Fecha Límite</th>
+                    <th>Novia</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in apartados %}
+                <tr>
+                    <td><span class="fw-bold">{{ a.folio }}</span></td>
+                    <td>
+                        <div>{{ a.cliente_nombre }}</div>
+                        <small class="text-muted">{{ a.cliente_telefono }}</small>
+                    </td>
+                    <td>${{ a.total }}</td>
+                    <td class="text-success">${{ a.anticipo }}</td>
+                    <td class="text-danger fw-bold">${{ a.saldo }}</td>
+                    <td>
+                        <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% elif a.estado == 'CANCELADO' %}status-error{% else %}status-warning{% endif %}">
+                            {{ a.get_estado_display }}
+                        </span>
+                    </td>
+                    <td>{{ a.fecha_vencimiento|date:"d/m/Y"|default:"-" }}</td>
+                    <td>
+                        {% if a.novia %}
+                            <a href="{% url 'novia_detalle' a.novia.id %}" class="small">{{ a.novia.nombre }}</a>
+                        {% else %}
+                            <span class="text-muted small">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            {% if a.saldo > 0 %}
+                            <button class="btn btn-sm btn-primary" onclick="abrirModalCobro('apartado', {{ a.id }}, {{ a.saldo }}, '{{ a.folio }}')">
+                                Cobrar
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ a.folio }}')">
+                                <i class="bi bi-printer"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="text-center py-5">No hay apartados registrados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+
 {% endblock %}

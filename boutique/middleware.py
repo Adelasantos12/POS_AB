@@ -26,6 +26,10 @@ class ProfileMiddleware:
             return self.get_response(request)
 
         if request.user.is_authenticated:
+            # Añadir estado de caja a todas las peticiones autenticadas
+            from .models import CorteCaja
+            request.caja_activa = CorteCaja.objects.filter(cerrado=False).first()
+
             active_profile_id = request.session.get('active_profile_id')
             if active_profile_id:
                 try:
@@ -54,9 +58,9 @@ def profile_permission_required(group_names):
             if not hasattr(request, 'active_profile'):
                 return redirect('seleccionar_perfil')
 
-            # Superadmin, Admin o CEO tienen acceso total
+            # Superadmin, Admin, CEO o Supervisora tienen acceso total
             if (request.active_profile.is_superuser or
-                request.active_profile.groups.filter(name__in=['Admin', 'Superadmin', 'CEO']).exists() or
+                request.active_profile.groups.filter(name__in=['Admin', 'Superadmin', 'CEO', 'Supervisora']).exists() or
                 request.active_profile.groups.filter(name__in=group_names).exists()):
                 return view_func(request, *args, **kwargs)
 

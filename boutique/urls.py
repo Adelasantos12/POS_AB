@@ -84,6 +84,10 @@ urlpatterns = [
     path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
     path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
     path('api/pedido/<int:pk>/liquidar/', views.api_liquidar_pedido, name='api_liquidar_pedido'),
+    path('api/cobrar/<str:tipo>/<int:pk>/', views.api_cobrar_item, name='api_cobrar_item'),
+    path('api/pedido/<int:pedido_id>/medidas/', views.api_guardar_medidas, name='api_guardar_medidas'),
+    path('api/pedido/<int:pedido_id>/medidas/reutilizar/', views.api_obtener_medidas_reutilizar, name='api_obtener_medidas_reutilizar'),
+    path('api/entregar/<str:tipo>/<int:pk>/', views.api_entregar_item, name='api_entregar_item'),
 
     # Tickets e Impresión
     path('api/tickets/<str:folio>/detalle/', views.api_ticket_detalle, name='api_ticket_detalle'),
@@ -94,6 +98,7 @@ urlpatterns = [
     path('apartados/', views_apartados.lista_apartados, name='lista_apartados'),
     path('apartados/<int:pk>/', views_apartados.detalle_apartado, name='detalle_apartado'),
     path('api/apartado/crear/', views_apartados.api_crear_apartado, name='api_crear_apartado'),
+    path('api/apartado/editar/<int:pk>/', views_apartados.api_apartado_editar, name='api_apartado_editar'),
     
     # Pedidos en puerta
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),

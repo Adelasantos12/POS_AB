@@ -1,0 +1,58 @@
+<!-- Modal Emergente para Abrir Caja (Global) -->
+<div class="modal fade" id="modalAbrirCajaEmergente" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px; border: none; box-shadow: 0 15px 35px rgba(0,0,0,0.2);">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Abrir Caja Requerido</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center pt-4">
+                <div class="mb-3">
+                    <i class="bi bi-door-open display-4 text-primary"></i>
+                </div>
+                <p class="px-3">No hay una sesión de caja abierta. Es necesario ingresar el fondo inicial para registrar cualquier cobro o venta.</p>
+                <form id="formAbrirCajaGlobal">
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold text-uppercase" style="letter-spacing: 1px;">Fondo Inicial en Efectivo</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-white border-end-0">$</span>
+                            <input type="number" name="monto_apertura" class="form-control border-start-0 ps-0" value="0" step="0.01" required autofocus>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 py-3 rounded-pill fw-bold shadow-sm">
+                        <i class="bi bi-play-fill me-2"></i>Abrir Caja y Continuar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('formAbrirCajaGlobal')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Abriendo...';
+
+    const formData = new FormData(this);
+    try {
+        const res = await fetch('{% url "apertura_caja" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: formData
+        });
+        if (res.ok) {
+            location.reload();
+        } else {
+            alert('Error al abrir caja');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-play-fill me-2"></i>Abrir Caja y Continuar';
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error de conexión');
+        btn.disabled = false;
+    }
+});
+</script>

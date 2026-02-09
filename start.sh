@@ -14,4 +14,9 @@ echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
 echo "Starting Gunicorn..."
-gunicorn adele_pos.wsgi --bind 0.0.0.0:$PORT --log-file -
+# Aumentamos timeout a 120s para soportar llamadas pesadas de IA/Imágenes
+exec gunicorn adele_pos.wsgi \
+    --bind 0.0.0.0:$PORT \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -
