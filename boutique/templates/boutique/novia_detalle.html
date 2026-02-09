@@ -293,6 +293,29 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Editar Novia -->
+<div class="modal fade" id="modalEditarNovia" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Perfil Novia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarNovia">
+                    <div class="mb-3"><label class="form-label">Nombre</label><input type="text" name="nombre" class="form-control" value="{{ novia.nombre }}" required></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ novia.telefono }}"></div>
+                        <div class="col-6 mb-3"><label class="form-label">Fecha Boda</label><input type="date" name="fecha_boda" class="form-control" value="{{ novia.fecha_boda|date:'Y-m-d' }}" required></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">Notas</label><textarea name="notas" class="form-control" rows="3">{{ novia.notas }}</textarea></div>
+                    <div class="text-end"><button type="submit" class="btn btn-primary rounded-pill px-4">Guardar Cambios</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -332,6 +355,12 @@
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.target).entries());
         await fetch('{% url "api_agregar_dama" novia.id %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(data) });
+        location.reload();
+    });
+    document.getElementById('formEditarNovia').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        await fetch('{% url "api_editar_novia" novia.id %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(data) });
         location.reload();
     });
     async function generarPedido(damaId, esNovia) {

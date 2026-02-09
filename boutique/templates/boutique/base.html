@@ -300,7 +300,7 @@
         <ul class="nav flex-column flex-grow-1">
             {% with profile=request.active_profile %}
             
-            {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" %}
+            {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" or "Supervisora" in profile.groups.all|stringformat:"s" %}
             <li class="nav-item">
                 <a href="{% url 'admin_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}" data-testid="nav-dashboard">
                     <i class="bi bi-grid-1x2-fill"></i>Dashboard
@@ -311,6 +311,11 @@
             <li class="nav-item">
                 <a href="{% url 'pos_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}" data-testid="nav-caja">
                     <i class="bi bi-calculator-fill"></i>Caja
+                    {% if request.caja_activa %}
+                        <span class="badge bg-success-subtle text-success float-end mt-1" style="font-size: 0.6rem;">Abierta</span>
+                    {% else %}
+                        <span class="badge bg-danger-subtle text-danger float-end mt-1" style="font-size: 0.6rem;">Cerrada</span>
+                    {% endif %}
                 </a>
             </li>
             
@@ -359,7 +364,7 @@
                 </a>
             </li>
             
-            {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" %}
+            {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" or "Supervisora" in profile.groups.all|stringformat:"s" %}
             <li class="nav-item">
                 <a href="{% url 'gestion_usuarios' %}" class="nav-link {% if request.resolver_match.url_name == 'gestion_usuarios' or request.resolver_match.url_name == 'editar_usuario' %}active{% endif %}" data-testid="nav-usuarios">
                     <i class="bi bi-people-fill"></i>Usuarios
@@ -372,6 +377,15 @@
         
         <!-- Profile indicator -->
         <div class="profile-indicator">
+            {% if request.caja_activa %}
+            <div class="caja-status mb-3 p-2 rounded bg-light border">
+                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.6rem; letter-spacing: 0.5px;">Caja Abierta</small>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-primary" style="font-size: 0.9rem;">${{ request.caja_activa.monto_apertura }}</span>
+                    <i class="bi bi-unlock-fill text-success small"></i>
+                </div>
+            </div>
+            {% endif %}
             <div class="d-flex align-items-center">
                 <div class="profile-avatar me-3">
                     {{ request.active_profile.username|make_list|first|upper }}
@@ -401,6 +415,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% include 'boutique/includes/modal_abrir_caja.html' %}
     {% block extra_js %}{% endblock %}
 </body>
 </html>

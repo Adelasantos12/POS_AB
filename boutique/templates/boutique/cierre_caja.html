@@ -23,34 +23,61 @@
                 <p class="text-muted">Cierre por: <strong>{{ request.active_profile.username }}</strong></p>
             </div>
 
-            <div class="row summary-box text-center shadow-sm">
-                <div class="col-6 border-end">
-                    <small class="text-muted d-block fw-bold text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">Efectivo Esperado</small>
-                    <span class="fs-3 fw-bold text-success">${{ corte.efectivo_esperado }}</span>
+            <div class="row summary-box text-center shadow-sm mb-4">
+                <div class="col-4 border-end">
+                    <small class="text-muted d-block fw-bold text-uppercase" style="font-size: 0.6rem; letter-spacing: 1px;">Efectivo Esperado</small>
+                    <span class="fs-4 fw-bold text-success">${{ corte.efectivo_esperado }}</span>
                     <div class="small text-muted mt-1">(Inc. ${{ corte.monto_apertura }} apertura)</div>
                 </div>
-                <div class="col-6">
-                    <small class="text-muted d-block fw-bold text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">Tarjeta Esperada</small>
-                    <span class="fs-3 fw-bold text-primary">${{ corte.tarjeta_esperada }}</span>
-                    <div class="small text-muted mt-1">Total en Terminal</div>
+                <div class="col-4 border-end">
+                    <small class="text-muted d-block fw-bold text-uppercase" style="font-size: 0.6rem; letter-spacing: 1px;">Tarjeta Esperada</small>
+                    <span class="fs-4 fw-bold text-primary">${{ corte.tarjeta_esperada }}</span>
+                </div>
+                <div class="col-4">
+                    <small class="text-muted d-block fw-bold text-uppercase" style="font-size: 0.6rem; letter-spacing: 1px;">Transf. Esperada</small>
+                    <span class="fs-4 fw-bold text-info">${{ corte.transferencia_esperada }}</span>
+                </div>
+            </div>
+
+            <!-- Resumen por Tipo de Operación -->
+            <div class="mb-4">
+                <h6 class="fw-bold small text-muted text-uppercase mb-3">Detalle por Operación</h6>
+                <div class="list-group list-group-flush border-top border-bottom">
+                    {% for tipo, monto in resumen_tipos.items %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent">
+                        <span class="small">{{ tipo }}</span>
+                        <span class="fw-bold small">${{ monto }}</span>
+                    </div>
+                    {% endfor %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent">
+                        <span class="small">Tickets Emitidos</span>
+                        <span class="badge bg-light text-dark border">{{ total_tickets }}</span>
+                    </div>
                 </div>
             </div>
 
             <form method="post">
                 {% csrf_token %}
-                <div class="row g-4 mb-4">
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small">Efectivo Real en Caja</label>
-                        <div class="input-group input-group-lg shadow-sm" style="border-radius: 10px; overflow: hidden;">
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">Efectivo Real</label>
+                        <div class="input-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
                             <span class="input-group-text bg-white border-end-0">$</span>
                             <input type="number" step="0.01" name="efectivo_real" class="form-control border-start-0 fw-bold" required>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small">Total Terminal (Voucher)</label>
-                        <div class="input-group input-group-lg shadow-sm" style="border-radius: 10px; overflow: hidden;">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">Total Tarjeta</label>
+                        <div class="input-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
                             <span class="input-group-text bg-white border-end-0">$</span>
                             <input type="number" step="0.01" name="tarjeta_real" class="form-control border-start-0 fw-bold" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small">Total Transf.</label>
+                        <div class="input-group shadow-sm" style="border-radius: 8px; overflow: hidden;">
+                            <span class="input-group-text bg-white border-end-0">$</span>
+                            <input type="number" step="0.01" name="transferencia_real" class="form-control border-start-0 fw-bold" required>
                         </div>
                     </div>
                 </div>

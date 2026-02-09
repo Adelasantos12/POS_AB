@@ -98,13 +98,13 @@ def tiene_permiso(usuario, permiso_codigo):
 
 
 def es_admin(usuario):
-    """Verifica si el usuario tiene rol admin o CEO"""
-    return usuario.is_superuser or usuario.groups.filter(name__in=['Admin', 'Superadmin', 'CEO']).exists()
+    """Verifica si el usuario tiene rol admin, CEO o Supervisora"""
+    return usuario.is_superuser or usuario.groups.filter(name__in=['Admin', 'Superadmin', 'CEO', 'Supervisora']).exists()
 
 
 def puede_gestionar_usuarios(usuario):
     """Solo Superadmin y CEO pueden crear/gestionar usuarios"""
-    return usuario.is_superuser or usuario.groups.filter(name__in=['Superadmin', 'CEO']).exists()
+    return usuario.is_superuser or usuario.groups.filter(name__in=['Superadmin', 'CEO', 'Supervisora']).exists()
 
 
 def health_check(request):
@@ -236,7 +236,7 @@ def apertura_caja(request):
         return redirect('pos_dashboard')
 
     if request.method == 'POST':
-        monto = request.POST.get('monto_apertura', 0)
+        monto = Decimal(request.POST.get('monto_apertura', 0))
         corte = CorteCaja.objects.create(
             abierto_por=request.active_profile,
             monto_apertura=monto,
@@ -249,6 +249,8 @@ def apertura_caja(request):
             entidad=corte,
             request=request
         )
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.content_type == 'application/json' or 'X-CSRFToken' in request.headers:
+            return JsonResponse({'status': 'ok', 'message': 'Caja abierta correctamente'})
         return redirect('pos_dashboard')
     return render(request, 'boutique/apertura_caja.html')
 
@@ -263,12 +265,18 @@ def cierre_caja(request):
     if request.method == 'POST':
         efectivo_real = Decimal(request.POST.get('efectivo_real', 0))
         tarjeta_real = Decimal(request.POST.get('tarjeta_real', 0))
+        transferencia_real = Decimal(request.POST.get('transferencia_real', 0))
 
         corte.efectivo_real = efectivo_real
         corte.tarjeta_real = tarjeta_real
+        corte.transferencia_real = transferencia_real
         corte.fecha_cierre = timezone.now()
         corte.cerrado = True
-        corte.diferencia = (efectivo_real + tarjeta_real) - (corte.efectivo_esperado + corte.tarjeta_esperada)
+
+        total_esperado = corte.efectivo_esperado + corte.tarjeta_esperada + corte.transferencia_esperada
+        total_real = efectivo_real + tarjeta_real + transferencia_real
+
+        corte.diferencia = total_real - total_esperado
         corte.observaciones = request.POST.get('observaciones', '')
         corte.save()
 
@@ -281,21 +289,30 @@ def cierre_caja(request):
         )
         return redirect('index')
 
-    # Calcular esperados desde ventas
-    ventas = Venta.objects.filter(fecha__gte=corte.fecha_apertura)
-    pagos = Pago.objects.filter(venta__in=ventas)
+    # Calcular esperados desde Movimientos de Caja
+    movs = corte.movimientos.all()
 
-    efectivo_ventas = sum(p.monto for p in pagos if p.metodo == 'EFECTIVO')
-    tarjeta_ventas = sum(p.monto for p in pagos if p.metodo == 'TARJETA')
+    efectivo_movs = sum(m.monto for m in movs if m.metodo_pago == 'EFECTIVO')
+    tarjeta_movs = sum(m.monto for m in movs if m.metodo_pago == 'TARJETA')
+    transf_movs = sum(m.monto for m in movs if m.metodo_pago == 'TRANSFERENCIA')
 
-    corte.efectivo_esperado = Decimal(corte.monto_apertura) + efectivo_ventas
-    corte.tarjeta_esperada = tarjeta_ventas
+    corte.efectivo_esperado = Decimal(corte.monto_apertura) + efectivo_movs
+    corte.tarjeta_esperada = tarjeta_movs
+    corte.transferencia_esperada = transf_movs
     corte.save()
+
+    # Resumen por tipo para la vista
+    resumen_tipos = {}
+    for m in movs:
+        resumen_tipos[m.tipo] = resumen_tipos.get(m.tipo, 0) + m.monto
 
     return render(request, 'boutique/cierre_caja.html', {
         'corte': corte,
-        'efectivo_ventas': efectivo_ventas,
-        'tarjeta_ventas': tarjeta_ventas
+        'efectivo_movs': efectivo_movs,
+        'tarjeta_movs': tarjeta_movs,
+        'transf_movs': transf_movs,
+        'resumen_tipos': resumen_tipos,
+        'total_tickets': movs.filter(ticket_folio__isnull=False).count()
     })
 
 
@@ -384,6 +401,7 @@ def api_sync(request):
 def api_liquidar_pedido(request, pk):
     """Convierte un pedido en venta al ser liquidado"""
     from .models import PagoPedido
+    from .services.cash_service import registrar_cobro
     pedido = get_object_or_404(Pedido, pk=pk)
     try:
         data = json.loads(request.body)
@@ -391,12 +409,13 @@ def api_liquidar_pedido(request, pk):
         monto = Decimal(str(data.get('monto', pedido.saldo_pendiente)))
 
         with transaction.atomic():
-            # Registrar el pago final
-            PagoPedido.objects.create(
-                pedido=pedido,
+            # Registrar el cobro en caja
+            ticket = registrar_cobro(
+                origen_tipo='pedido',
+                origen_obj=pedido,
                 monto=monto,
                 metodo=metodo,
-                registrado_por=request.active_profile,
+                usuario=request.active_profile,
                 notas='Liquidación de pedido'
             )
 
@@ -404,13 +423,13 @@ def api_liquidar_pedido(request, pk):
             pedido.refresh_from_db()
 
             if pedido.esta_pagado:
-                # Crear la Venta oficial
+                # Crear la Venta oficial para que cuente en estadísticas de productos
                 venta = Venta.objects.create(
                     vendedor=request.active_profile,
                     total=pedido.precio,
-                    ticket=pedido.ticket,
+                    ticket=ticket, # Usamos el ticket generado
                     pedido=pedido,
-                    notas=f"Liquidación de Ticket {pedido.ticket.folio if pedido.ticket else pedido.numero_ticket}"
+                    notas=f"Liquidación de Ticket {pedido.numero_ticket}"
                 )
 
                 if pedido.producto:
@@ -421,21 +440,6 @@ def api_liquidar_pedido(request, pk):
                         precio_unitario=pedido.precio
                     )
 
-                Pago.objects.create(
-                    venta=venta,
-                    monto=monto,
-                    metodo=metodo,
-                    registrado_por=request.active_profile
-                )
-
-                # Emitir Ticket
-                ticket = Ticket.objects.create(
-                    tipo='VENTA',
-                    venta=venta,
-                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
-                )
-                ticket.populate_from_obj(venta)
-
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
@@ -444,10 +448,18 @@ def api_liquidar_pedido(request, pk):
                     request=request
                 )
 
-                return JsonResponse({'status': 'ok', 'venta_id': venta.id, 'liquidado': True})
+                return JsonResponse({
+                    'status': 'ok',
+                    'venta_id': venta.id,
+                    'liquidado': True,
+                    'ticket_folio': ticket.folio
+                })
 
             return JsonResponse({'status': 'ok', 'pedido_id': pedido.id, 'liquidado': False, 'saldo': float(pedido.saldo_pendiente)})
+    except ValueError as ve:
+        return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
+        logger.exception("Error en api_liquidar_pedido")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
@@ -456,7 +468,8 @@ def api_liquidar_pedido(request, pk):
 @profile_permission_required('Vendedor')
 def api_venta_rapida(request):
     """Crea producto al vuelo + registra venta/apartado + movimiento en una sola transacción"""
-    from .models import Novia, PagoPedido
+    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    from .services.cash_service import registrar_cobro
     try:
         # Usar multipart/form-data para recibir foto
         cat_nombre = request.POST.get('categoria', 'General')
@@ -498,35 +511,37 @@ def api_venta_rapida(request):
             )
 
             if es_apartado:
-                # Flujo de Apartado
-                ticket = Ticket.objects.create(tipo='DAMA', cliente_nombre=f"Venta Rápida {producto.sku}")
-                # Buscamos una novia genérica o creamos una si no existe para vincular el pedido
-                novia_gen, _ = Novia.objects.get_or_create(nombre="Ventas Rápidas", defaults={'fecha_boda': timezone.now().date()})
-
-                pedido = Pedido.objects.create(
-                    novia=novia_gen,
-                    ticket=ticket,
+                # Flujo de Apartado Independiente
+                apartado = Apartado.objects.create(
+                    cliente_nombre=f"Venta Rápida {producto.sku}",
+                    total=precio,
+                    anticipo=0,
+                    notas=f"Apartado Rápido SKU {producto.sku}"
+                )
+                ApartadoItem.objects.create(
+                    apartado=apartado,
                     producto=producto,
-                    precio=precio,
-                    anticipo=anticipo,
-                    estado='NUEVO',
-                    creado_por=request.active_profile
+                    descripcion=str(producto),
+                    cantidad=1,
+                    precio_unitario=precio,
+                    subtotal=precio
                 )
 
-                if anticipo > 0:
-                    PagoPedido.objects.create(
-                        pedido=pedido,
-                        monto=anticipo,
-                        metodo=metodo,
-                        registrado_por=request.active_profile,
-                        notas='Anticipo Venta Rápida'
-                    )
+                # Registrar cobro en caja
+                ticket = registrar_cobro(
+                    origen_tipo='apartado',
+                    origen_obj=apartado,
+                    monto=anticipo,
+                    metodo=metodo,
+                    usuario=request.active_profile,
+                    notas='Anticipo Venta Rápida'
+                )
 
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
                     detalles=f'Apartado Rápido Ticket {ticket.folio} - Producto {producto.sku}',
-                    entidad=pedido,
+                    entidad=apartado,
                     request=request
                 )
 
@@ -538,7 +553,7 @@ def api_venta_rapida(request):
                 })
 
             else:
-                # Flujo de Venta Inmediata (Existente)
+                # Flujo de Venta normal
                 venta = Venta.objects.create(
                     vendedor=request.active_profile,
                     total=precio
@@ -551,6 +566,7 @@ def api_venta_rapida(request):
                     precio_unitario=precio
                 )
 
+                # Movimiento de inventario
                 MovimientoInventario.objects.create(
                     producto=producto,
                     tipo='VENTA',
@@ -558,28 +574,22 @@ def api_venta_rapida(request):
                     motivo='VENTA',
                     perfil_activo=request.active_profile,
                     venta=venta,
-                    stock_resultante=-1
+                    stock_resultante=producto.stock_teorico - 1
                 )
 
-                Pago.objects.create(
-                    venta=venta,
-                    monto=precio,
+                # Registrar cobro en caja
+                ticket = registrar_cobro(
+                    origen_tipo='venta',
+                    origen_obj=venta,
+                    monto=anticipo,
                     metodo=metodo,
-                    registrado_por=request.active_profile
+                    usuario=request.active_profile
                 )
-
-                # Emitir Ticket
-                ticket = Ticket.objects.create(
-                    tipo='VENTA',
-                    venta=venta,
-                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
-                )
-                ticket.populate_from_obj(venta)
 
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
-                    detalles=f'Venta Rápida #{venta.id} - Producto nuevo {producto.sku}',
+                    detalles=f'Venta Rápida Ticket {ticket.folio} - Producto {producto.sku}',
                     entidad=venta,
                     request=request
                 )
@@ -587,7 +597,8 @@ def api_venta_rapida(request):
                 return JsonResponse({
                     'status': 'ok',
                     'tipo': 'venta',
-                    'venta_id': venta.id,
+                    'id': venta.id,
+                    'sku': producto.sku,
                     'folio': ticket.folio,
                     'producto': {
                         'id': producto.id,
@@ -595,8 +606,10 @@ def api_venta_rapida(request):
                         'text': str(producto)
                     }
                 })
+    except ValueError as ve:
+        return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
-        logger.error(f"Error en venta rápida: {e}")
+        logger.exception("Error en api_venta_rapida")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
@@ -658,7 +671,8 @@ def api_search_productos(request):
 @profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta o un apartado"""
-    from .models import Novia, PagoPedido
+    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    from .services.cash_service import registrar_cobro
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
@@ -669,51 +683,53 @@ def api_registrar_venta(request):
 
         with transaction.atomic():
             if es_apartado:
-                # Flujo de Apartado
-                ticket = Ticket.objects.create(tipo='DAMA', cliente_nombre="Cliente POS")
-                novia_gen, _ = Novia.objects.get_or_create(nombre="Ventas POS", defaults={'fecha_boda': timezone.now().date()})
-
-                # Para apartados de múltiples ítems, creamos un Pedido que los agrupe o varios.
-                # Para simplificar MVP Phase E, creamos un Pedido principal por el total.
-                pedido = Pedido.objects.create(
-                    novia=novia_gen,
-                    ticket=ticket,
-                    precio=total,
-                    anticipo=pago_inicial,
-                    estado='NUEVO',
-                    creado_por=request.active_profile,
-                    notas=f"Apartado de {len(items)} productos"
+                # Nuevo flujo de Apartado Independiente
+                apartado = Apartado.objects.create(
+                    cliente_nombre=data.get('cliente_nombre', 'Cliente POS'),
+                    cliente_telefono=data.get('cliente_telefono', ''),
+                    total=total,
+                    anticipo=0,
+                    notas=f"Apartado POS - {len(items)} items"
                 )
 
-                if pago_inicial > 0:
-                    PagoPedido.objects.create(
-                        pedido=pedido,
-                        monto=pago_inicial,
-                        metodo=metodo,
-                        registrado_por=request.active_profile,
-                        notas='Anticipo POS'
-                    )
-
-                # Afectamos inventario inmediatamente (apartamos el stock)
                 for it in items:
                     prod = Producto.objects.get(id=it['id'])
+                    ApartadoItem.objects.create(
+                        apartado=apartado,
+                        producto=prod,
+                        descripcion=str(prod),
+                        cantidad=it['cantidad'],
+                        precio_unitario=prod.precio_venta,
+                        subtotal=it['cantidad'] * prod.precio_venta
+                    )
+                    # Apartar stock
                     prod.estado = 'APARTADO'
-                    prod.save(update_fields=['estado'])
+                    prod.save()
 
                     MovimientoInventario.objects.create(
                         producto=prod,
-                        tipo='SALIDA', # Salida de "disponible" a "apartado"
+                        tipo='SALIDA',
                         cantidad=-it['cantidad'],
                         motivo='VENTA',
                         perfil_activo=request.active_profile,
                         stock_resultante=prod.stock_teorico - it['cantidad']
                     )
 
+                # Registrar cobro inicial
+                ticket = registrar_cobro(
+                    origen_tipo='apartado',
+                    origen_obj=apartado,
+                    monto=pago_inicial,
+                    metodo=metodo,
+                    usuario=request.active_profile,
+                    notas='Anticipo POS'
+                )
+
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
                     detalles=f'Apartado POS Ticket {ticket.folio}',
-                    entidad=pedido,
+                    entidad=apartado,
                     request=request
                 )
 
@@ -745,31 +761,28 @@ def api_registrar_venta(request):
                         stock_resultante=prod.stock_teorico - it['cantidad']
                     )
 
-                Pago.objects.create(
-                    venta=venta,
+                # Registrar cobro en caja
+                ticket = registrar_cobro(
+                    origen_tipo='venta',
+                    origen_obj=venta,
                     monto=pago_inicial,
                     metodo=metodo,
-                    registrado_por=request.active_profile
+                    usuario=request.active_profile
                 )
-
-                # Emitir Ticket
-                ticket = Ticket.objects.create(
-                    tipo='VENTA',
-                    venta=venta,
-                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
-                )
-                ticket.populate_from_obj(venta)
 
                 registrar_auditoria(
                     usuario=request.active_profile,
                     accion='VENTA',
-                    detalles=f'Venta #{venta.id} por ${total}',
+                    detalles=f'Venta #{venta.id} por ${total} (Ticket {ticket.folio})',
                     entidad=venta,
                     request=request
                 )
 
                 return JsonResponse({'status': 'ok', 'tipo': 'venta', 'venta_id': venta.id, 'folio': ticket.folio})
+    except ValueError as ve:
+        return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
+        logger.exception("Error en api_registrar_venta")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
@@ -1276,13 +1289,17 @@ def admin_dashboard(request):
     if not es_admin(request.active_profile):
         return redirect('index')
 
-    # Ventas por día
-    ventas_dia = Venta.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
-        total=Sum('total'),
+    from .models import MovimientoCaja
+    from django.db.models.functions import TruncDate
+
+    # Ingresos por día (Venta + Abonos)
+    ventas_dia = MovimientoCaja.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
+        total=Sum('monto'),
         cantidad=Count('id')
     ).order_by('dia')
 
-    # Ventas por categoría
+    # Ventas por categoría (Seguimos usando ItemVenta para detalles de productos vendidos)
+    # Nota: Esto solo cuenta ventas directas, no pedidos aún no liquidados.
     ventas_cat = ItemVenta.objects.values('producto__categoria__nombre').annotate(
         total=Sum('cantidad')
     ).order_by('-total')
@@ -1292,11 +1309,12 @@ def admin_dashboard(request):
         total=Sum('cantidad')
     ).order_by('-total')
 
+    ahora = timezone.now()
     context = {
         'ventas_dia': list(ventas_dia),
         'ventas_cat': list(ventas_cat),
         'ventas_color': list(ventas_color),
-        'total_mensual': Venta.objects.filter(fecha__month=timezone.now().month).aggregate(Sum('total'))['total__sum'] or 0
+        'total_mensual': MovimientoCaja.objects.filter(fecha__month=ahora.month, fecha__year=ahora.year).aggregate(Sum('monto'))['monto__sum'] or 0
     }
     return render(request, 'boutique/admin_dashboard.html', context)
 
@@ -1765,8 +1783,9 @@ def api_ticket_detalle(request, folio):
 def api_cobrar_item(request, tipo, pk):
     """
     Endpoint unificado para cobrar Pedidos o Apartados.
+    Usa el servicio de caja centralizado.
     """
-    from .services.payment_service import registrar_pago_pedido, registrar_pago_apartado
+    from .services.cash_service import registrar_cobro
     from .models import Pedido, Apartado
 
     try:
@@ -1781,18 +1800,28 @@ def api_cobrar_item(request, tipo, pk):
 
         if tipo == 'pedido':
             item = get_object_or_404(Pedido, pk=pk)
-            ticket = registrar_pago_pedido(item, monto, metodo, request.user, notas, referencia)
         elif tipo == 'apartado':
             item = get_object_or_404(Apartado, pk=pk)
-            ticket = registrar_pago_apartado(item, monto, metodo, request.user, notas, referencia)
         else:
             return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
+        ticket = registrar_cobro(
+            origen_tipo=tipo,
+            origen_obj=item,
+            monto=monto,
+            metodo=metodo,
+            usuario=request.active_profile,
+            referencia=referencia,
+            notas=notas
+        )
 
         return JsonResponse({
             'status': 'ok',
             'ticket_folio': ticket.folio,
-            'ticket_print_url': f"/tickets/reimprimir/{ticket.folio}/"
+            'ticket_print_url': f"/api/tickets/{ticket.folio}/pdf/"
         })
+    except ValueError as ve:
+        return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
         logger.exception("Error en api_cobrar_item")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

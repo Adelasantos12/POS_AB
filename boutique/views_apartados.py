@@ -5,7 +5,6 @@ from django.views.decorators.http import require_POST
 from django.db import transaction
 from .models import Apartado, ApartadoItem, Ticket, Producto, ConfiguracionTienda
 from .middleware import profile_permission_required
-from .services.payment_service import registrar_pago_apartado
 import json
 from decimal import Decimal
 

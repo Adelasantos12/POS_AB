@@ -121,6 +121,11 @@ document.getElementById('formCobroUnificado').addEventListener('submit', async f
                 window.open(`/api/tickets/${result.ticket_folio}/pdf/`, '_blank');
             }
             location.reload();
+        } else if (result.status === 'caja_cerrada') {
+            modalCobro.hide();
+            new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();
+            btn.disabled = false;
+            btn.textContent = originalText;
         } else {
             alert('Error: ' + result.message);
             btn.disabled = false;

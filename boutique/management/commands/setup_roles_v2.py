@@ -17,6 +17,16 @@ class Command(BaseCommand):
         admin_group.permissions.set(all_perms)
         self.stdout.write(self.style.SUCCESS('Grupo Admin configurado.'))
 
+        # 1.1 CEO (Acceso total)
+        ceo_group, _ = Group.objects.get_or_create(name='CEO')
+        ceo_group.permissions.set(all_perms)
+        self.stdout.write(self.style.SUCCESS('Grupo CEO configurado.'))
+
+        # 1.2 Supervisora (Acceso total/gestión)
+        supervisora_group, _ = Group.objects.get_or_create(name='Supervisora')
+        supervisora_group.permissions.set(all_perms)
+        self.stdout.write(self.style.SUCCESS('Grupo Supervisora configurado.'))
+
         # 1b. Vendedor (Acceso básico)
         vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
         self.stdout.write(self.style.SUCCESS('Grupo Vendedor configurado.'))

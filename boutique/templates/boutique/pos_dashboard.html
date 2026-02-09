@@ -588,6 +588,8 @@
                 renderCart();
                 document.getElementById('initialPayment').value = '';
                 document.getElementById('isApartado').checked = false;
+            } else if (data.status === 'caja_cerrada') {
+                new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();
             } else {
                 alert('Error: ' + data.message);
             }

@@ -316,12 +316,12 @@ class Ticket(models.Model):
     def __str__(self): return self.folio
 
     def populate_from_obj(self, obj):
-        """Pobla el ticket desde una Venta o Apartado"""
+        """Pobla el ticket desde una Venta, Apartado o Pedido"""
         from django.core.serializers.json import DjangoJSONEncoder
         import json
 
-        self.total = obj.total
-        self.subtotal = obj.total # Ajustar si hay desglose real
+        self.total = getattr(obj, 'total', getattr(obj, 'precio', 0))
+        self.subtotal = self.total # Ajustar si hay desglose real
         self.cliente_nombre = getattr(obj, 'cliente_nombre', '') or (obj.cliente.nombre if hasattr(obj, 'cliente') and obj.cliente else '')
 
         if hasattr(obj, 'anticipo'):
@@ -548,10 +548,12 @@ class CorteCaja(models.Model):
     # Valores esperados (calculados por el sistema)
     efectivo_esperado = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     tarjeta_esperada = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    transferencia_esperada = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     # Valores reales (ingresados por el vendedor)
     efectivo_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     tarjeta_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    transferencia_real = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     diferencia = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     observaciones = models.TextField(blank=True)
@@ -559,6 +561,45 @@ class CorteCaja(models.Model):
 
     def __str__(self):
         return f"Corte {self.fecha_apertura.strftime('%Y-%m-%d %H:%M')} - {self.abierto_por.username}"
+
+    @property
+    def resumen_movimientos(self):
+        """Calcula totales por tipo y método"""
+        from django.db.models import Sum
+        return self.movimientos.values('tipo', 'metodo_pago').annotate(total=Sum('monto'))
+
+class MovimientoCaja(models.Model):
+    """Registro contable de cada flujo de dinero en la caja"""
+    TIPOS = [
+        ('VENTA', 'Venta'),
+        ('ABONO_PEDIDO', 'Abono de Pedido'),
+        ('ABONO_APARTADO', 'Abono de Apartado'),
+        ('INGRESO', 'Ingreso Extra'),
+        ('GASTO', 'Gasto/Egreso'),
+        ('DEVOLUCION', 'Devolución'),
+    ]
+    METODOS = [
+        ('EFECTIVO', 'Efectivo'),
+        ('TARJETA', 'Tarjeta'),
+        ('TRANSFERENCIA', 'Transferencia'),
+    ]
+
+    caja = models.ForeignKey(CorteCaja, on_delete=models.PROTECT, related_name='movimientos')
+    tipo = models.CharField(max_length=20, choices=TIPOS)
+    metodo_pago = models.CharField(max_length=20, choices=METODOS)
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    referencia = models.CharField(max_length=100, blank=True)
+    ticket_folio = models.CharField(max_length=30, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    registrado_por = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+
+    # Origen para trazabilidad (opcionales)
+    venta = models.ForeignKey('Venta', on_delete=models.SET_NULL, null=True, blank=True)
+    pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True)
+    apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} - {self.metodo_pago} - ${self.monto}"
 
 
 
