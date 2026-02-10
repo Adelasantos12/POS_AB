@@ -16,8 +16,15 @@
     <div class="col-md-7">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <h4 class="fw-bold mb-0">Punto de Venta</h4>
+                <h4 class="fw-bold mb-0">Punto de Venta
+                    <span id="onlineStatus" class="ms-2 badge bg-success" style="font-size: 0.6rem; vertical-align: middle;">ONLINE</span>
+                </h4>
                 <small class="text-muted">Adelé Boutique (Gdl)</small>
+                <div id="syncIndicator" class="d-none mt-1">
+                    <button class="btn btn-xs btn-outline-warning p-1" style="font-size: 0.6rem;" onclick="syncOfflineOperations()">
+                        <i class="bi bi-cloud-arrow-up me-1"></i>Sincronizar pendientes (<span id="offlineCount">0</span>)
+                    </button>
+                </div>
             </div>
             <div class="d-flex gap-2">
                 <button class="btn btn-outline-secondary btn-sm" onclick="verificarImpresora()" data-testid="btn-verificar-impresora">
@@ -32,9 +39,19 @@
             </div>
         </div>
 
-        <div class="input-group mb-4 shadow-sm" style="border-radius: 12px; overflow: hidden;">
-            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-            <input type="text" id="productSearch" class="form-control border-start-0 ps-0" placeholder="Escanear QR o buscar por rasgo/SKU..." data-testid="product-search">
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="input-group shadow-sm" style="border-radius: 12px; overflow: hidden;">
+                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+                    <input type="text" id="productSearch" class="form-control border-start-0 ps-0" placeholder="Escanear QR o buscar por rasgo/SKU..." data-testid="product-search">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="input-group shadow-sm" style="border-radius: 12px; overflow: hidden;">
+                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-receipt"></i></span>
+                    <input type="text" id="folioSearch" class="form-control border-start-0 ps-0" placeholder="Buscar folio...">
+                </div>
+            </div>
         </div>
 
         <div id="searchResults" class="list-group shadow-sm" style="border-radius: 12px; overflow: hidden;" data-testid="search-results">
@@ -74,12 +91,17 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">Pago Inicial (para apartados)</label>
+                    <label class="form-label small fw-bold">Pago Inicial</label>
                     <input type="number" id="initialPayment" class="form-control" placeholder="Monto entregado" style="border-radius: 10px;">
                 </div>
 
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" id="isApartado">
+                    <label class="form-check-label fw-bold" for="isApartado">Es un Apartado (Generar Ticket)</label>
+                </div>
+
                 <button class="btn btn-primary w-100 py-3 fw-bold" id="btnCheckout" style="border-radius: 100px;" data-testid="btn-checkout">
-                    <i class="bi bi-check-circle me-2"></i>Cobrar
+                    <i class="bi bi-check-circle me-2"></i>Confirmar Operación
                 </button>
             </div>
         </div>
@@ -133,13 +155,23 @@
                             <input type="number" name="precio" class="form-control" required>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Método de Pago</label>
-                        <select name="metodo" class="form-select">
-                            <option value="EFECTIVO">💵 Efectivo</option>
-                            <option value="TARJETA">💳 Tarjeta</option>
-                            <option value="TRANSFERENCIA">📱 Transferencia</option>
-                        </select>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Método de Pago</label>
+                            <select name="metodo" class="form-select">
+                                <option value="EFECTIVO">💵 Efectivo</option>
+                                <option value="TARJETA">💳 Tarjeta</option>
+                                <option value="TRANSFERENCIA">📱 Transferencia</option>
+                            </select>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Anticipo (Apartado)</label>
+                            <input type="number" name="anticipo" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="es_apartado" id="vr_es_apartado" value="true">
+                        <label class="form-check-label fw-bold" for="vr_es_apartado">Solo Apartado</label>
                     </div>
 
                     <!-- Duplicate Alert for Venta Rápida -->
@@ -339,6 +371,25 @@
     let duplicateCheckTimeout = null;
     const csrfToken = '{{ csrf_token }}';
 
+    // Folio Search
+    document.getElementById('folioSearch').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            const folio = e.target.value;
+            if (!folio) return;
+            fetch(`/api/tickets/${folio}/detalle/`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        lastFolio = data.ticket.folio;
+                        document.getElementById('saleSuccessMsg').textContent = `Folio encontrado: ${lastFolio} - ${data.ticket.cliente}`;
+                        new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
+                    } else {
+                        alert('Folio no encontrado');
+                    }
+                });
+        }
+    });
+
     // Product Search
     document.getElementById('productSearch').addEventListener('input', function(e) {
         const q = e.target.value;
@@ -420,6 +471,79 @@
         document.getElementById('cartTotal').textContent = '$' + total.toLocaleString();
     }
 
+    // Offline Logic
+    function isOnline() {
+        return window.navigator.onLine;
+    }
+
+    function updateOnlineStatus() {
+        const status = document.getElementById('onlineStatus');
+        if (isOnline()) {
+            status.textContent = 'ONLINE';
+            status.className = 'ms-2 badge bg-success';
+            syncOfflineOperations();
+        } else {
+            status.textContent = 'OFFLINE';
+            status.className = 'ms-2 badge bg-danger';
+        }
+    }
+
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    function queueOfflineOperation(type, payload) {
+        const queue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+        const offline_id = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        queue.push({tipo_op: type, payload, offline_id, timestamp: new Date().toISOString()});
+        localStorage.setItem('offlineQueue', JSON.stringify(queue));
+        updateOfflineCount();
+    }
+
+    function updateOfflineCount() {
+        const queue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+        const indicator = document.getElementById('syncIndicator');
+        const count = document.getElementById('offlineCount');
+        if (queue.length > 0) {
+            indicator.classList.remove('d-none');
+            count.textContent = queue.length;
+        } else {
+            indicator.classList.add('d-none');
+        }
+    }
+
+    function syncOfflineOperations() {
+        if (!isOnline()) return;
+        const queue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
+        if (queue.length === 0) return;
+
+        fetch('/api/sync/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({operaciones: queue})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                // Filtrar las que no se pudieron sincronizar
+                const remaining = [];
+                const syncedIds = data.resultados.filter(r => r.status === 'ok' || r.status === 'already_synced').map(r => r.offline_id);
+
+                const newQueue = queue.filter(op => !syncedIds.includes(op.offline_id));
+                localStorage.setItem('offlineQueue', JSON.stringify(newQueue));
+                updateOfflineCount();
+
+                if (syncedIds.length > 0) {
+                    console.log(`Sincronizadas ${syncedIds.length} operaciones`);
+                }
+            }
+        })
+        .catch(err => console.error('Error syncing:', err));
+    }
+
+    // Initial check
+    updateOfflineCount();
+    updateOnlineStatus();
+
     // Checkout
     document.getElementById('btnCheckout').addEventListener('click', function() {
         if (cart.length === 0) {
@@ -430,21 +554,40 @@
         const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
         const initialPayment = parseFloat(document.getElementById('initialPayment').value) || total;
         const method = document.getElementById('paymentMethod').value;
+        const esApartado = document.getElementById('isApartado').checked;
+
+        const payload = {items, total, pago_inicial: initialPayment, metodo: method, es_apartado: esApartado, fecha: new Date().toISOString()};
+
+        if (!isOnline()) {
+            queueOfflineOperation('venta', payload);
+            alert('Sin conexión. Venta guardada localmente para sincronizar después.');
+            cart = [];
+            renderCart();
+            document.getElementById('initialPayment').value = '';
+            return;
+        }
 
         fetch('/api/registrar-venta/', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-            body: JSON.stringify({items, total, pago_inicial: initialPayment, metodo: method})
+            body: JSON.stringify(payload)
         })
         .then(r => r.json())
         .then(data => {
             if (data.status === 'ok') {
-                lastSaleId = data.venta_id;
-                document.getElementById('saleSuccessMsg').textContent = `Venta #${data.venta_id} por $${total.toLocaleString()}`;
+                lastFolio = data.folio || data.ticket;
+                if (data.tipo === 'apartado') {
+                    lastSaleId = null;
+                    document.getElementById('saleSuccessMsg').textContent = `Apartado registrado. Ticket: ${lastFolio}`;
+                } else {
+                    lastSaleId = data.venta_id;
+                    document.getElementById('saleSuccessMsg').textContent = `Venta registrada. Folio: ${lastFolio}`;
+                }
                 new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
                 cart = [];
                 renderCart();
                 document.getElementById('initialPayment').value = '';
+                document.getElementById('isApartado').checked = false;
             } else {
                 alert('Error: ' + data.message);
             }
@@ -669,8 +812,14 @@
         .then(r => r.json())
         .then(data => {
             if (data.status === 'ok') {
-                lastSaleId = data.venta_id;
-                document.getElementById('saleSuccessMsg').textContent = `Venta Rápida #${data.venta_id} completada.`;
+                lastFolio = data.folio || data.ticket;
+                if (data.tipo === 'apartado') {
+                    lastSaleId = null;
+                    document.getElementById('saleSuccessMsg').textContent = `Apartado Rápido registrado. Ticket: ${lastFolio}`;
+                } else {
+                    lastSaleId = data.venta_id;
+                    document.getElementById('saleSuccessMsg').textContent = `Venta Rápida completada. Folio: ${lastFolio}`;
+                }
                 new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
                 bootstrap.Modal.getInstance(document.getElementById('ventaRapidaModal')).hide();
                 form.reset();
@@ -759,9 +908,13 @@
             });
     }
 
+    let lastFolio = null;
+
     function imprimirUltimaVenta() {
-        if (lastSaleId) {
-            alert('Función de impresión de ticket en desarrollo. Venta ID: ' + lastSaleId);
+        if (lastFolio) {
+            window.open(`/api/tickets/${lastFolio}/pdf/`, '_blank');
+        } else if (lastSaleId) {
+            alert('Venta registrada sin folio generado.');
         }
     }
 </script>

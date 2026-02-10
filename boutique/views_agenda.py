@@ -6,6 +6,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Q, Sum, Count
 from django.utils import timezone
 from datetime import datetime, timedelta, date
@@ -680,28 +681,51 @@ def api_eliminar_dama(request, pk):
 @require_POST
 @profile_permission_required(['Agenda', 'Vendedor'])
 def api_crear_pedido(request):
-    """Crea un pedido para novia o dama"""
-    from .models import Pedido
+    """Crea un pedido para novia o dama con ticket"""
+    from .models import Pedido, Ticket
     data = json.loads(request.body)
 
     novia = get_object_or_404(Novia, pk=data.get('novia_id'))
     dama_id = data.get('dama_id')
     dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
 
-    pedido = Pedido.objects.create(
-        novia=novia,
-        dama=dama,
-        es_vestido_novia=data.get('es_vestido_novia', False),
-        precio=Decimal(data.get('precio', 0)),
-        notas=data.get('notas', ''),
-        creado_por=request.active_profile
-    )
+    precio = Decimal(data.get('precio', 0))
+    anticipo = Decimal(data.get('anticipo', 0))
+    tipo_ticket = 'NOVIA' if data.get('es_vestido_novia') else 'DAMA'
+
+    with transaction.atomic():
+        ticket = Ticket.objects.create(
+            tipo=tipo_ticket,
+            novia=novia,
+            cliente_nombre=dama.nombre if dama else novia.nombre
+        )
+
+        pedido = Pedido.objects.create(
+            novia=novia,
+            dama=dama,
+            ticket=ticket,
+            es_vestido_novia=data.get('es_vestido_novia', False),
+            precio=precio,
+            anticipo=anticipo,
+            notas=data.get('notas', ''),
+            creado_por=request.active_profile
+        )
+
+        # Generar pago inicial si hay anticipo
+        if anticipo > 0:
+            from .models import PagoPedido
+            PagoPedido.objects.create(
+                pedido=pedido,
+                monto=anticipo,
+                registrado_por=request.active_profile,
+                notas='Anticipo inicial'
+            )
 
     return JsonResponse({
         'status': 'ok',
         'id': pedido.id,
-        'ticket': pedido.numero_ticket,
-        'message': 'Pedido generado con éxito'
+        'ticket': ticket.folio,
+        'message': f'Pedido generado con éxito. Ticket: {ticket.folio}'
     })
 
 

@@ -331,6 +331,12 @@
                     <i class="bi bi-bag-fill"></i>Pedidos
                 </a>
             </li>
+
+            <li class="nav-item">
+                <a href="{% url 'lista_apartados' %}" class="nav-link {% if 'apartado' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-apartados">
+                    <i class="bi bi-journal-bookmark-fill"></i>Apartados
+                </a>
+            </li>
             
             <li class="nav-item">
                 <a href="{% url 'inventario_view' %}" class="nav-link {% if request.resolver_match.url_name == 'inventario_view' %}active{% endif %}" data-testid="nav-inventario">

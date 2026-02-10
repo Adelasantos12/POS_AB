@@ -10,8 +10,8 @@ from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
-    CorteCaja, Tienda, MovimientoInventario,
-    registrar_auditoria
+    CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
+    registrar_auditoria, Ticket, Pedido
 )
 from .middleware import profile_permission_required
 from django.utils import timezone
@@ -105,6 +105,11 @@ def es_admin(usuario):
 def puede_gestionar_usuarios(usuario):
     """Solo Superadmin y CEO pueden crear/gestionar usuarios"""
     return usuario.is_superuser or usuario.groups.filter(name__in=['Superadmin', 'CEO']).exists()
+
+
+def health_check(request):
+    """Endpoint para monitoreo de salud del sistema"""
+    return JsonResponse({'status': 'ok', 'timestamp': timezone.now().isoformat()})
 
 
 # ============================================================
@@ -301,17 +306,168 @@ def cierre_caja(request):
 @require_POST
 @login_required
 @profile_permission_required('Vendedor')
+def api_sync(request):
+    """Sincroniza operaciones offline (Ventas y Movimientos)"""
+    try:
+        data = json.loads(request.body)
+        operaciones = data.get('operaciones', [])
+        resultados = []
+
+        for op in operaciones:
+            tipo_op = op.get('tipo_op') # 'venta'
+            payload = op.get('payload')
+            offline_id = op.get('offline_id')
+
+            try:
+                with transaction.atomic():
+                    if tipo_op == 'venta':
+                        # Verificar si ya se procesó este offline_id (idempotencia)
+                        if Venta.objects.filter(offline_id=offline_id).exists():
+                            resultados.append({'offline_id': offline_id, 'status': 'already_synced'})
+                            continue
+
+                        items = payload.get('items', [])
+                        total = payload.get('total', 0)
+                        metodo = payload.get('metodo', 'EFECTIVO')
+                        fecha_offline = payload.get('fecha')
+
+                        venta = Venta.objects.create(
+                            vendedor=request.active_profile,
+                            total=total,
+                            offline_id=offline_id
+                        )
+                        # Guardamos el offline_id en detalles para auditoría e idempotencia
+                        registrar_auditoria(
+                            usuario=request.active_profile,
+                            accion='VENTA',
+                            detalles=f'Sincronización Offline ID:{offline_id}',
+                            entidad=venta,
+                            request=request
+                        )
+
+                        for it in items:
+                            prod = Producto.objects.get(id=it['id'])
+                            ItemVenta.objects.create(
+                                venta=venta,
+                                producto=prod,
+                                cantidad=it['cantidad'],
+                                precio_unitario=prod.precio_venta
+                            )
+                            MovimientoInventario.objects.create(
+                                producto=prod,
+                                tipo='VENTA',
+                                cantidad=-it['cantidad'],
+                                motivo='VENTA',
+                                perfil_activo=request.active_profile,
+                                venta=venta,
+                                stock_resultante=prod.stock_teorico - it['cantidad']
+                            )
+
+                        Pago.objects.create(
+                            venta=venta,
+                            monto=total,
+                            metodo=metodo,
+                            registrado_por=request.active_profile
+                        )
+                        resultados.append({'offline_id': offline_id, 'status': 'ok', 'id': venta.id})
+            except Exception as e:
+                resultados.append({'offline_id': offline_id, 'status': 'error', 'message': str(e)})
+
+        return JsonResponse({'status': 'ok', 'resultados': resultados})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_liquidar_pedido(request, pk):
+    """Convierte un pedido en venta al ser liquidado"""
+    from .models import PagoPedido
+    pedido = get_object_or_404(Pedido, pk=pk)
+    try:
+        data = json.loads(request.body)
+        metodo = data.get('metodo', 'EFECTIVO')
+        monto = Decimal(str(data.get('monto', pedido.saldo_pendiente)))
+
+        with transaction.atomic():
+            # Registrar el pago final
+            PagoPedido.objects.create(
+                pedido=pedido,
+                monto=monto,
+                metodo=metodo,
+                registrado_por=request.active_profile,
+                notas='Liquidación de pedido'
+            )
+
+            # Recargar pedido para ver saldo actualizado
+            pedido.refresh_from_db()
+
+            if pedido.esta_pagado:
+                # Crear la Venta oficial
+                venta = Venta.objects.create(
+                    vendedor=request.active_profile,
+                    total=pedido.precio,
+                    ticket=pedido.ticket,
+                    pedido=pedido,
+                    notas=f"Liquidación de Ticket {pedido.ticket.folio if pedido.ticket else pedido.numero_ticket}"
+                )
+
+                if pedido.producto:
+                    ItemVenta.objects.create(
+                        venta=venta,
+                        producto=pedido.producto,
+                        cantidad=1,
+                        precio_unitario=pedido.precio
+                    )
+
+                Pago.objects.create(
+                    venta=venta,
+                    monto=monto,
+                    metodo=metodo,
+                    registrado_por=request.active_profile
+                )
+
+                # Emitir Ticket
+                ticket = Ticket.objects.create(
+                    tipo='VENTA',
+                    venta=venta,
+                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
+                )
+                ticket.populate_from_obj(venta)
+
+                registrar_auditoria(
+                    usuario=request.active_profile,
+                    accion='VENTA',
+                    detalles=f'Pedido {pedido.id} liquidado y convertido a Venta #{venta.id}',
+                    entidad=venta,
+                    request=request
+                )
+
+                return JsonResponse({'status': 'ok', 'venta_id': venta.id, 'liquidado': True})
+
+            return JsonResponse({'status': 'ok', 'pedido_id': pedido.id, 'liquidado': False, 'saldo': float(pedido.saldo_pendiente)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
 def api_venta_rapida(request):
-    """Crea producto al vuelo + registra venta + movimiento en una sola transacción"""
+    """Crea producto al vuelo + registra venta/apartado + movimiento en una sola transacción"""
+    from .models import Novia, PagoPedido
     try:
         # Usar multipart/form-data para recibir foto
         cat_nombre = request.POST.get('categoria', 'General')
         color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
         precio = Decimal(request.POST.get('precio', 0))
+        anticipo = Decimal(request.POST.get('anticipo', precio))
         metodo = request.POST.get('metodo', 'EFECTIVO')
         rasgo1 = request.POST.get('rasgo1', '')
         rasgo2 = request.POST.get('rasgo2', '')
+        es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
         with transaction.atomic():
@@ -323,70 +479,122 @@ def api_venta_rapida(request):
             if not color:
                 color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
+            # Intentar asociar Tela desde rasgo2 si coincide con el catálogo
+            tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
             # 1. Crear producto con stock 0
             producto = Producto.objects.create(
                 categoria=categoria,
                 color=color,
+                tela=tela_obj,
                 rasgo1=rasgo1,
                 rasgo2=rasgo2,
                 talla=talla,
                 precio_venta=precio,
-                estado='TIENDA',
+                estado='TIENDA' if not es_apartado else 'APARTADO',
                 cantidad_actual=0,
                 stock_teorico=0,
                 foto=foto
             )
 
-            # 2. Registrar Venta
-            venta = Venta.objects.create(
-                vendedor=request.active_profile,
-                total=precio
-            )
+            if es_apartado:
+                # Flujo de Apartado
+                ticket = Ticket.objects.create(tipo='DAMA', cliente_nombre=f"Venta Rápida {producto.sku}")
+                # Buscamos una novia genérica o creamos una si no existe para vincular el pedido
+                novia_gen, _ = Novia.objects.get_or_create(nombre="Ventas Rápidas", defaults={'fecha_boda': timezone.now().date()})
 
-            # 3. Item Venta
-            ItemVenta.objects.create(
-                venta=venta,
-                producto=producto,
-                cantidad=1,
-                precio_unitario=precio
-            )
+                pedido = Pedido.objects.create(
+                    novia=novia_gen,
+                    ticket=ticket,
+                    producto=producto,
+                    precio=precio,
+                    anticipo=anticipo,
+                    estado='NUEVO',
+                    creado_por=request.active_profile
+                )
 
-            # 4. Movimiento Inventario (bajará el stock_teorico a -1)
-            MovimientoInventario.objects.create(
-                producto=producto,
-                tipo='VENTA',
-                cantidad=-1,
-                motivo='VENTA',
-                perfil_activo=request.active_profile,
-                venta=venta,
-                stock_resultante=-1
-            )
+                if anticipo > 0:
+                    PagoPedido.objects.create(
+                        pedido=pedido,
+                        monto=anticipo,
+                        metodo=metodo,
+                        registrado_por=request.active_profile,
+                        notas='Anticipo Venta Rápida'
+                    )
 
-            # 5. Pago
-            Pago.objects.create(
-                venta=venta,
-                monto=precio,
-                metodo=metodo,
-                registrado_por=request.active_profile
-            )
+                registrar_auditoria(
+                    usuario=request.active_profile,
+                    accion='VENTA',
+                    detalles=f'Apartado Rápido Ticket {ticket.folio} - Producto {producto.sku}',
+                    entidad=pedido,
+                    request=request
+                )
 
-            registrar_auditoria(
-                usuario=request.active_profile,
-                accion='VENTA',
-                detalles=f'Venta Rápida #{venta.id} - Producto nuevo {producto.sku}',
-                entidad=venta,
-                request=request
-            )
+                return JsonResponse({
+                    'status': 'ok',
+                    'tipo': 'apartado',
+                    'ticket': ticket.folio,
+                    'producto': {'id': producto.id, 'sku': producto.sku}
+                })
 
-        return JsonResponse({
-            'status': 'ok',
-            'venta_id': venta.id,
-            'producto': {
-                'id': producto.id,
-                'sku': producto.sku,
-                'text': str(producto)
-            }
-        })
+            else:
+                # Flujo de Venta Inmediata (Existente)
+                venta = Venta.objects.create(
+                    vendedor=request.active_profile,
+                    total=precio
+                )
+
+                ItemVenta.objects.create(
+                    venta=venta,
+                    producto=producto,
+                    cantidad=1,
+                    precio_unitario=precio
+                )
+
+                MovimientoInventario.objects.create(
+                    producto=producto,
+                    tipo='VENTA',
+                    cantidad=-1,
+                    motivo='VENTA',
+                    perfil_activo=request.active_profile,
+                    venta=venta,
+                    stock_resultante=-1
+                )
+
+                Pago.objects.create(
+                    venta=venta,
+                    monto=precio,
+                    metodo=metodo,
+                    registrado_por=request.active_profile
+                )
+
+                # Emitir Ticket
+                ticket = Ticket.objects.create(
+                    tipo='VENTA',
+                    venta=venta,
+                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
+                )
+                ticket.populate_from_obj(venta)
+
+                registrar_auditoria(
+                    usuario=request.active_profile,
+                    accion='VENTA',
+                    detalles=f'Venta Rápida #{venta.id} - Producto nuevo {producto.sku}',
+                    entidad=venta,
+                    request=request
+                )
+
+                return JsonResponse({
+                    'status': 'ok',
+                    'tipo': 'venta',
+                    'venta_id': venta.id,
+                    'folio': ticket.folio,
+                    'producto': {
+                        'id': producto.id,
+                        'sku': producto.sku,
+                        'text': str(producto)
+                    }
+                })
     except Exception as e:
         logger.error(f"Error en venta rápida: {e}")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -410,11 +618,15 @@ def api_crear_producto_rapido(request):
         if not color:
             color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
+        rasgo2 = data.get('rasgo2', '')
+        tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
         producto = Producto.objects.create(
             categoria=categoria,
             color=color,
+            tela=tela_obj,
             rasgo1=data.get('rasgo1', ''),
-            rasgo2=data.get('rasgo2', ''),
+            rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
@@ -444,58 +656,118 @@ def api_search_productos(request):
 @login_required
 @profile_permission_required('Vendedor')
 def api_registrar_venta(request):
-    """Registra una venta con pagos"""
+    """Registra una venta o un apartado"""
+    from .models import Novia, PagoPedido
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
-        total = data.get('total', 0)
-        pago_inicial = data.get('pago_inicial', total)
+        total = Decimal(str(data.get('total', 0)))
+        pago_inicial = Decimal(str(data.get('pago_inicial', total)))
         metodo = data.get('metodo', 'EFECTIVO')
+        es_apartado = data.get('es_apartado', False)
 
-        venta = Venta.objects.create(
-            vendedor=request.active_profile,
-            total=total
-        )
+        with transaction.atomic():
+            if es_apartado:
+                # Flujo de Apartado
+                ticket = Ticket.objects.create(tipo='DAMA', cliente_nombre="Cliente POS")
+                novia_gen, _ = Novia.objects.get_or_create(nombre="Ventas POS", defaults={'fecha_boda': timezone.now().date()})
 
-        for it in items:
-            prod = Producto.objects.get(id=it['id'])
-            cantidad = it.get('cantidad', 1)
-            
-            ItemVenta.objects.create(
-                venta=venta,
-                producto=prod,
-                cantidad=cantidad,
-                precio_unitario=prod.precio_venta
-            )
-            
-            # Registrar movimiento de inventario
-            if prod.cantidad_actual > 0:
-                MovimientoInventario.objects.create(
-                    producto=prod,
-                    tipo='SALIDA',
-                    cantidad=-cantidad,
-                    motivo='VENTA',
-                    perfil_activo=request.active_profile,
-                    venta=venta,
-                    stock_resultante=prod.cantidad_actual - cantidad
+                # Para apartados de múltiples ítems, creamos un Pedido que los agrupe o varios.
+                # Para simplificar MVP Phase E, creamos un Pedido principal por el total.
+                pedido = Pedido.objects.create(
+                    novia=novia_gen,
+                    ticket=ticket,
+                    precio=total,
+                    anticipo=pago_inicial,
+                    estado='NUEVO',
+                    creado_por=request.active_profile,
+                    notas=f"Apartado de {len(items)} productos"
                 )
 
-        Pago.objects.create(
-            venta=venta,
-            monto=pago_inicial,
-            metodo=metodo,
-            registrado_por=request.active_profile
-        )
+                if pago_inicial > 0:
+                    PagoPedido.objects.create(
+                        pedido=pedido,
+                        monto=pago_inicial,
+                        metodo=metodo,
+                        registrado_por=request.active_profile,
+                        notas='Anticipo POS'
+                    )
 
-        registrar_auditoria(
-            usuario=request.active_profile,
-            accion='VENTA',
-            detalles=f'Venta #{venta.id} por ${total}',
-            entidad=venta,
-            request=request
-        )
+                # Afectamos inventario inmediatamente (apartamos el stock)
+                for it in items:
+                    prod = Producto.objects.get(id=it['id'])
+                    prod.estado = 'APARTADO'
+                    prod.save(update_fields=['estado'])
 
-        return JsonResponse({'status': 'ok', 'venta_id': venta.id})
+                    MovimientoInventario.objects.create(
+                        producto=prod,
+                        tipo='SALIDA', # Salida de "disponible" a "apartado"
+                        cantidad=-it['cantidad'],
+                        motivo='VENTA',
+                        perfil_activo=request.active_profile,
+                        stock_resultante=prod.stock_teorico - it['cantidad']
+                    )
+
+                registrar_auditoria(
+                    usuario=request.active_profile,
+                    accion='VENTA',
+                    detalles=f'Apartado POS Ticket {ticket.folio}',
+                    entidad=pedido,
+                    request=request
+                )
+
+                return JsonResponse({'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio})
+
+            else:
+                # Flujo de Venta normal
+                venta = Venta.objects.create(
+                    vendedor=request.active_profile,
+                    total=total
+                )
+
+                for it in items:
+                    prod = Producto.objects.get(id=it['id'])
+                    ItemVenta.objects.create(
+                        venta=venta,
+                        producto=prod,
+                        cantidad=it['cantidad'],
+                        precio_unitario=prod.precio_venta
+                    )
+
+                    MovimientoInventario.objects.create(
+                        producto=prod,
+                        tipo='VENTA',
+                        cantidad=-it['cantidad'],
+                        motivo='VENTA',
+                        perfil_activo=request.active_profile,
+                        venta=venta,
+                        stock_resultante=prod.stock_teorico - it['cantidad']
+                    )
+
+                Pago.objects.create(
+                    venta=venta,
+                    monto=pago_inicial,
+                    metodo=metodo,
+                    registrado_por=request.active_profile
+                )
+
+                # Emitir Ticket
+                ticket = Ticket.objects.create(
+                    tipo='VENTA',
+                    venta=venta,
+                    cliente_nombre=venta.cliente.nombre if (hasattr(venta, 'cliente') and venta.cliente) else "Cliente General"
+                )
+                ticket.populate_from_obj(venta)
+
+                registrar_auditoria(
+                    usuario=request.active_profile,
+                    accion='VENTA',
+                    detalles=f'Venta #{venta.id} por ${total}',
+                    entidad=venta,
+                    request=request
+                )
+
+                return JsonResponse({'status': 'ok', 'tipo': 'venta', 'venta_id': venta.id, 'folio': ticket.folio})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
@@ -638,11 +910,15 @@ def api_validar_crear_producto(request):
         if not color_obj:
             color_obj, _ = Color.objects.get_or_create(nombre="Sin definir")
         
+        rasgo2 = data.get('rasgo2', '')
+        tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
         producto = Producto.objects.create(
             categoria=categoria,
             color=color_obj,
+            tela=tela_obj,
             rasgo1=data.get('rasgo1', ''),
-            rasgo2=data.get('rasgo2', ''),
+            rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
             precio_venta=data.get('precio', 0),
             estado=data.get('estado', 'TIENDA'),
@@ -1274,6 +1550,80 @@ def exportar_ventas_pdf(request):
 
 @login_required
 @profile_permission_required('Admin')
+def importar_excel(request):
+    """Carga masiva de modelos y telas desde Excel"""
+    from openpyxl import load_workbook
+
+    if request.method == 'POST' and request.FILES.get('archivo'):
+        archivo = request.FILES['archivo']
+        tipo = request.POST.get('tipo')  # 'modelos' o 'telas'
+
+        try:
+            wb = load_workbook(archivo, data_only=True)
+            ws = wb.active
+
+            resumen = {'creados': 0, 'actualizados': 0, 'errores': []}
+
+            # Saltamos el header
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not any(row): continue
+                try:
+                    if tipo == 'modelos':
+                        # Formato: Modelo, Descripción, Precio
+                        nombre = str(row[0]).strip()
+                        descripcion = str(row[1]) if len(row) > 1 and row[1] else ""
+                        precio = Decimal(str(row[2])) if len(row) > 2 and row[2] else 0
+
+                        obj, created = Modelo.objects.update_or_create(
+                            nombre=nombre,
+                            defaults={'descripcion': descripcion}
+                        )
+                        # Nota: El precio no está en Modelo, sino en Producto.
+                        # Según requerimiento, solo cargamos "bases" (ModeloProducto y catálogos).
+
+                        if created: resumen['creados'] += 1
+                        else: resumen['actualizados'] += 1
+
+                    elif tipo == 'telas':
+                        # Formato: Tela, Proveedor, Notas
+                        nombre = str(row[0]).strip()
+                        proveedor_nombre = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                        notas = str(row[2]) if len(row) > 2 and row[2] else ""
+
+                        from .models import Proveedor
+                        proveedor = None
+                        if proveedor_nombre:
+                            proveedor, _ = Proveedor.objects.get_or_create(nombre=proveedor_nombre)
+
+                        obj, created = Tela.objects.update_or_create(
+                            nombre=nombre,
+                            proveedor=proveedor,
+                            defaults={'descripcion': notas}
+                        )
+
+                        if created: resumen['creados'] += 1
+                        else: resumen['actualizados'] += 1
+
+                except Exception as row_err:
+                    resumen['errores'].append(f"Fila {row}: {str(row_err)}")
+
+            registrar_auditoria(
+                usuario=request.active_profile,
+                accion='EXPORTACION', # Usamos exportación para importación por ahora o añadir uno nuevo
+                detalles=f"Importación {tipo}: {resumen['creados']} creados, {resumen['actualizados']} actualizados",
+                request=request
+            )
+
+            return render(request, 'boutique/importar_excel.html', {'resumen': resumen, 'tipo': tipo})
+
+        except Exception as e:
+            return render(request, 'boutique/importar_excel.html', {'error': str(e)})
+
+    return render(request, 'boutique/importar_excel.html')
+
+
+@login_required
+@profile_permission_required('Admin')
 def gestion_usuarios(request):
     """Lista de personal de la boutique (solo Admin)"""
     usuarios = User.objects.all().prefetch_related('groups').order_by('username')
@@ -1365,4 +1715,45 @@ def historial_usuario(request, pk):
     return render(request, 'boutique/usuario_historial.html', {
         'u': usuario,
         'historial': historial
+    })
+
+
+@login_required
+def print_ticket_pdf(request, folio):
+    """Retorna el PDF del ticket para impresión"""
+    from .models import Ticket
+    from .services.ticket_service import generate_pdf_ticket
+    ticket = get_object_or_404(Ticket, folio=folio)
+
+    pdf_buffer = generate_pdf_ticket(ticket.id)
+    response = HttpResponse(pdf_buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="ticket_{folio}.pdf"'
+    return response
+
+@login_required
+def get_ticket_escpos(request, folio):
+    """Retorna los datos ESC/POS binarios"""
+    from .models import Ticket
+    from .services.ticket_service import generate_escpos_data
+    ticket = get_object_or_404(Ticket, folio=folio)
+
+    escpos_data = generate_escpos_data(ticket.id)
+    return HttpResponse(escpos_data, content_type='application/octet-stream')
+
+
+@login_required
+def api_ticket_detalle(request, folio):
+    """Retorna el detalle de un ticket por folio"""
+    from .models import Ticket
+    ticket = get_object_or_404(Ticket, folio=folio)
+    return JsonResponse({
+        'status': 'ok',
+        'ticket': {
+            'folio': ticket.folio,
+            'tipo': ticket.get_tipo_display(),
+            'fecha': ticket.fecha_hora.isoformat(),
+            'cliente': ticket.cliente_nombre,
+            'total': float(ticket.total),
+            'items': ticket.snapshot_json.get('items', []) if ticket.snapshot_json else []
+        }
     })

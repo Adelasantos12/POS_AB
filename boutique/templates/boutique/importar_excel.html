@@ -1,0 +1,75 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Importar Excel - ByEasy POS{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <h4 class="fw-bold mb-4"><i class="bi bi-file-earmark-excel me-2"></i>Carga Masiva desde Excel</h4>
+
+                    {% if error %}
+                    <div class="alert alert-danger" style="border-radius: 12px;">
+                        <i class="bi bi-exclamation-octagon me-2"></i>{{ error }}
+                    </div>
+                    {% endif %}
+
+                    {% if resumen %}
+                    <div class="alert alert-success" style="border-radius: 12px;">
+                        <h5 class="fw-bold mb-2">Importación de {{ tipo }} completada</h5>
+                        <ul class="mb-0">
+                            <li>Creados: {{ resumen.creados }}</li>
+                            <li>Actualizados: {{ resumen.actualizados }}</li>
+                            <li>Errores: {{ resumen.errores|length }}</li>
+                        </ul>
+                    </div>
+                    {% if resumen.errores %}
+                    <div class="mt-3">
+                        <h6 class="fw-bold">Detalle de errores:</h6>
+                        <div class="bg-light p-3 small" style="border-radius: 10px; max-height: 200px; overflow-y: auto;">
+                            {% for err in resumen.errores %}
+                            <div class="text-danger mb-1">• {{ err }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    <hr>
+                    {% endif %}
+
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Tipo de Información</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="tipo" id="tipoModelos" value="modelos" checked>
+                                    <label class="form-check-label" for="tipoModelos">Modelos (modelos.xlsx)</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="tipo" id="tipoTelas" value="telas">
+                                    <label class="form-check-label" for="tipoTelas">Telas (telas.xlsx)</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Seleccionar Archivo</label>
+                            <input type="file" name="archivo" class="form-control" accept=".xlsx, .xls" required style="border-radius: 10px;">
+                            <div class="form-text mt-2">
+                                <strong>Formato Modelos:</strong> Columnas [Modelo, Descripción, Precio]<br>
+                                <strong>Formato Telas:</strong> Columnas [Tela, Proveedor, Notas]
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 py-3 fw-bold" style="border-radius: 100px;">
+                            <i class="bi bi-cloud-upload me-2"></i>Iniciar Carga
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

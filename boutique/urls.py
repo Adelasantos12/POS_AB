@@ -2,10 +2,12 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
 from . import views_agenda
+from . import views_apartados
 
 urlpatterns = [
     # Rutas principales
     path('', views.index, name='index'),
+    path('health/', views.health_check, name='health_check'),
     path('signup/', views.signup, name='signup'),
     path('login/', auth_views.LoginView.as_view(template_name='boutique/login.html'), name='login'),
     path('logout/', views.logout_view, name='logout'),
@@ -29,6 +31,7 @@ urlpatterns = [
     path('api/ai-analyze-image/', views.api_ai_analyze_image, name='api_ai_analyze_image'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),
     path('api/registrar-venta/', views.api_registrar_venta, name='api_registrar_venta'),
+    path('api/sync/', views.api_sync, name='api_sync'),
 
     # Inventario
     path('inventario/', views.inventario_view, name='inventario_view'),
@@ -80,6 +83,17 @@ urlpatterns = [
     path('api/dama/<int:pk>/editar/', views_agenda.api_editar_dama, name='api_editar_dama'),
     path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
     path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
+    path('api/pedido/<int:pk>/liquidar/', views.api_liquidar_pedido, name='api_liquidar_pedido'),
+
+    # Tickets e Impresión
+    path('api/tickets/<str:folio>/detalle/', views.api_ticket_detalle, name='api_ticket_detalle'),
+    path('api/tickets/<str:folio>/pdf/', views.print_ticket_pdf, name='print_ticket_pdf'),
+    path('api/tickets/<str:folio>/escpos/', views.get_ticket_escpos, name='get_ticket_escpos'),
+
+    # Apartados independientes
+    path('apartados/', views_apartados.lista_apartados, name='lista_apartados'),
+    path('apartados/<int:pk>/', views_apartados.detalle_apartado, name='detalle_apartado'),
+    path('api/apartado/crear/', views_apartados.api_crear_apartado, name='api_crear_apartado'),
     
     # Pedidos en puerta
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),
@@ -94,6 +108,7 @@ urlpatterns = [
     path('exportar/inventario/excel/', views.exportar_inventario_excel, name='exportar_inventario_excel'),
     path('exportar/ventas/csv/', views.exportar_ventas_csv, name='exportar_ventas_csv'),
     path('exportar/ventas/pdf/', views.exportar_ventas_pdf, name='exportar_ventas_pdf'),
+    path('importar-excel/', views.importar_excel, name='importar_excel'),
 
     # Gestión de Usuarios
     path('usuarios/', views.gestion_usuarios, name='gestion_usuarios'),
