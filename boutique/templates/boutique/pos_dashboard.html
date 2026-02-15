@@ -358,12 +358,9 @@
                                 <label class="form-label small fw-bold">Categoría (Tipo) *</label>
                                 <input type="text" name="categoria" class="form-control check-duplicates" list="catOptions" placeholder="Ej: Vestido" required style="border-radius: 10px;" data-testid="input-categoria">
                                 <datalist id="catOptions">
-                                    <option value="Vestido">
-                                    <option value="Top">
-                                    <option value="Falda">
-                                    <option value="Pantalón">
-                                    <option value="Blusa">
-                                    <option value="Conjunto">
+                                    {% for c in categorias %}
+                                    <option value="{{ c.nombre }}">
+                                    {% endfor %}
                                 </datalist>
                             </div>
                             <div class="mb-3">
@@ -380,14 +377,9 @@
                                 <label class="form-label small fw-bold">Color *</label>
                                 <input type="text" name="color" class="form-control check-duplicates" list="colorOptions" placeholder="Ej: Rosa Palo, Rosa Mauve" required style="border-radius: 10px;" data-testid="input-color">
                                 <datalist id="colorOptions">
-                                    <option value="Negro">
-                                    <option value="Blanco">
-                                    <option value="Rojo">
-                                    <option value="Rosa Palo">
-                                    <option value="Rosa Mauve">
-                                    <option value="Azul">
-                                    <option value="Verde">
-                                    <option value="Beige">
+                                    {% for c in colores %}
+                                    <option value="{{ c.nombre }}">
+                                    {% endfor %}
                                 </datalist>
                                 <small class="text-muted">Tip: Rosa Palo y Rosa Mauve son colores diferentes</small>
                             </div>

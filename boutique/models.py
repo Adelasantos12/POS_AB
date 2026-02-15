@@ -801,8 +801,10 @@ class Novia(models.Model):
 
         hoy = timezone.now().date()
         proxima_semana = hoy + timezone.timedelta(days=7)
-        # Rojo: saldo > 0 y entregas próximas
-        if self.pedidos.filter(saldo_pendiente__gt=0, fecha_entrega_estimada__lte=proxima_semana).exists():
+        # Rojo: saldo > 0 (no liquidado) y entregas próximas
+        if self.pedidos.exclude(estado_pago='LIQUIDADO').filter(
+            fecha_entrega_estimada__lte=proxima_semana
+        ).exists():
             return 'danger'
 
         return 'warning'

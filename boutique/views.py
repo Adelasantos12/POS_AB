@@ -659,21 +659,28 @@ def api_venta_rapida(request):
                     creado_por=request.active_profile
                 )
 
-                # Guardar medidas si vienen en el POST (usando prefijo m_ del frontend)
-                if request.POST.get('m_busto') or request.POST.get('medidas_busto'):
+                # Guardar medidas si vienen en el POST
+                if any([request.POST.get('m_busto'), request.POST.get('medidas_busto'), request.POST.get('m_cintura'), request.POST.get('m_notas')]):
+                    def get_d(key1, key2):
+                        val = request.POST.get(key1) or request.POST.get(key2)
+                        if val and str(val).strip():
+                            try: return Decimal(str(val))
+                            except: return None
+                        return None
+
                     Medidas.objects.create(
                         pedido=pedido,
                         cliente=cliente_obj,
                         cliente_nombre=cliente_nombre or (dama_obj.nombre if dama_obj else 'Sin nombre'),
-                        busto=Decimal(request.POST.get('m_busto') or request.POST.get('medidas_busto') or 0),
-                        cintura=Decimal(request.POST.get('m_cintura') or request.POST.get('medidas_cintura') or 0),
-                        cadera=Decimal(request.POST.get('m_cadera') or request.POST.get('medidas_cadera') or 0),
-                        hombro=Decimal(request.POST.get('m_hombro') or request.POST.get('medidas_hombro') or 0),
-                        largo=Decimal(request.POST.get('m_largo') or request.POST.get('medidas_largo') or 0),
-                        brazo=Decimal(request.POST.get('m_brazo') or request.POST.get('medidas_brazo') or 0),
-                        espalda=Decimal(request.POST.get('m_espalda') or request.POST.get('medidas_espalda') or 0),
-                        talle_delantero=Decimal(request.POST.get('m_talle_frente') or request.POST.get('medidas_talle_frente') or 0),
-                        talle_trasero=Decimal(request.POST.get('m_talle_espalda') or request.POST.get('medidas_talle_espalda') or 0),
+                        busto=get_d('m_busto', 'medidas_busto'),
+                        cintura=get_d('m_cintura', 'medidas_cintura'),
+                        cadera=get_d('m_cadera', 'medidas_cadera'),
+                        hombro=get_d('m_hombro', 'medidas_hombro'),
+                        largo=get_d('m_largo', 'medidas_largo'),
+                        brazo=get_d('m_brazo', 'medidas_brazo'),
+                        espalda=get_d('m_espalda', 'medidas_espalda'),
+                        talle_delantero=get_d('m_talle_frente', 'medidas_talle_frente'),
+                        talle_trasero=get_d('m_talle_espalda', 'medidas_talle_espalda'),
                         observaciones=request.POST.get('m_notas') or request.POST.get('medidas_notas', '')
                     )
 
