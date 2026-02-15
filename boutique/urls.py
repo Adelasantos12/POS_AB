@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/ai-extract-attributes/', views.api_ai_extract_attributes, name='api_ai_extract_attributes'),
     path('api/ai-analyze-image/', views.api_ai_analyze_image, name='api_ai_analyze_image'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),
+    path('api/search-clientes/', views.api_search_clientes, name='api_search_clientes'),
     path('api/registrar-venta/', views.api_registrar_venta, name='api_registrar_venta'),
     path('api/sync/', views.api_sync, name='api_sync'),
 
@@ -83,6 +84,7 @@ urlpatterns = [
     path('api/dama/<int:pk>/editar/', views_agenda.api_editar_dama, name='api_editar_dama'),
     path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
     path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
+    path('api/pedido/crear-completo/', views_agenda.api_crear_pedido_completo, name='api_crear_pedido_completo'),
     path('api/pedido/<int:pk>/liquidar/', views.api_liquidar_pedido, name='api_liquidar_pedido'),
     path('api/cobrar/<str:tipo>/<int:pk>/', views.api_cobrar_item, name='api_cobrar_item'),
     path('api/pedido/<int:pedido_id>/medidas/', views.api_guardar_medidas, name='api_guardar_medidas'),
@@ -114,6 +116,9 @@ urlpatterns = [
     path('exportar/ventas/csv/', views.exportar_ventas_csv, name='exportar_ventas_csv'),
     path('exportar/ventas/pdf/', views.exportar_ventas_pdf, name='exportar_ventas_pdf'),
     path('importar-excel/', views.importar_excel, name='importar_excel'),
+
+    # Clientes
+    path('clientes/<int:pk>/', views.cliente_detalle, name='cliente_detalle'),
 
     # Gestión de Usuarios
     path('usuarios/', views.gestion_usuarios, name='gestion_usuarios'),

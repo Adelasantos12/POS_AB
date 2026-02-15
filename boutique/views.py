@@ -11,7 +11,7 @@ from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
     CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
-    registrar_auditoria, Ticket, Pedido
+    registrar_auditoria, Ticket, Pedido, Apartado
 )
 from .middleware import profile_permission_required
 from django.utils import timezone
@@ -39,6 +39,13 @@ def api_ai_analyze_image(request):
 
             atributos = analyze_product_image(image_data)
             if atributos:
+                # Validar contra catálogo
+                cat_exists = Categoria.objects.filter(nombre=atributos.get('categoria')).exists()
+                if not cat_exists: atributos['categoria'] = None
+
+                col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
+                if not col_exists: atributos['color'] = None
+
                 return JsonResponse({'status': 'ok', 'atributos': atributos})
             else:
                 return JsonResponse({'status': 'error', 'message': 'No se pudo analizar la imagen'}, status=500)
@@ -60,6 +67,13 @@ def api_ai_extract_attributes(request):
 
         atributos = extract_product_attributes(descripcion)
         if atributos:
+            # Validar contra catálogo
+            cat_exists = Categoria.objects.filter(nombre=atributos.get('categoria')).exists()
+            if not cat_exists: atributos['categoria'] = None
+
+            col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
+            if not col_exists: atributos['color'] = None
+
             return JsonResponse({'status': 'ok', 'atributos': atributos})
         else:
             return JsonResponse({'status': 'error', 'message': 'No se pudo procesar la descripción'}, status=500)
@@ -483,7 +497,25 @@ def api_venta_rapida(request):
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
+        # Datos del cliente
+        cliente_telefono = request.POST.get('cliente_telefono')
+        cliente_nombre = request.POST.get('cliente_nombre')
+        cliente_notas = request.POST.get('cliente_notas')
+        evento = request.POST.get('evento', '')
+
         with transaction.atomic():
+            # 0. Gestionar cliente
+            cliente_obj = None
+            if cliente_telefono:
+                cliente_obj, created = Cliente.objects.get_or_create(
+                    telefono=cliente_telefono,
+                    defaults={'nombre': cliente_nombre or 'Sin nombre', 'notas': cliente_notas or ''}
+                )
+                if not created and cliente_nombre:
+                    cliente_obj.nombre = cliente_nombre
+                    if cliente_notas:
+                        cliente_obj.notas = cliente_notas
+                    cliente_obj.save()
             categoria = Categoria.objects.filter(nombre=cat_nombre).first()
             if not categoria:
                 categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
@@ -513,9 +545,15 @@ def api_venta_rapida(request):
             if es_apartado:
                 # Flujo de Apartado Independiente
                 apartado = Apartado.objects.create(
-                    cliente_nombre=f"Venta Rápida {producto.sku}",
+                    cliente=cliente_obj,
+                    cliente_nombre=cliente_nombre or f"Venta Rápida {producto.sku}",
+                    cliente_telefono=cliente_telefono or '',
                     total=precio,
                     anticipo=0,
+                    evento=evento,
+                    categoria_cache=cat_nombre,
+                    color_cache=color_nombre,
+                    talla_cache=talla,
                     notas=f"Apartado Rápido SKU {producto.sku}"
                 )
                 ApartadoItem.objects.create(
@@ -556,7 +594,12 @@ def api_venta_rapida(request):
                 # Flujo de Venta normal
                 venta = Venta.objects.create(
                     vendedor=request.active_profile,
-                    total=precio
+                    cliente=cliente_obj,
+                    total=precio,
+                    evento=evento,
+                    categoria_cache=cat_nombre,
+                    color_cache=color_nombre,
+                    talla_cache=talla
                 )
 
                 ItemVenta.objects.create(
@@ -663,6 +706,54 @@ def api_search_productos(request):
         Q(categoria__nombre__icontains=q)
     )[:15]
     results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual} for p in productos]
+    return JsonResponse({'results': results})
+
+
+@login_required
+def cliente_detalle(request, pk):
+    """Ficha del cliente con historial estructurado"""
+    cliente = get_object_or_404(Cliente, pk=pk)
+    ventas = Venta.objects.filter(cliente=cliente).order_by('-fecha')
+    apartados = Apartado.objects.filter(cliente=cliente).order_by('-fecha_creacion')
+    pedidos = Pedido.objects.filter(cliente=cliente).order_by('-fecha_creacion')
+
+    # Consolidar historial cronológico
+    historial = []
+    for v in ventas:
+        historial.append({'tipo': 'VENTA', 'obj': v, 'fecha': v.fecha})
+    for a in apartados:
+        historial.append({'tipo': 'APARTADO', 'obj': a, 'fecha': a.fecha_creacion})
+    for p in pedidos:
+        historial.append({'tipo': 'PEDIDO', 'obj': p, 'fecha': p.fecha_creacion})
+
+    historial.sort(key=lambda x: x['fecha'], reverse=True)
+
+    return render(request, 'boutique/cliente_detalle.html', {
+        'cliente': cliente,
+        'historial': historial,
+        'apartados_activos': apartados.exclude(estado__in=['CANCELADO', 'ENTREGADO'])
+    })
+
+
+@login_required
+def api_search_clientes(request):
+    """Buscador de clientes por teléfono o nombre"""
+    q = request.GET.get('q', '')
+    if not q:
+        return JsonResponse({'results': []})
+
+    clientes = Cliente.objects.filter(
+        Q(telefono__icontains=q) |
+        Q(nombre__icontains=q)
+    )[:10]
+
+    results = [{
+        'id': c.id,
+        'nombre': c.nombre,
+        'telefono': c.telefono,
+        'email': c.email,
+        'notas': c.notas
+    } for c in clientes]
     return JsonResponse({'results': results})
 
 

@@ -734,6 +734,111 @@ def api_crear_pedido(request):
     })
 
 
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_crear_pedido_completo(request):
+    """Crea un pedido capturando todos los datos (modelo, color, talla, medidas, pago)"""
+    from .models import Pedido, Ticket, Medidas, Modelo, Color, Cliente
+    from .services.cash_service import registrar_cobro
+
+    data = json.loads(request.body)
+    novia = get_object_or_404(Novia, pk=data.get('novia_id'))
+    dama_id = data.get('dama_id')
+    dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
+
+    precio = Decimal(str(data.get('precio', 0)))
+    anticipo = Decimal(str(data.get('anticipo', 0)))
+    metodo = data.get('metodo', 'EFECTIVO')
+    tipo_ticket = 'PEDIDO' # Unificado para todos los pedidos de grupo
+
+    with transaction.atomic():
+        # 1. Resolver Cliente (Novia o Dama puede ser cliente)
+        # Intentar vincular a un Cliente por teléfono si existe en Novia/Dama
+        tel = dama.telefono if dama else novia.telefono
+        nom = dama.nombre if dama else novia.nombre
+        cliente_obj = None
+        if tel:
+            cliente_obj, _ = Cliente.objects.get_or_create(
+                telefono=tel,
+                defaults={'nombre': nom}
+            )
+
+        # 2. Resolver Modelo y Color si se proporcionaron nombres
+        modelo_obj = None
+        if data.get('modelo_nombre'):
+            modelo_obj, _ = Modelo.objects.get_or_create(nombre=data['modelo_nombre'])
+
+        color_obj = None
+        if data.get('color_nombre'):
+            color_obj, _ = Color.objects.get_or_create(nombre=data['color_nombre'])
+
+        # 3. Crear Pedido
+        pedido = Pedido.objects.create(
+            novia=novia,
+            dama=dama,
+            cliente=cliente_obj,
+            es_vestido_novia=data.get('es_vestido_novia', False),
+            modelo=modelo_obj,
+            color=color_obj,
+            talla=data.get('talla', ''),
+            precio=precio,
+            anticipo=0, # Se actualizará vía PagoPedido
+            notas=data.get('notas', ''),
+            creado_por=request.active_profile
+        )
+
+        # 4. Guardar Medidas
+        medidas = Medidas.objects.create(
+            pedido=pedido,
+            cliente=cliente_obj,
+            cliente_nombre=nom,
+            busto=Decimal(str(data.get('busto'))) if data.get('busto') else None,
+            cintura=Decimal(str(data.get('cintura'))) if data.get('cintura') else None,
+            cadera=Decimal(str(data.get('cadera'))) if data.get('cadera') else None,
+            largo=Decimal(str(data.get('largo'))) if data.get('largo') else None,
+            observaciones=data.get('notas_medidas', '')
+        )
+
+        # 5. Registrar Cobro (Genera Ticket y MovimientoCaja)
+        ticket = None
+        if anticipo > 0:
+            try:
+                ticket = registrar_cobro(
+                    origen_tipo='pedido',
+                    origen_obj=pedido,
+                    monto=anticipo,
+                    metodo=metodo,
+                    usuario=request.active_profile,
+                    notas='Anticipo inicial (Captura Completa)'
+                )
+            except ValueError as ve:
+                # Si la caja está cerrada, lanzamos error para abortar transacción
+                raise ve
+        else:
+            # Crear ticket sin pago si es necesario (pero usualmente requieren anticipo)
+            ticket = Ticket.objects.create(
+                tipo='PEDIDO',
+                cliente_nombre=nom,
+                total=precio,
+                total_pagado=0,
+                cajero_nombre=request.active_profile.username,
+                pedido=pedido,
+                novia=novia
+            )
+            ticket.populate_from_obj(pedido)
+
+        pedido.ticket = ticket
+        pedido.save()
+
+    return JsonResponse({
+        'status': 'ok',
+        'id': pedido.id,
+        'ticket_folio': ticket.folio,
+        'ticket_print_url': f"/api/tickets/{ticket.folio}/pdf/",
+        'message': f'Pedido y ticket {ticket.folio} generados con éxito'
+    })
+
+
 # ============================================================
 # PEDIDOS EN PUERTA - RESUMEN
 # ============================================================

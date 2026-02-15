@@ -294,6 +294,81 @@
     </div>
 </div>
 
+<!-- Modal Pedido Completo -->
+<div class="modal fade" id="modalPedidoCompleto" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Captura de Pedido / Apartado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <form id="formPedidoCompleto">
+                    <input type="hidden" name="novia_id" value="{{ novia.id }}">
+                    <input type="hidden" name="dama_id" id="pc_dama_id">
+                    <input type="hidden" name="es_vestido_novia" id="pc_es_novia">
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Modelo</label>
+                            <input type="text" name="modelo_nombre" class="form-control" placeholder="Ej: Sirena">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Color</label>
+                            <input type="text" name="color_nombre" class="form-control" placeholder="Ej: Rosa Palo">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Talla</label>
+                            <input type="text" name="talla" class="form-control" placeholder="Ej: 8">
+                        </div>
+
+                        <div class="col-12 mt-4">
+                            <h6 class="fw-bold small border-bottom pb-2">Medidas (Opcional)</h6>
+                        </div>
+
+                        <div class="col-md-3 col-6"><label class="small">Busto</label><input type="number" step="0.1" name="busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cintura</label><input type="number" step="0.1" name="cintura" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cadera</label><input type="number" step="0.1" name="cadera" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Largo</label><input type="number" step="0.1" name="largo" class="form-control form-control-sm"></div>
+
+                        <div class="col-12 mt-4">
+                            <h6 class="fw-bold small border-bottom pb-2">Detalles de Pago</h6>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Precio Total</label>
+                            <input type="number" name="precio" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Anticipo</label>
+                            <input type="number" name="anticipo" class="form-control" value="0">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Método</label>
+                            <select name="metodo" class="form-select">
+                                <option value="EFECTIVO">💵 Efectivo</option>
+                                <option value="TARJETA">💳 Tarjeta</option>
+                                <option value="TRANSFERENCIA">📱 Transferencia</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">Especificaciones / Notas</label>
+                            <textarea name="notas" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="text-end mt-4">
+                        <button type="submit" class="btn btn-primary rounded-pill px-5 fw-bold">
+                            Confirmar y Generar Ticket
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Editar Novia -->
 <div class="modal fade" id="modalEditarNovia" tabindex="-1">
     <div class="modal-dialog">
@@ -363,12 +438,49 @@
         await fetch('{% url "api_editar_novia" novia.id %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(data) });
         location.reload();
     });
+
     async function generarPedido(damaId, esNovia) {
-        const precio = prompt('Precio:', '0');
-        if (precio === null) return;
-        await fetch('/api/pedido/crear/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify({ novia_id: {{ novia.id }}, dama_id: damaId, es_vestido_novia: esNovia, precio: parseFloat(precio) || 0 }) });
-        location.reload();
+        document.getElementById('pc_dama_id').value = damaId || '';
+        document.getElementById('pc_es_novia').value = esNovia ? 'true' : 'false';
+        new bootstrap.Modal(document.getElementById('modalPedidoCompleto')).show();
     }
+
+    document.getElementById('formPedidoCompleto').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        data.novia_id = parseInt(data.novia_id);
+        data.dama_id = data.dama_id ? parseInt(data.dama_id) : null;
+        data.es_vestido_novia = data.es_vestido_novia === 'true';
+        data.precio = parseFloat(data.precio);
+        data.anticipo = parseFloat(data.anticipo);
+
+        try {
+            const res = await fetch('/api/pedido/crear-completo/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'ok') {
+                if (result.ticket_print_url) {
+                    window.open(result.ticket_print_url, '_blank');
+                }
+                location.reload();
+            } else {
+                alert('Error: ' + result.message);
+                btn.disabled = false;
+                btn.innerHTML = 'Confirmar y Generar Ticket';
+            }
+        } catch (err) {
+            alert('Error de conexión');
+            btn.disabled = false;
+            btn.innerHTML = 'Confirmar y Generar Ticket';
+        }
+    });
     async function eliminarNovia(id) {
         if (!confirm('¿Eliminar novia?')) return;
         await fetch(`/api/novia/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });

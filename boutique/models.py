@@ -251,7 +251,9 @@ class Producto(models.Model):
 class Cliente(models.Model):
     nombre = models.CharField(max_length=100)
     email = models.EmailField(blank=True)
-    telefono = models.CharField(max_length=20, blank=True)
+    telefono = models.CharField(max_length=20, unique=True, db_index=True)
+    notas = models.TextField(blank=True)
+    fecha_alta = models.DateTimeField(default=timezone.now)
     def __str__(self): return self.nombre
 
 class Ticket(models.Model):
@@ -377,8 +379,19 @@ class TicketItem(models.Model):
     def __str__(self): return f"{self.descripcion} x {self.cantidad}"
 
 class Venta(models.Model):
+    EVENTOS = [
+        ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
+        ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
+    ]
     vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
+    evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+
+    # Cache para marketing
+    categoria_cache = models.CharField(max_length=100, blank=True)
+    color_cache = models.CharField(max_length=100, blank=True)
+    talla_cache = models.CharField(max_length=50, blank=True)
+
     fecha = models.DateTimeField(auto_now_add=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     notas = models.TextField(blank=True)
@@ -489,10 +502,22 @@ class Apartado(models.Model):
         ('CANCELADO', 'Cancelado'),
         ('ENTREGADO', 'Entregado'),
     ]
+    EVENTOS = [
+        ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
+        ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
+    ]
 
     folio = models.CharField(max_length=30, unique=True, blank=True)
+    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
     cliente_nombre = models.CharField(max_length=200)
     cliente_telefono = models.CharField(max_length=20)
+    evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+
+    # Cache para marketing
+    categoria_cache = models.CharField(max_length=100, blank=True)
+    color_cache = models.CharField(max_length=100, blank=True)
+    talla_cache = models.CharField(max_length=50, blank=True)
+
     notas = models.TextField(blank=True)
 
     estado = models.CharField(max_length=20, choices=ESTADOS, default='VIGENTE')
@@ -801,8 +826,13 @@ class Pedido(models.Model):
         ('PARCIAL', 'Pago parcial'),
         ('LIQUIDADO', 'Liquidado'),
     ]
+    EVENTOS = [
+        ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
+        ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
+    ]
     
     # Puede ser para la novia o para una dama
+    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
     novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='pedidos')
     dama = models.ForeignKey(Dama, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     es_vestido_novia = models.BooleanField(default=False, help_text="Es el vestido de la novia")
@@ -820,6 +850,7 @@ class Pedido(models.Model):
     # Precio y pagos
     precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
     
     # Estados
     estado = models.CharField(max_length=20, choices=ESTADOS, default='NUEVO')
