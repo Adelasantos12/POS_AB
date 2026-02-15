@@ -750,45 +750,56 @@ def api_eliminar_dama(request, pk):
 @require_POST
 @profile_permission_required(['Agenda', 'Vendedor'])
 def api_crear_pedido(request):
-    """Crea un pedido para novia o dama con ticket"""
+    """Crea un pedido para novia o dama con ticket (Versión Simplificada)"""
     from .models import Pedido, Ticket
+    from .services.cash_service import registrar_cobro, get_caja_activa
     data = json.loads(request.body)
 
     novia = get_object_or_404(Novia, pk=data.get('novia_id'))
     dama_id = data.get('dama_id')
     dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
 
-    precio = Decimal(data.get('precio', 0))
-    anticipo = Decimal(data.get('anticipo', 0))
-    tipo_ticket = 'NOVIA' if data.get('es_vestido_novia') else 'DAMA'
+    precio = Decimal(str(data.get('precio', 0)))
+    anticipo = Decimal(str(data.get('anticipo', 0)))
+    metodo = data.get('metodo', 'EFECTIVO')
 
     with transaction.atomic():
-        ticket = Ticket.objects.create(
-            tipo=tipo_ticket,
-            novia=novia,
-            cliente_nombre=dama.nombre if dama else novia.nombre
-        )
-
         pedido = Pedido.objects.create(
             novia=novia,
             dama=dama,
-            ticket=ticket,
             es_vestido_novia=data.get('es_vestido_novia', False),
             precio=precio,
-            anticipo=anticipo,
+            anticipo=0, # Se registra vía registrar_cobro
             notas=data.get('notas', ''),
             creado_por=request.active_profile
         )
 
-        # Generar pago inicial si hay anticipo
+        ticket = None
         if anticipo > 0:
-            from .models import PagoPedido
-            PagoPedido.objects.create(
-                pedido=pedido,
+            ticket = registrar_cobro(
+                origen_tipo='pedido',
+                origen_obj=pedido,
                 monto=anticipo,
-                registrado_por=request.active_profile,
+                metodo=metodo,
+                usuario=request.active_profile,
                 notas='Anticipo inicial'
             )
+        else:
+            caja = get_caja_activa()
+            ticket = Ticket.objects.create(
+                tipo='PEDIDO',
+                novia=novia,
+                cliente_nombre=dama.nombre if dama else novia.nombre,
+                total=precio,
+                total_pagado=0,
+                cajero_nombre=request.active_profile.username,
+                pedido=pedido,
+                caja=caja
+            )
+            ticket.populate_from_obj(pedido)
+
+        pedido.ticket = ticket
+        pedido.save()
 
     return JsonResponse({
         'status': 'ok',
@@ -886,7 +897,9 @@ def api_crear_pedido_completo(request):
                 # Si la caja está cerrada, lanzamos error para abortar transacción
                 raise ve
         else:
-            # Crear ticket sin pago si es necesario (pero usualmente requieren anticipo)
+            # Crear ticket sin pago si es necesario
+            from .services.cash_service import get_caja_activa
+            caja = get_caja_activa()
             ticket = Ticket.objects.create(
                 tipo='PEDIDO',
                 cliente_nombre=nom,
@@ -894,7 +907,8 @@ def api_crear_pedido_completo(request):
                 total_pagado=0,
                 cajero_nombre=request.active_profile.username,
                 pedido=pedido,
-                novia=novia
+                novia=novia,
+                caja=caja
             )
             ticket.populate_from_obj(pedido)
 
@@ -926,7 +940,7 @@ def pedidos_en_puerta(request):
 
     # Tipos que requieren seguimiento externo (según ajuste de alcance)
     tipos_seguimiento = ['HECHURA', 'PEDIDO_EXTERNO']
-    
+
     pedidos_qs = Pedido.objects.filter(
         tipo_pedido__in=tipos_seguimiento
     ).exclude(

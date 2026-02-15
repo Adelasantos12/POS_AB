@@ -65,10 +65,11 @@
                         <span class="badge badge-role">{{ novia.damas.count }} / {{ novia.cantidad_damas }}</span>
                     </td>
                     <td>
-                        <div class="d-flex gap-2 align-items-center">
-                            <div class="rounded-circle bg-{{ novia.semaforo_medidas }}" style="width: 10px; height: 10px;" title="Medidas: {{ novia.medidas_completitud_promedio }}%"></div>
-                            <div class="rounded-circle bg-{{ novia.semaforo_produccion }}" style="width: 10px; height: 10px;" title="Producción"></div>
-                            <div class="rounded-circle bg-{{ novia.semaforo_pago }}" style="width: 10px; height: 10px;" title="Pago"></div>
+                        <div class="d-flex gap-1 align-items-center">
+                            <div class="rounded-circle bg-{{ novia.semaforo_medidas }}" style="width: 10px; height: 10px;" title="Medidas"></div>
+                            <div class="rounded-circle bg-{{ novia.semaforo_produccion }}" style="width: 10px; height: 10px;" title="Listo"></div>
+                            <div class="rounded-circle bg-{{ novia.semaforo_pago }}" style="width: 10px; height: 10px;" title="Pagado"></div>
+                            <div class="rounded-circle bg-{{ novia.semaforo_entrega }}" style="width: 10px; height: 10px;" title="Entregado"></div>
                         </div>
                     </td>
                     <td>

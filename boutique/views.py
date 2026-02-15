@@ -506,10 +506,19 @@ def api_venta_rapida(request):
         foto = request.FILES.get('foto')
 
         # Datos del cliente
-        cliente_telefono = request.POST.get('cliente_telefono')
+        cliente_telefono = request.POST.get('cliente_telefono', '').strip()
         cliente_nombre = request.POST.get('cliente_nombre')
         cliente_notas = request.POST.get('cliente_notas')
         evento = request.POST.get('evento', '')
+        fecha_entrega_est = request.POST.get('fecha_entrega_estimada')
+        fecha_evento = request.POST.get('fecha_evento')
+
+        # 1.5 Validaciones duras para Pedidos
+        if tipo_op in ['HECHURA', 'PEDIDO_EXTERNO']:
+            if not cliente_telefono:
+                return JsonResponse({'status': 'error', 'message': 'El teléfono del cliente es obligatorio para este tipo de pedido.'}, status=400)
+            if not fecha_entrega_est:
+                return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
 
         with transaction.atomic():
             # 2. Gestionar cliente
@@ -656,6 +665,8 @@ def api_venta_rapida(request):
                     tipo_operacion=tipo_op,
                     tipo_pedido=tp,
                     estado=est,
+                    fecha_entrega_estimada=fecha_entrega_est or None,
+                    fecha_evento=fecha_evento or None,
                     creado_por=request.active_profile
                 )
 
@@ -1433,33 +1444,53 @@ def imprimir_etiquetas(request):
 
 @login_required
 def admin_dashboard(request):
-    """Dashboard para Administradores con analítica"""
+    """Dashboard para Administradores con analítica y resumen diario"""
     if not es_admin(request.active_profile):
         return redirect('index')
 
     from .models import MovimientoCaja
     from django.db.models.functions import TruncDate
 
-    # Ingresos por día (Venta + Abonos)
+    # 1. Resumen Diario (Hoy) - Basado en MovimientoCaja
+    hoy_date = timezone.now().date()
+    movs_hoy = MovimientoCaja.objects.filter(fecha__date=hoy_date)
+
+    resumen_diario = {
+        'total': movs_hoy.aggregate(Sum('monto'))['monto__sum'] or 0,
+        'breakdown': movs_hoy.values('metodo_pago').annotate(total=Sum('monto')),
+        'tickets_count': movs_hoy.exclude(ticket_folio='').count(),
+        'anticipos': movs_hoy.filter(tipo__in=['ABONO_PEDIDO', 'ABONO_APARTADO']).aggregate(Sum('monto'))['monto__sum'] or 0,
+        'liquidaciones': movs_hoy.filter(tipo='VENTA').aggregate(Sum('monto'))['monto__sum'] or 0,
+    }
+
+    # 2. Ingresos por día (Venta + Abonos) - últimos 30 días
     ventas_dia = MovimientoCaja.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
         total=Sum('monto'),
         cantidad=Count('id')
     ).order_by('dia')
 
-    # Ventas por categoría (Seguimos usando ItemVenta para detalles de productos vendidos)
-    # Nota: Esto solo cuenta ventas directas, no pedidos aún no liquidados.
+    # Serializar fechas para JSON
+    ventas_dia_list = []
+    for v in ventas_dia:
+        ventas_dia_list.append({
+            'dia': v['dia'].strftime('%Y-%m-%d') if hasattr(v['dia'], 'strftime') else str(v['dia']),
+            'total': float(v['total'])
+        })
+
+    # 3. Ventas por categoría
     ventas_cat = ItemVenta.objects.values('producto__categoria__nombre').annotate(
         total=Sum('cantidad')
     ).order_by('-total')
 
-    # Ventas por Color
+    # 4. Ventas por Color
     ventas_color = ItemVenta.objects.values('producto__color__nombre').annotate(
         total=Sum('cantidad')
     ).order_by('-total')
 
     ahora = timezone.now()
     context = {
-        'ventas_dia': list(ventas_dia),
+        'resumen_diario': resumen_diario,
+        'ventas_dia': ventas_dia_list,
         'ventas_cat': list(ventas_cat),
         'ventas_color': list(ventas_color),
         'total_mensual': MovimientoCaja.objects.filter(fecha__month=ahora.month, fecha__year=ahora.year).aggregate(Sum('monto'))['monto__sum'] or 0

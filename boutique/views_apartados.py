@@ -37,12 +37,15 @@ def api_crear_apartado(request):
         total = Decimal(str(data.get('total', 0)))
         notas = data.get('notas', '')
 
+        from .services.cash_service import registrar_cobro, get_caja_activa
+        metodo = data.get('metodo', 'EFECTIVO')
+
         with transaction.atomic():
             apartado = Apartado.objects.create(
                 cliente_nombre=cliente_nombre,
                 cliente_telefono=cliente_telefono,
                 total=total,
-                anticipo=anticipo,
+                anticipo=0, # Se registra vía registrar_cobro
                 notas=notas
             )
 
@@ -65,14 +68,30 @@ def api_crear_apartado(request):
                     prod.estado = 'APARTADO'
                     prod.save()
 
-            # Emitir Ticket
-            ticket = Ticket.objects.create(
-                tipo='APARTADO',
-                apartado=apartado,
-                cliente_nombre=cliente_nombre,
-                cliente_telefono=cliente_telefono
-            )
-            ticket.populate_from_obj(apartado)
+            # Emitir Ticket / Registrar Cobro
+            ticket = None
+            if anticipo > 0:
+                ticket = registrar_cobro(
+                    origen_tipo='apartado',
+                    origen_obj=apartado,
+                    monto=anticipo,
+                    metodo=metodo,
+                    usuario=request.active_profile,
+                    notas='Anticipo inicial apartado'
+                )
+            else:
+                caja = get_caja_activa()
+                ticket = Ticket.objects.create(
+                    tipo='APARTADO',
+                    apartado=apartado,
+                    cliente_nombre=cliente_nombre,
+                    cliente_telefono=cliente_telefono,
+                    total=total,
+                    total_pagado=0,
+                    cajero_nombre=request.active_profile.username,
+                    caja=caja
+                )
+                ticket.populate_from_obj(apartado)
 
         return JsonResponse({'status': 'ok', 'id': apartado.id, 'folio': ticket.folio})
     except Exception as e:

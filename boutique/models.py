@@ -301,6 +301,7 @@ class Ticket(models.Model):
     apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_asociados')
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
     novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
+    caja = models.ForeignKey('CorteCaja', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
 
     def save(self, *args, **kwargs):
         if not self.folio:
@@ -768,46 +769,61 @@ class Novia(models.Model):
 
     @property
     def semaforo_medidas(self):
-        pct = self.medidas_completitud_promedio
-        if pct < 50: return 'danger'
-        if pct < 100: return 'warning'
-        return 'success'
+        peds = self.pedidos.all()
+        if not peds.exists(): return 'secondary'
+
+        completos = sum(1 for p in peds if p.medidas_completitud == 100)
+        if completos == peds.count(): return 'success'
+        if completos > 0: return 'warning'
+        return 'danger' # Ninguna medida completa
 
     @property
     def semaforo_produccion(self):
-        peds = self.pedidos.exclude(estado__in=['ENTREGADO', 'CANCELADO'])
-        if not peds.exists(): return 'success'
+        """Punto 2: Pedido listo"""
+        peds = self.pedidos.exclude(estado='CANCELADO')
+        if not peds.exists(): return 'secondary'
 
+        listos = peds.filter(estado__in=['LISTO', 'RECIBIDO', 'ENTREGADO']).count()
+        if listos == peds.count(): return 'success'
+
+        # Verificar retrasos
         hoy = timezone.now().date()
-        # Estados que implican "en proceso"
-        en_proceso = ['NUEVO', 'PENDIENTE_TELA', 'TELA_COMPRADA', 'EN_CONFECCION', 'SOLICITADO', 'EN_PROCESO', 'POR_RECOGER']
-
-        # Rojo: hay pedidos en producción vencidos o sin fecha
-        if peds.filter(estado__in=en_proceso).filter(
+        if peds.exclude(estado__in=['LISTO', 'RECIBIDO', 'ENTREGADO']).filter(
             Q(fecha_entrega_estimada__lt=hoy) | Q(fecha_entrega_estimada__isnull=True)
         ).exists():
             return 'danger'
 
-        # Amarillo: hay LISTOS / RECIBIDOS pero no entregados
-        if peds.filter(estado__in=['LISTO', 'RECIBIDO']).exists():
-            return 'warning'
-
-        return 'success'
+        if listos > 0: return 'warning'
+        return 'secondary'
 
     @property
     def semaforo_pago(self):
-        saldo = self.total_pendiente
-        if saldo == 0: return 'success'
+        """Punto 3: Liquidado"""
+        peds = self.pedidos.exclude(estado='CANCELADO')
+        if not peds.exists(): return 'secondary'
 
-        hoy = timezone.now().date()
-        proxima_semana = hoy + timezone.timedelta(days=7)
-        # Rojo: saldo > 0 (no liquidado) y entregas próximas
-        if self.pedidos.exclude(estado_pago='LIQUIDADO').filter(
-            fecha_entrega_estimada__lte=proxima_semana
-        ).exists():
+        liquidados = peds.filter(estado_pago='LIQUIDADO').count()
+        if liquidados == peds.count(): return 'success'
+
+        # Alerta roja: entrega próxima y no liquidado
+        proxima_semana = timezone.now().date() + timezone.timedelta(days=7)
+        if peds.exclude(estado_pago='LIQUIDADO').filter(fecha_entrega_estimada__lte=proxima_semana).exists():
             return 'danger'
 
-        return 'warning'
+        if liquidados > 0 or peds.filter(estado_pago__in=['APARTADO', 'PARCIAL']).exists():
+            return 'warning'
+        return 'secondary'
+
+    @property
+    def semaforo_entrega(self):
+        """Punto 4: Entregado"""
+        peds = self.pedidos.exclude(estado='CANCELADO')
+        if not peds.exists(): return 'secondary'
+
+        entregados = peds.filter(estado='ENTREGADO').count()
+        if entregados == peds.count(): return 'success'
+        if entregados > 0: return 'warning'
+        return 'secondary'
 
     @property
     def resumen_pendientes(self):

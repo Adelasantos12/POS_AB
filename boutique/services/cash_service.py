@@ -73,7 +73,8 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
             cliente_nombre=cliente_nombre,
             total=getattr(origen_obj, 'precio', getattr(origen_obj, 'total', 0)),
             total_pagado=monto, # En este ticket
-            cajero_nombre=usuario.username
+            cajero_nombre=usuario.username,
+            caja=caja
         )
         if origen_tipo == 'pedido': ticket.pedido = origen_obj
         if origen_tipo == 'apartado': ticket.apartado = origen_obj
