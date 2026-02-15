@@ -383,9 +383,15 @@ class Venta(models.Model):
         ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
         ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
     ]
+    OPERACIONES = [
+        ('VENTA_NORMAL', 'Venta normal'),
+        ('DAMA_HONOR', 'Dama de honor'),
+        ('HECHURA_ESPECIAL', 'Hechura especial'),
+    ]
     vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
     evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+    tipo_operacion = models.CharField(max_length=30, choices=OPERACIONES, default='VENTA_NORMAL')
 
     # Cache para marketing
     categoria_cache = models.CharField(max_length=100, blank=True)
@@ -506,12 +512,18 @@ class Apartado(models.Model):
         ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
         ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
     ]
+    OPERACIONES = [
+        ('VENTA_NORMAL', 'Venta normal'),
+        ('DAMA_HONOR', 'Dama de honor'),
+        ('HECHURA_ESPECIAL', 'Hechura especial'),
+    ]
 
     folio = models.CharField(max_length=30, unique=True, blank=True)
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
     cliente_nombre = models.CharField(max_length=200)
     cliente_telefono = models.CharField(max_length=20)
     evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+    tipo_operacion = models.CharField(max_length=30, choices=OPERACIONES, default='VENTA_NORMAL')
 
     # Cache para marketing
     categoria_cache = models.CharField(max_length=100, blank=True)
@@ -830,10 +842,19 @@ class Pedido(models.Model):
         ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
         ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
     ]
+    TIPOS_PEDIDO = [
+        ('SOBRE_PEDIDO', 'Sobre Pedido'),
+        ('HECHURA', 'Hechura Especial'),
+    ]
+    OPERACIONES = [
+        ('VENTA_NORMAL', 'Venta normal'),
+        ('DAMA_HONOR', 'Dama de honor'),
+        ('HECHURA_ESPECIAL', 'Hechura especial'),
+    ]
     
     # Puede ser para la novia o para una dama
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
-    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='pedidos')
+    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='pedidos', null=True, blank=True)
     dama = models.ForeignKey(Dama, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     es_vestido_novia = models.BooleanField(default=False, help_text="Es el vestido de la novia")
     
@@ -851,6 +872,8 @@ class Pedido(models.Model):
     precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+    tipo_operacion = models.CharField(max_length=30, choices=OPERACIONES, default='VENTA_NORMAL')
+    tipo_pedido = models.CharField(max_length=20, choices=TIPOS_PEDIDO, default='SOBRE_PEDIDO')
     
     # Estados
     estado = models.CharField(max_length=20, choices=ESTADOS, default='NUEVO')
@@ -859,6 +882,7 @@ class Pedido(models.Model):
     # Fechas
     fecha_entrega_estimada = models.DateField(null=True, blank=True)
     fecha_entrega_real = models.DateField(null=True, blank=True)
+    fecha_evento = models.DateField(null=True, blank=True)
     
     # Notas
     notas = models.TextField(blank=True)

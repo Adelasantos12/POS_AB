@@ -118,6 +118,20 @@
             </div>
             <div class="modal-body p-4">
                 <form id="ventaRapidaForm">
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold">Tipo de Operación</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_normal" value="VENTA_NORMAL" checked>
+                            <label class="btn btn-outline-primary small" for="vr_op_normal">Venta Normal</label>
+
+                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_dama" value="DAMA_HONOR">
+                            <label class="btn btn-outline-primary small" for="vr_op_dama">Dama de Honor</label>
+
+                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_hechura" value="HECHURA_ESPECIAL">
+                            <label class="btn btn-outline-primary small" for="vr_op_hechura">Hechura Especial</label>
+                        </div>
+                    </div>
+
                     <div class="mb-4 text-center">
                         <div id="vr_image_preview" class="bg-light mb-2 d-flex align-items-center justify-content-center" style="height: 150px; border-radius: 12px; border: 2px dashed #ddd;">
                             <i class="bi bi-camera text-muted fs-1"></i>
@@ -175,7 +189,7 @@
                     </div>
 
                     <div class="row">
-                        <div class="col-12 mb-3">
+                        <div class="col-6 mb-3">
                             <label class="form-label small fw-bold">Evento</label>
                             <select name="evento" class="form-select">
                                 <option value="">Seleccione evento...</option>
@@ -188,10 +202,58 @@
                                 <option value="Otro">Otro</option>
                             </select>
                         </div>
+                        <div id="hechura_fecha_evento_col" class="col-6 mb-3 d-none">
+                            <label class="form-label small fw-bold">Fecha del Evento</label>
+                            <input type="date" name="fecha_evento" class="form-control">
+                        </div>
+                    </div>
+
+                    <!-- Flow B: Dama de Honor -->
+                    <div id="vr_section_dama" class="p-3 bg-primary-subtle rounded-3 mb-3 border border-primary-subtle d-none">
+                        <h6 class="fw-bold mb-2 small"><i class="bi bi-people me-1"></i>Vincular a Grupo/Novia</h6>
+                        <div class="mb-3 position-relative">
+                            <label class="form-label small">Buscar Novia/Grupo</label>
+                            <input type="text" id="vr_search_novia" class="form-control form-control-sm" placeholder="Nombre o teléfono...">
+                            <div id="vr_novia_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index: 1060; max-height: 150px; overflow-y: auto;"></div>
+                            <input type="hidden" name="novia_id" id="vr_novia_id">
+                        </div>
+
+                        <div id="vr_dama_selection" class="d-none">
+                            <div class="mb-2">
+                                <label class="form-label small">Asignar a Dama:</label>
+                                <select id="vr_dama_id" name="dama_id" class="form-select form-select-sm">
+                                    <option value="">-- Seleccionar o Crear Nueva --</option>
+                                </select>
+                            </div>
+                            <div id="vr_new_dama_fields" class="mt-2 p-2 bg-white rounded border">
+                                <label class="small fw-bold mb-1">Nueva Dama en el Grupo</label>
+                                <input type="text" name="dama_nombre_nuevo" class="form-control form-control-sm mb-1" placeholder="Nombre de la dama">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Flow C: Hechura Especial -->
+                    <div id="vr_section_hechura" class="p-3 bg-warning-subtle rounded-3 mb-3 border border-warning-subtle d-none">
+                        <h6 class="fw-bold mb-2 small"><i class="bi bi-scissors me-1"></i>Detalles de Hechura</h6>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label small">Tela</label>
+                                <select name="tela_id" class="form-select form-select-sm">
+                                    <option value="">Seleccione tela...</option>
+                                    {% for t in telas %}
+                                        <option value="{{ t.id }}">{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">Fecha Entrega Est.</label>
+                                <input type="date" name="fecha_entrega_estimada" class="form-control form-control-sm">
+                            </div>
+                        </div>
                     </div>
 
                     <div class="p-3 bg-light rounded-3 mb-3 border">
-                        <h6 class="fw-bold mb-2 small"><i class="bi bi-person me-1"></i>Datos del Cliente (Opcional)</h6>
+                        <h6 class="fw-bold mb-2 small"><i class="bi bi-person me-1"></i>Datos del Cliente <span id="vr_cliente_required_label" class="d-none text-danger">*</span></h6>
                         <div class="row g-2">
                             <div class="col-12">
                                 <label class="form-label small">Teléfono (Auto-completar)</label>
@@ -208,6 +270,33 @@
                                 <label class="form-label small">Notas Cliente</label>
                                 <textarea name="cliente_notas" class="form-control form-control-sm" rows="2" placeholder="Notas..."></textarea>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Reusable Measurements Block -->
+                    <div id="vr_section_medidas" class="p-3 bg-light rounded-3 mb-3 border d-none">
+                        <h6 class="fw-bold mb-3 small"><i class="bi bi-rulers me-1"></i>Medidas (cm)</h6>
+                        <div class="row g-2">
+                            <div class="col-3">
+                                <label class="small x-small" style="font-size: 0.6rem;">Busto</label>
+                                <input type="number" step="0.1" name="m_busto" class="form-control form-control-sm px-1 text-center">
+                            </div>
+                            <div class="col-3">
+                                <label class="small x-small" style="font-size: 0.6rem;">Cintura</label>
+                                <input type="number" step="0.1" name="m_cintura" class="form-control form-control-sm px-1 text-center">
+                            </div>
+                            <div class="col-3">
+                                <label class="small x-small" style="font-size: 0.6rem;">Cadera</label>
+                                <input type="number" step="0.1" name="m_cadera" class="form-control form-control-sm px-1 text-center">
+                            </div>
+                            <div class="col-3">
+                                <label class="small x-small" style="font-size: 0.6rem;">Largo</label>
+                                <input type="number" step="0.1" name="m_largo" class="form-control form-control-sm px-1 text-center">
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <label class="form-label small">Especificaciones adicionales</label>
+                            <textarea name="m_notas" class="form-control form-control-sm" rows="2"></textarea>
                         </div>
                     </div>
 
@@ -773,6 +862,85 @@
         if (!vrPhoneInput.contains(e.target) && !vrResults.contains(e.target)) {
             vrResults.classList.add('d-none');
         }
+        if (!vrSearchNovia.contains(e.target) && !vrNoviaResults.contains(e.target)) {
+            vrNoviaResults.classList.add('d-none');
+        }
+    });
+
+    // Toggle conditional sections in Venta Rápida
+    const vrOpRadios = document.querySelectorAll('input[name="tipo_operacion"]');
+    const vrSecDama = document.getElementById('vr_section_dama');
+    const vrSecHechura = document.getElementById('vr_section_hechura');
+    const vrSecMedidas = document.getElementById('vr_section_medidas');
+    const vrClienteRequired = document.getElementById('vr_cliente_required_label');
+    const vrHechuraFechaEventoCol = document.getElementById('hechura_fecha_evento_col');
+
+    vrOpRadios.forEach(r => {
+        r.addEventListener('change', function() {
+            const val = this.value;
+            vrSecDama.classList.toggle('d-none', val !== 'DAMA_HONOR');
+            vrSecHechura.classList.toggle('d-none', val !== 'HECHURA_ESPECIAL');
+            vrSecMedidas.classList.toggle('d-none', val === 'VENTA_NORMAL');
+            vrClienteRequired.classList.toggle('d-none', val !== 'HECHURA_ESPECIAL');
+            vrHechuraFechaEventoCol.classList.toggle('d-none', val !== 'HECHURA_ESPECIAL');
+
+            // Set required fields dynamically
+            document.getElementById('vr_cliente_telefono').required = (val === 'HECHURA_ESPECIAL');
+            document.querySelector('#ventaRapidaForm input[name="fecha_entrega_estimada"]').required = (val === 'HECHURA_ESPECIAL');
+        });
+    });
+
+    // Novia Autocomplete
+    const vrSearchNovia = document.getElementById('vr_search_novia');
+    const vrNoviaResults = document.getElementById('vr_novia_results');
+    const vrNoviaId = document.getElementById('vr_novia_id');
+    const vrDamaSel = document.getElementById('vr_dama_id');
+    const vrDamaDiv = document.getElementById('vr_dama_selection');
+
+    vrSearchNovia.addEventListener('input', function() {
+        const q = this.value;
+        if (q.length < 3) {
+            vrNoviaResults.classList.add('d-none');
+            return;
+        }
+        fetch(`/api/search-novias/?q=${q}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.results.length > 0) {
+                    vrNoviaResults.innerHTML = data.results.map(n => `
+                        <button type="button" class="list-group-item list-group-item-action small py-2" onclick="selectVRNovia(${n.id}, '${n.nombre}')">
+                            <i class="bi bi-heart-fill text-danger me-1"></i> ${n.nombre} (${n.telefono || 'Sin tel'})
+                        </button>
+                    `).join('');
+                    vrNoviaResults.classList.remove('d-none');
+                } else {
+                    vrNoviaResults.classList.add('d-none');
+                }
+            });
+    });
+
+    window.selectVRNovia = function(id, nombre) {
+        vrNoviaId.value = id;
+        vrSearchNovia.value = nombre;
+        vrNoviaResults.classList.add('d-none');
+        vrDamaDiv.classList.remove('d-none');
+        loadVRDamas(id);
+    };
+
+    function loadVRDamas(noviaId) {
+        fetch(`/api/novia/${noviaId}/damas/`)
+            .then(r => r.json())
+            .then(data => {
+                let html = '<option value="">-- Crear Nueva Dama --</option>';
+                data.results.forEach(d => {
+                    html += `<option value="${d.id}">${d.nombre} (Talla: ${d.talla || '-'})</option>`;
+                });
+                vrDamaSel.innerHTML = html;
+            });
+    }
+
+    vrDamaSel.addEventListener('change', function() {
+        document.getElementById('vr_new_dama_fields').classList.toggle('d-none', this.value !== '');
     });
 
     // Venta Rápida logic

@@ -31,6 +31,8 @@ urlpatterns = [
     path('api/ai-analyze-image/', views.api_ai_analyze_image, name='api_ai_analyze_image'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),
     path('api/search-clientes/', views.api_search_clientes, name='api_search_clientes'),
+    path('api/search-novias/', views_agenda.api_search_novias, name='api_search_novias'),
+    path('api/novia/<int:novia_id>/damas/', views_agenda.api_get_damas_novia, name='api_get_damas_novia'),
     path('api/registrar-venta/', views.api_registrar_venta, name='api_registrar_venta'),
     path('api/sync/', views.api_sync, name='api_sync'),
 

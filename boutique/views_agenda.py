@@ -281,6 +281,42 @@ def api_telas_list(request):
     return JsonResponse({'telas': data})
 
 
+@login_required
+def api_search_novias(request):
+    """Busca novias por nombre o teléfono"""
+    q = request.GET.get('q', '')
+    if not q:
+        return JsonResponse({'results': []})
+
+    novias = Novia.objects.filter(
+        Q(nombre__icontains=q) | Q(telefono__icontains=q)
+    ).filter(activo=True)[:10]
+
+    results = [{
+        'id': n.id,
+        'nombre': n.nombre,
+        'telefono': n.telefono,
+        'fecha_boda': n.fecha_boda.isoformat() if n.fecha_boda else None
+    } for n in novias]
+
+    return JsonResponse({'results': results})
+
+
+@login_required
+def api_get_damas_novia(request, novia_id):
+    """Retorna las damas asociadas a una novia"""
+    novia = get_object_or_404(Novia, pk=novia_id)
+    damas = novia.damas.filter(activo=True).order_by('nombre')
+
+    results = [{
+        'id': d.id,
+        'nombre': d.nombre,
+        'talla': d.talla
+    } for d in damas]
+
+    return JsonResponse({'results': results})
+
+
 # ============================================================
 # AGENDA - CALENDARIO
 # ============================================================
@@ -787,16 +823,22 @@ def api_crear_pedido_completo(request):
             creado_por=request.active_profile
         )
 
-        # 4. Guardar Medidas
+        # 4. Guardar Medidas (soportando ambos formatos de nombre)
+        m_busto = data.get('m_busto') or data.get('busto')
+        m_cintura = data.get('m_cintura') or data.get('cintura')
+        m_cadera = data.get('m_cadera') or data.get('cadera')
+        m_largo = data.get('m_largo') or data.get('largo')
+        m_notas = data.get('m_notas') or data.get('notas_medidas', '')
+
         medidas = Medidas.objects.create(
             pedido=pedido,
             cliente=cliente_obj,
             cliente_nombre=nom,
-            busto=Decimal(str(data.get('busto'))) if data.get('busto') else None,
-            cintura=Decimal(str(data.get('cintura'))) if data.get('cintura') else None,
-            cadera=Decimal(str(data.get('cadera'))) if data.get('cadera') else None,
-            largo=Decimal(str(data.get('largo'))) if data.get('largo') else None,
-            observaciones=data.get('notas_medidas', '')
+            busto=Decimal(str(m_busto)) if m_busto else None,
+            cintura=Decimal(str(m_cintura)) if m_cintura else None,
+            cadera=Decimal(str(m_cadera)) if m_cadera else None,
+            largo=Decimal(str(m_largo)) if m_largo else None,
+            observaciones=m_notas
         )
 
         # 5. Registrar Cobro (Genera Ticket y MovimientoCaja)

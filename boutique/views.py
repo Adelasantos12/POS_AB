@@ -240,7 +240,14 @@ def pos_dashboard(request):
     corte = get_caja_activa()
     if not corte:
         return redirect('apertura_caja')
-    return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
+
+    context = {
+        'corte': corte,
+        'telas': Tela.objects.filter(activa=True),
+        'colores': Color.objects.filter(activo=True),
+        'categorias': Categoria.objects.all(),
+    }
+    return render(request, 'boutique/pos_dashboard.html', context)
 
 
 @profile_permission_required(['Caja', 'Vendedor'])
@@ -481,11 +488,12 @@ def api_liquidar_pedido(request, pk):
 @login_required
 @profile_permission_required('Vendedor')
 def api_venta_rapida(request):
-    """Crea producto al vuelo + registra venta/apartado + movimiento en una sola transacción"""
-    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    """Crea producto al vuelo + registra venta/apartado/pedido + movimiento en una sola transacción"""
+    from .models import Novia, Dama, PagoPedido, Apartado, ApartadoItem, Medidas, Pedido
     from .services.cash_service import registrar_cobro
     try:
-        # Usar multipart/form-data para recibir foto
+        # 1. Parámetros básicos
+        tipo_op = request.POST.get('tipo_operacion', 'VENTA_NORMAL')
         cat_nombre = request.POST.get('categoria', 'General')
         color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
@@ -504,7 +512,7 @@ def api_venta_rapida(request):
         evento = request.POST.get('evento', '')
 
         with transaction.atomic():
-            # 0. Gestionar cliente
+            # 2. Gestionar cliente
             cliente_obj = None
             if cliente_telefono:
                 cliente_obj, created = Cliente.objects.get_or_create(
@@ -516,6 +524,8 @@ def api_venta_rapida(request):
                     if cliente_notas:
                         cliente_obj.notas = cliente_notas
                     cliente_obj.save()
+
+            # 3. Gestionar Catálogos
             categoria = Categoria.objects.filter(nombre=cat_nombre).first()
             if not categoria:
                 categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
@@ -524,10 +534,15 @@ def api_venta_rapida(request):
             if not color:
                 color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
-            # Intentar asociar Tela desde rasgo2 si coincide con el catálogo
-            tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+            # Intentar asociar Tela desde rasgo2 o tela_id
+            tela_id = request.POST.get('tela_id')
+            tela_obj = None
+            if tela_id:
+                tela_obj = Tela.objects.filter(id=tela_id).first()
+            if not tela_obj:
+                tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
 
-            # 1. Crear producto con stock 0
+            # 4. Crear producto físico (si aplica)
             producto = Producto.objects.create(
                 categoria=categoria,
                 color=color,
@@ -536,119 +551,135 @@ def api_venta_rapida(request):
                 rasgo2=rasgo2,
                 talla=talla,
                 precio_venta=precio,
-                estado='TIENDA' if not es_apartado else 'APARTADO',
+                estado='TIENDA' if not es_apartado and tipo_op == 'VENTA_NORMAL' else 'APARTADO',
                 cantidad_actual=0,
                 stock_teorico=0,
                 foto=foto
             )
 
-            if es_apartado:
-                # Flujo de Apartado Independiente
-                apartado = Apartado.objects.create(
+            # 5. Lógica según Tipo de Operación
+            if tipo_op == 'VENTA_NORMAL':
+                if es_apartado:
+                    # FLUJO APARTADO
+                    apartado = Apartado.objects.create(
+                        cliente=cliente_obj,
+                        cliente_nombre=cliente_nombre or f"Venta Rápida {producto.sku}",
+                        cliente_telefono=cliente_telefono or '',
+                        total=precio,
+                        anticipo=0,
+                        evento=evento,
+                        categoria_cache=cat_nombre,
+                        color_cache=color_nombre,
+                        talla_cache=talla,
+                        notas=f"Apartado Rápido SKU {producto.sku}"
+                    )
+                    ApartadoItem.objects.create(
+                        apartado=apartado,
+                        producto=producto,
+                        descripcion=str(producto),
+                        cantidad=1,
+                        precio_unitario=precio,
+                        subtotal=precio
+                    )
+                    ticket = registrar_cobro(
+                        origen_tipo='apartado', origen_obj=apartado,
+                        monto=anticipo, metodo=metodo, usuario=request.active_profile,
+                        notas='Anticipo Venta Rápida'
+                    )
+                    res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio, 'producto': {'id': producto.id, 'sku': producto.sku}}
+                else:
+                    # FLUJO VENTA COMPLETA
+                    venta = Venta.objects.create(
+                        vendedor=request.active_profile, cliente=cliente_obj,
+                        total=precio, evento=evento, categoria_cache=cat_nombre,
+                        color_cache=color_nombre, talla_cache=talla, tipo_operacion=tipo_op
+                    )
+                    ItemVenta.objects.create(venta=venta, producto=producto, cantidad=1, precio_unitario=precio)
+                    MovimientoInventario.objects.create(
+                        producto=producto, tipo='VENTA', cantidad=-1, motivo='VENTA',
+                        perfil_activo=request.active_profile, venta=venta,
+                        stock_resultante=producto.stock_teorico - 1
+                    )
+                    ticket = registrar_cobro(
+                        origen_tipo='venta', origen_obj=venta,
+                        monto=anticipo, metodo=metodo, usuario=request.active_profile
+                    )
+                    res = {'status': 'ok', 'tipo': 'venta', 'id': venta.id, 'sku': producto.sku, 'folio': ticket.folio}
+
+            elif tipo_op in ['DAMA_HONOR', 'HECHURA_ESPECIAL']:
+                # FLUJO PEDIDO (Dama o Hechura)
+                novia_id = request.POST.get('novia_id')
+                dama_id = request.POST.get('dama_id')
+                nueva_dama_nombre = request.POST.get('nueva_dama_nombre')
+                novia_obj = None
+                dama_obj = None
+
+                if novia_id:
+                    novia_obj = Novia.objects.filter(id=novia_id).first()
+
+                if dama_id:
+                    dama_obj = Dama.objects.filter(id=dama_id).first()
+                elif nueva_dama_nombre and novia_obj:
+                    # Crear nueva dama si se proporcionó nombre
+                    dama_obj = Dama.objects.create(
+                        novia=novia_obj,
+                        nombre=nueva_dama_nombre,
+                        telefono=cliente_telefono or '',
+                        talla=talla
+                    )
+                    # Actualizar contador
+                    novia_obj.cantidad_damas = novia_obj.damas.count()
+                    novia_obj.save(update_fields=['cantidad_damas'])
+
+                pedido = Pedido.objects.create(
                     cliente=cliente_obj,
-                    cliente_nombre=cliente_nombre or f"Venta Rápida {producto.sku}",
-                    cliente_telefono=cliente_telefono or '',
-                    total=precio,
-                    anticipo=0,
+                    novia=novia_obj or (dama_obj.novia if dama_obj else None),
+                    dama=dama_obj,
+                    producto=producto,
+                    color=color,
+                    tela=tela_obj,
+                    talla=talla,
+                    precio=precio,
                     evento=evento,
-                    categoria_cache=cat_nombre,
-                    color_cache=color_nombre,
-                    talla_cache=talla,
-                    notas=f"Apartado Rápido SKU {producto.sku}"
-                )
-                ApartadoItem.objects.create(
-                    apartado=apartado,
-                    producto=producto,
-                    descripcion=str(producto),
-                    cantidad=1,
-                    precio_unitario=precio,
-                    subtotal=precio
+                    tipo_operacion=tipo_op,
+                    tipo_pedido='HECHURA' if tipo_op == 'HECHURA_ESPECIAL' else 'SOBRE_PEDIDO',
+                    creado_por=request.active_profile
                 )
 
-                # Registrar cobro en caja
+                # Guardar medidas si vienen en el POST (usando prefijo m_ del frontend)
+                if request.POST.get('m_busto') or request.POST.get('medidas_busto'):
+                    Medidas.objects.create(
+                        pedido=pedido,
+                        cliente=cliente_obj,
+                        cliente_nombre=cliente_nombre or (dama_obj.nombre if dama_obj else 'Sin nombre'),
+                        busto=Decimal(request.POST.get('m_busto') or request.POST.get('medidas_busto') or 0),
+                        cintura=Decimal(request.POST.get('m_cintura') or request.POST.get('medidas_cintura') or 0),
+                        cadera=Decimal(request.POST.get('m_cadera') or request.POST.get('medidas_cadera') or 0),
+                        hombro=Decimal(request.POST.get('m_hombro') or request.POST.get('medidas_hombro') or 0),
+                        largo=Decimal(request.POST.get('m_largo') or request.POST.get('medidas_largo') or 0),
+                        brazo=Decimal(request.POST.get('m_brazo') or request.POST.get('medidas_brazo') or 0),
+                        espalda=Decimal(request.POST.get('m_espalda') or request.POST.get('medidas_espalda') or 0),
+                        talle_delantero=Decimal(request.POST.get('m_talle_frente') or request.POST.get('medidas_talle_frente') or 0),
+                        talle_trasero=Decimal(request.POST.get('m_talle_espalda') or request.POST.get('medidas_talle_espalda') or 0),
+                        observaciones=request.POST.get('m_notas') or request.POST.get('medidas_notas', '')
+                    )
+
                 ticket = registrar_cobro(
-                    origen_tipo='apartado',
-                    origen_obj=apartado,
-                    monto=anticipo,
-                    metodo=metodo,
-                    usuario=request.active_profile,
-                    notas='Anticipo Venta Rápida'
+                    origen_tipo='pedido', origen_obj=pedido,
+                    monto=anticipo, metodo=metodo, usuario=request.active_profile,
+                    notas=f'Anticipo {tipo_op}'
                 )
+                res = {'status': 'ok', 'tipo': 'pedido', 'id': pedido.id, 'folio': ticket.folio}
 
-                registrar_auditoria(
-                    usuario=request.active_profile,
-                    accion='VENTA',
-                    detalles=f'Apartado Rápido Ticket {ticket.folio} - Producto {producto.sku}',
-                    entidad=apartado,
-                    request=request
-                )
+            registrar_auditoria(
+                usuario=request.active_profile,
+                accion='VENTA',
+                detalles=f'Venta Rápida ({tipo_op}) Ticket {ticket.folio}',
+                entidad=producto,
+                request=request
+            )
+            return JsonResponse(res)
 
-                return JsonResponse({
-                    'status': 'ok',
-                    'tipo': 'apartado',
-                    'ticket': ticket.folio,
-                    'producto': {'id': producto.id, 'sku': producto.sku}
-                })
-
-            else:
-                # Flujo de Venta normal
-                venta = Venta.objects.create(
-                    vendedor=request.active_profile,
-                    cliente=cliente_obj,
-                    total=precio,
-                    evento=evento,
-                    categoria_cache=cat_nombre,
-                    color_cache=color_nombre,
-                    talla_cache=talla
-                )
-
-                ItemVenta.objects.create(
-                    venta=venta,
-                    producto=producto,
-                    cantidad=1,
-                    precio_unitario=precio
-                )
-
-                # Movimiento de inventario
-                MovimientoInventario.objects.create(
-                    producto=producto,
-                    tipo='VENTA',
-                    cantidad=-1,
-                    motivo='VENTA',
-                    perfil_activo=request.active_profile,
-                    venta=venta,
-                    stock_resultante=producto.stock_teorico - 1
-                )
-
-                # Registrar cobro en caja
-                ticket = registrar_cobro(
-                    origen_tipo='venta',
-                    origen_obj=venta,
-                    monto=anticipo,
-                    metodo=metodo,
-                    usuario=request.active_profile
-                )
-
-                registrar_auditoria(
-                    usuario=request.active_profile,
-                    accion='VENTA',
-                    detalles=f'Venta Rápida Ticket {ticket.folio} - Producto {producto.sku}',
-                    entidad=venta,
-                    request=request
-                )
-
-                return JsonResponse({
-                    'status': 'ok',
-                    'tipo': 'venta',
-                    'id': venta.id,
-                    'sku': producto.sku,
-                    'folio': ticket.folio,
-                    'producto': {
-                        'id': producto.id,
-                        'sku': producto.sku,
-                        'text': str(producto)
-                    }
-                })
     except ValueError as ve:
         return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
@@ -977,12 +1008,17 @@ def api_check_duplicados(request):
 @profile_permission_required('Inventario')
 def api_validar_crear_producto(request):
     """Valida y crea producto solo si no hay duplicados confirmados"""
-    data = json.loads(request.body)
-    forzar_crear = data.get('forzar_crear', False)
+    if request.content_type == 'application/json':
+        data = json.loads(request.body)
+        foto = None
+    else:
+        data = request.POST
+        foto = request.FILES.get('foto')
+
+    forzar_crear = data.get('forzar_crear') == True or data.get('forzar_crear') == 'true'
     
     # Si no se fuerza, verificar duplicados primero
     if not forzar_crear:
-        # Verificar si hay duplicados con score > 80%
         cat = data.get('categoria', '')
         r1 = data.get('rasgo1', '')
         r2 = data.get('rasgo2', '')
@@ -1025,9 +1061,10 @@ def api_validar_crear_producto(request):
             rasgo1=data.get('rasgo1', ''),
             rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
-            precio_venta=data.get('precio', 0),
+            precio_venta=Decimal(str(data.get('precio', 0))),
             estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=int(data.get('stock', 1))
+            cantidad_actual=int(data.get('stock', 1)),
+            foto=foto
         )
         
         return JsonResponse({
