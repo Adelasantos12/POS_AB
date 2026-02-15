@@ -30,7 +30,13 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
                 referencia=referencia, registrado_por=usuario, notas=notas
             )
             ticket_tipo = 'PEDIDO'
-            cliente_nombre = origen_obj.dama.nombre if origen_obj.dama else origen_obj.novia.nombre
+            cliente_nombre = 'Cliente Gral.'
+            if origen_obj.dama:
+                cliente_nombre = origen_obj.dama.nombre
+            elif origen_obj.novia:
+                cliente_nombre = origen_obj.novia.nombre
+            elif origen_obj.cliente:
+                cliente_nombre = origen_obj.cliente.nombre
         elif origen_tipo == 'apartado':
             PagoApartado.objects.create(
                 apartado=origen_obj, monto=monto, metodo=metodo,

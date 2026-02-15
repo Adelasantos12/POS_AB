@@ -925,7 +925,7 @@ def pedidos_en_puerta(request):
     today = timezone.now().date()
 
     # Tipos que requieren seguimiento externo (según ajuste de alcance)
-    tipos_seguimiento = ['HECHURA', 'IMPORTACION', 'PROVEEDOR', 'ESPECIAL']
+    tipos_seguimiento = ['HECHURA', 'PEDIDO_EXTERNO']
     
     pedidos_qs = Pedido.objects.filter(
         tipo_pedido__in=tipos_seguimiento
@@ -968,7 +968,8 @@ def pedidos_en_puerta(request):
                         'EN_CONFECCION': sum(1 for p in pedidos_tipo if p.estado == 'EN_CONFECCION'),
                         'LISTO': sum(1 for p in pedidos_tipo if p.estado == 'LISTO'),
                         'SOLICITADO': sum(1 for p in pedidos_tipo if p.estado == 'SOLICITADO'),
-                        'EN_TRANSITO': sum(1 for p in pedidos_tipo if p.estado == 'EN_TRANSITO'),
+                        'EN_PROCESO': sum(1 for p in pedidos_tipo if p.estado == 'EN_PROCESO'),
+                        'POR_RECOGER': sum(1 for p in pedidos_tipo if p.estado == 'POR_RECOGER'),
                         'RECIBIDO': sum(1 for p in pedidos_tipo if p.estado == 'RECIBIDO'),
                     }
                 }

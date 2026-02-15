@@ -386,7 +386,8 @@ class Venta(models.Model):
     OPERACIONES = [
         ('VENTA_NORMAL', 'Venta normal'),
         ('DAMA_HONOR', 'Dama de honor'),
-        ('HECHURA_ESPECIAL', 'Hechura especial'),
+        ('HECHURA', 'Hechura'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo'),
     ]
     vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
@@ -515,7 +516,8 @@ class Apartado(models.Model):
     OPERACIONES = [
         ('VENTA_NORMAL', 'Venta normal'),
         ('DAMA_HONOR', 'Dama de honor'),
-        ('HECHURA_ESPECIAL', 'Hechura especial'),
+        ('HECHURA', 'Hechura'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo'),
     ]
 
     folio = models.CharField(max_length=30, unique=True, blank=True)
@@ -776,14 +778,17 @@ class Novia(models.Model):
         if not peds.exists(): return 'success'
 
         hoy = timezone.now().date()
+        # Estados que implican "en proceso"
+        en_proceso = ['NUEVO', 'PENDIENTE_TELA', 'TELA_COMPRADA', 'EN_CONFECCION', 'SOLICITADO', 'EN_PROCESO', 'POR_RECOGER']
+
         # Rojo: hay pedidos en producción vencidos o sin fecha
-        if peds.filter(estado__in=['NUEVO', 'PENDIENTE_TELA', 'TELA_COMPRADA', 'EN_CONFECCION']).filter(
+        if peds.filter(estado__in=en_proceso).filter(
             Q(fecha_entrega_estimada__lt=hoy) | Q(fecha_entrega_estimada__isnull=True)
         ).exists():
             return 'danger'
 
-        # Amarillo: hay LISTOS pero no entregados
-        if peds.filter(estado='LISTO').exists():
+        # Amarillo: hay LISTOS / RECIBIDOS pero no entregados
+        if peds.filter(estado__in=['LISTO', 'RECIBIDO']).exists():
             return 'warning'
 
         return 'success'
@@ -886,9 +891,9 @@ class Pedido(models.Model):
         ('PENDIENTE_TELA', 'Falta comprar tela'),
         ('TELA_COMPRADA', 'Tela comprada'),
         ('EN_CONFECCION', 'En confección'),
-        # Importación / Proveedor
+        # Importación / Proveedor (Pedido Externo)
         ('SOLICITADO', 'Solicitado'),
-        ('EN_TRANSITO', 'En tránsito'),
+        ('EN_PROCESO', 'En proceso'),
         ('POR_RECOGER', 'Por recoger'),
         ('RECIBIDO', 'Recibido en tienda'),
         # Comunes
@@ -909,16 +914,15 @@ class Pedido(models.Model):
     ]
     TIPOS_PEDIDO = [
         ('HECHURA', 'Hechura Especial (Taller)'),
-        ('IMPORTACION', 'Importación'),
-        ('PROVEEDOR', 'Pedido a Proveedor'),
-        ('ESPECIAL', 'Pedido Especial'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo (Importación/Proveedor)'),
         ('ESTANDAR_GRUPO', 'Estándar Grupo / Dama'),
         ('SOBRE_PEDIDO', 'Sobre Pedido (Legacy)'),
     ]
     OPERACIONES = [
         ('VENTA_NORMAL', 'Venta normal'),
         ('DAMA_HONOR', 'Dama de honor'),
-        ('HECHURA_ESPECIAL', 'Hechura especial'),
+        ('HECHURA', 'Hechura'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo'),
     ]
     
     # Puede ser para la novia o para una dama

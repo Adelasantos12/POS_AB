@@ -1,12 +1,12 @@
 {% extends 'boutique/base.html' %}
 
-{% block title %}Hechuras Especiales - Taller Adelé{% endblock %}
+{% block title %}Tablero de Pedidos - Adelé Boutique{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
-        <h1 class="page-title">Tablero de Seguimiento</h1>
-        <p class="page-subtitle">Hechuras e Importaciones</p>
+        <h1 class="page-title">Pedidos</h1>
+        <p class="page-subtitle">Seguimiento de Hechuras y Pedidos Externos</p>
     </div>
     <div class="d-flex gap-3">
         <div class="text-end">
@@ -58,13 +58,14 @@
         <!-- Estadísticas Rápidas por Tipo -->
         <div class="row mb-4 g-2">
             {% if type_code == 'HECHURA' %}
-                <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">NUEVOS</small><div class="h5 mb-0 fw-bold">{{ data.stats.NUEVO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">NUEVOS</small><div class="h5 mb-0 fw-bold">{{ data.stats.NUEVO }}</div></div></div></div>
                 <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">EN CONFECCIÓN</small><div class="h5 mb-0 fw-bold">{{ data.stats.EN_CONFECCION }}</div></div></div></div>
-                <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">LISTOS</small><div class="h5 mb-0 fw-bold text-success">{{ data.stats.LISTO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">LISTOS</small><div class="h5 mb-0 fw-bold text-success">{{ data.stats.LISTO }}</div></div></div></div>
             {% else %}
-                <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">SOLICITADOS</small><div class="h5 mb-0 fw-bold">{{ data.stats.SOLICITADO }}</div></div></div></div>
-                <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">EN TRÁNSITO</small><div class="h5 mb-0 fw-bold">{{ data.stats.EN_TRANSITO }}</div></div></div></div>
-                <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">LISTOS / RECIBIDOS</small><div class="h5 mb-0 fw-bold text-success">{{ data.stats.LISTO|add:data.stats.RECIBIDO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">SOLICITADOS</small><div class="h5 mb-0 fw-bold">{{ data.stats.SOLICITADO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">EN PROCESO</small><div class="h5 mb-0 fw-bold">{{ data.stats.EN_PROCESO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">POR RECOGER</small><div class="h5 mb-0 fw-bold text-warning">{{ data.stats.POR_RECOGER }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">RECIBIDOS</small><div class="h5 mb-0 fw-bold text-success">{{ data.stats.RECIBIDO }}</div></div></div></div>
             {% endif %}
         </div>
 

@@ -606,8 +606,8 @@ def api_venta_rapida(request):
                     )
                     res = {'status': 'ok', 'tipo': 'venta', 'id': venta.id, 'sku': producto.sku, 'folio': ticket.folio}
 
-            elif tipo_op in ['DAMA_HONOR', 'HECHURA_ESPECIAL']:
-                # FLUJO PEDIDO (Dama o Hechura)
+            elif tipo_op in ['DAMA_HONOR', 'HECHURA', 'PEDIDO_EXTERNO']:
+                # FLUJO PEDIDO (Dama, Hechura o Pedido Externo)
                 novia_id = request.POST.get('novia_id')
                 dama_id = request.POST.get('dama_id')
                 nueva_dama_nombre = request.POST.get('nueva_dama_nombre')
@@ -632,6 +632,17 @@ def api_venta_rapida(request):
                     novia_obj.cantidad_damas = novia_obj.damas.count()
                     novia_obj.save(update_fields=['cantidad_damas'])
 
+                # Determinar tipo de pedido y estado inicial
+                tp = 'ESTANDAR_GRUPO'
+                est = 'NUEVO'
+
+                if tipo_op == 'HECHURA':
+                    tp = 'HECHURA'
+                    est = 'NUEVO'
+                elif tipo_op == 'PEDIDO_EXTERNO':
+                    tp = 'PEDIDO_EXTERNO'
+                    est = 'SOLICITADO'
+
                 pedido = Pedido.objects.create(
                     cliente=cliente_obj,
                     novia=novia_obj or (dama_obj.novia if dama_obj else None),
@@ -643,7 +654,8 @@ def api_venta_rapida(request):
                     precio=precio,
                     evento=evento,
                     tipo_operacion=tipo_op,
-                    tipo_pedido='HECHURA' if tipo_op == 'HECHURA_ESPECIAL' else 'ESTANDAR_GRUPO',
+                    tipo_pedido=tp,
+                    estado=est,
                     creado_por=request.active_profile
                 )
 

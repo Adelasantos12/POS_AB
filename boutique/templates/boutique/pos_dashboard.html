@@ -127,8 +127,11 @@
                             <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_dama" value="DAMA_HONOR">
                             <label class="btn btn-outline-primary small" for="vr_op_dama">Dama de Honor</label>
 
-                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_hechura" value="HECHURA_ESPECIAL">
-                            <label class="btn btn-outline-primary small" for="vr_op_hechura">Hechura Especial</label>
+                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_hechura" value="HECHURA">
+                            <label class="btn btn-outline-primary small" for="vr_op_hechura">Hechura</label>
+
+                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_externo" value="PEDIDO_EXTERNO">
+                            <label class="btn btn-outline-primary small" for="vr_op_externo">Pedido Externo</label>
                         </div>
                     </div>
 
@@ -235,9 +238,9 @@
                         </div>
                     </div>
 
-                    <!-- Flow C: Hechura Especial -->
+                    <!-- Flow C: Hechura / Pedido Externo -->
                     <div id="vr_section_hechura" class="p-3 bg-warning-subtle rounded-3 mb-3 border border-warning-subtle d-none">
-                        <h6 class="fw-bold mb-2 small"><i class="bi bi-scissors me-1"></i>Detalles de Hechura</h6>
+                        <h6 id="vr_hechura_title" class="fw-bold mb-2 small"><i class="bi bi-scissors me-1"></i>Detalles de Seguimiento</h6>
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small">Tela</label>
@@ -881,15 +884,23 @@
     vrOpRadios.forEach(r => {
         r.addEventListener('change', function() {
             const val = this.value;
+            const isHechuraOrExterno = (val === 'HECHURA' || val === 'PEDIDO_EXTERNO');
+
             vrSecDama.classList.toggle('d-none', val !== 'DAMA_HONOR');
-            vrSecHechura.classList.toggle('d-none', val !== 'HECHURA_ESPECIAL');
+            vrSecHechura.classList.toggle('d-none', !isHechuraOrExterno);
             vrSecMedidas.classList.toggle('d-none', val === 'VENTA_NORMAL');
-            vrClienteRequired.classList.toggle('d-none', val !== 'HECHURA_ESPECIAL');
-            vrHechuraFechaEventoCol.classList.toggle('d-none', val !== 'HECHURA_ESPECIAL');
+            vrClienteRequired.classList.toggle('d-none', !isHechuraOrExterno);
+            vrHechuraFechaEventoCol.classList.toggle('d-none', !isHechuraOrExterno);
+
+            if (val === 'HECHURA') {
+                document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-scissors me-1"></i>Detalles de Hechura (Taller)';
+            } else if (val === 'PEDIDO_EXTERNO') {
+                document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-box-seam me-1"></i>Detalles de Pedido Externo';
+            }
 
             // Set required fields dynamically
-            document.getElementById('vr_cliente_telefono').required = (val === 'HECHURA_ESPECIAL');
-            document.querySelector('#ventaRapidaForm input[name="fecha_entrega_estimada"]').required = (val === 'HECHURA_ESPECIAL');
+            document.getElementById('vr_cliente_telefono').required = isHechuraOrExterno;
+            document.querySelector('#ventaRapidaForm input[name="fecha_entrega_estimada"]').required = isHechuraOrExterno;
         });
     });
 
