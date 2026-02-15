@@ -755,7 +755,64 @@ class Novia(models.Model):
     @property
     def total_pendiente(self):
         return sum(p.saldo_pendiente for p in self.pedidos.all())
-    
+
+    @property
+    def medidas_completitud_promedio(self):
+        peds = self.pedidos.all()
+        if not peds.exists(): return 100
+        total_pct = sum(p.medidas_completitud for p in peds)
+        return int(total_pct / peds.count())
+
+    @property
+    def semaforo_medidas(self):
+        pct = self.medidas_completitud_promedio
+        if pct < 50: return 'danger'
+        if pct < 100: return 'warning'
+        return 'success'
+
+    @property
+    def semaforo_produccion(self):
+        peds = self.pedidos.exclude(estado__in=['ENTREGADO', 'CANCELADO'])
+        if not peds.exists(): return 'success'
+
+        hoy = timezone.now().date()
+        # Rojo: hay pedidos en producción vencidos o sin fecha
+        if peds.filter(estado__in=['NUEVO', 'PENDIENTE_TELA', 'TELA_COMPRADA', 'EN_CONFECCION']).filter(
+            Q(fecha_entrega_estimada__lt=hoy) | Q(fecha_entrega_estimada__isnull=True)
+        ).exists():
+            return 'danger'
+
+        # Amarillo: hay LISTOS pero no entregados
+        if peds.filter(estado='LISTO').exists():
+            return 'warning'
+
+        return 'success'
+
+    @property
+    def semaforo_pago(self):
+        saldo = self.total_pendiente
+        if saldo == 0: return 'success'
+
+        hoy = timezone.now().date()
+        proxima_semana = hoy + timezone.timedelta(days=7)
+        # Rojo: saldo > 0 y entregas próximas
+        if self.pedidos.filter(saldo_pendiente__gt=0, fecha_entrega_estimada__lte=proxima_semana).exists():
+            return 'danger'
+
+        return 'warning'
+
+    @property
+    def resumen_pendientes(self):
+        peds = self.pedidos.all()
+        return {
+            'total_damas': self.damas.count(),
+            'medidas_completas': sum(1 for p in peds if p.medidas_completitud == 100),
+            'medidas_incompletas': sum(1 for p in peds if p.medidas_completitud < 100),
+            'listos_entrega': sum(1 for p in peds if p.estado == 'LISTO' and p.saldo_pendiente == 0),
+            'pendientes_pago': sum(1 for p in peds if p.saldo_pendiente > 0),
+            'entregados': sum(1 for p in peds if p.estado == 'ENTREGADO'),
+        }
+
     @property
     def resumen_grupo(self):
         """Genera resumen de todos los pedidos del grupo"""
@@ -787,6 +844,7 @@ class Novia(models.Model):
 class Dama(models.Model):
     """Integrante del grupo de la novia"""
     novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='damas')
+    cliente = models.ForeignKey('Cliente', on_delete=models.SET_NULL, null=True, blank=True, related_name='perfiles_dama')
     nombre = models.CharField(max_length=200)
     activo = models.BooleanField(default=True)
     telefono = models.CharField(max_length=20, blank=True)
@@ -823,10 +881,17 @@ class Dama(models.Model):
 class Pedido(models.Model):
     """Pedido de vestido - puede ser de novia o dama"""
     ESTADOS = [
+        # Taller / Hechura
         ('NUEVO', 'Nuevo'),
         ('PENDIENTE_TELA', 'Falta comprar tela'),
         ('TELA_COMPRADA', 'Tela comprada'),
         ('EN_CONFECCION', 'En confección'),
+        # Importación / Proveedor
+        ('SOLICITADO', 'Solicitado'),
+        ('EN_TRANSITO', 'En tránsito'),
+        ('POR_RECOGER', 'Por recoger'),
+        ('RECIBIDO', 'Recibido en tienda'),
+        # Comunes
         ('LISTO', 'Listo en tienda'),
         ('ENTREGADO', 'Entregado'),
         ('CANCELADO', 'Cancelado'),
@@ -843,8 +908,12 @@ class Pedido(models.Model):
         ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
     ]
     TIPOS_PEDIDO = [
-        ('SOBRE_PEDIDO', 'Sobre Pedido'),
-        ('HECHURA', 'Hechura Especial'),
+        ('HECHURA', 'Hechura Especial (Taller)'),
+        ('IMPORTACION', 'Importación'),
+        ('PROVEEDOR', 'Pedido a Proveedor'),
+        ('ESPECIAL', 'Pedido Especial'),
+        ('ESTANDAR_GRUPO', 'Estándar Grupo / Dama'),
+        ('SOBRE_PEDIDO', 'Sobre Pedido (Legacy)'),
     ]
     OPERACIONES = [
         ('VENTA_NORMAL', 'Venta normal'),
@@ -922,6 +991,24 @@ class Pedido(models.Model):
     @property
     def esta_pagado(self):
         return self.saldo_pendiente <= 0
+
+    @property
+    def medidas_completitud(self):
+        if not hasattr(self, 'medidas') or not self.medidas:
+            return 0
+
+        m = self.medidas
+        campos_clave = ['busto', 'cintura', 'cadera', 'largo']
+        campos_secundarios = ['hombro', 'brazo', 'espalda', 'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']
+
+        completos_clave = sum(1 for f in campos_clave if getattr(m, f) is not None)
+        completos_secundarios = sum(1 for f in campos_secundarios if getattr(m, f) is not None)
+
+        # Clave: 60% (15% cada uno), Secundarios: 40% (~5.7% cada uno)
+        pct_clave = completos_clave * 15
+        pct_sec = (completos_secundarios / len(campos_secundarios)) * 40 if campos_secundarios else 0
+
+        return int(pct_clave + pct_sec)
 
 
 class PagoApartado(models.Model):

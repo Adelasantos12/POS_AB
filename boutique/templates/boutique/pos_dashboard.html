@@ -210,9 +210,12 @@
 
                     <!-- Flow B: Dama de Honor -->
                     <div id="vr_section_dama" class="p-3 bg-primary-subtle rounded-3 mb-3 border border-primary-subtle d-none">
-                        <h6 class="fw-bold mb-2 small"><i class="bi bi-people me-1"></i>Vincular a Grupo/Novia</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0 small"><i class="bi bi-people me-1"></i>Vincular a Grupo/Novia</h6>
+                            <a href="{% url 'novias_list' %}" target="_blank" class="x-small fw-bold text-primary">Crear nueva novia <i class="bi bi-box-arrow-up-right"></i></a>
+                        </div>
                         <div class="mb-3 position-relative">
-                            <label class="form-label small">Buscar Novia/Grupo</label>
+                            <label class="form-label small">Buscar Novia/Grupo (Selección Obligatoria)</label>
                             <input type="text" id="vr_search_novia" class="form-control form-control-sm" placeholder="Nombre o teléfono...">
                             <div id="vr_novia_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index: 1060; max-height: 150px; overflow-y: auto;"></div>
                             <input type="hidden" name="novia_id" id="vr_novia_id">
@@ -227,7 +230,7 @@
                             </div>
                             <div id="vr_new_dama_fields" class="mt-2 p-2 bg-white rounded border">
                                 <label class="small fw-bold mb-1">Nueva Dama en el Grupo</label>
-                                <input type="text" name="dama_nombre_nuevo" class="form-control form-control-sm mb-1" placeholder="Nombre de la dama">
+                                <input type="text" name="nueva_dama_nombre" class="form-control form-control-sm mb-1" placeholder="Nombre de la dama">
                             </div>
                         </div>
                     </div>
@@ -1043,6 +1046,12 @@
         const vrForceCreate = document.getElementById('vr_forceCreate');
         if (!vrDuplicateAlert.classList.contains('d-none') && !vrForceCreate.checked) {
             alert('⚠️ Confirma que es un producto nuevo antes de completar la venta.');
+            return;
+        }
+
+        // Validar selección de novia si es Dama de Honor
+        if (form.tipo_operacion.value === 'DAMA_HONOR' && !form.novia_id.value) {
+            alert('⚠️ Debes seleccionar una Novia/Grupo existente.');
             return;
         }
 

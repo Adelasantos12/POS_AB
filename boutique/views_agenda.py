@@ -517,8 +517,10 @@ def api_citas_rango(request):
 
 @profile_permission_required(['Agenda', 'Vendedor'])
 def novias_list(request):
-    """Lista de todas las novias activas"""
+    """Lista de todas las novias activas con filtros y orden de urgencia"""
     q = request.GET.get('q', '')
+    mes = request.GET.get('mes', '') # Formato YYYY-MM
+
     novias = Novia.objects.filter(activo=True)
     
     if q:
@@ -616,14 +618,40 @@ def api_crear_novia(request):
 @require_POST
 @profile_permission_required(['Agenda', 'Vendedor'])
 def api_agregar_dama(request, novia_id):
-    """Agregar dama al grupo de la novia"""
+    """Agregar dama al grupo de la novia con auto-vinculación a Cliente"""
+    from .models import Cliente
     novia = get_object_or_404(Novia, pk=novia_id)
     data = json.loads(request.body)
     
+    nombre = data.get('nombre', '').strip()
+    telefono = data.get('telefono', '').strip()
+    email = data.get('email', '').strip()
+
+    if not nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
+
+    # 1. Gestionar Cliente
+    cliente_obj = None
+    if telefono:
+        # Validar 10 dígitos (básico)
+        digits = ''.join(filter(str.isdigit, telefono))
+        if len(digits) != 10:
+            return JsonResponse({'status': 'error', 'message': 'El teléfono debe tener 10 dígitos'}, status=400)
+
+        cliente_obj, created = Cliente.objects.get_or_create(
+            telefono=digits,
+            defaults={'nombre': nombre, 'email': email}
+        )
+        if not created and not cliente_obj.email and email:
+            cliente_obj.email = email
+            cliente_obj.save(update_fields=['email'])
+
+    # 2. Crear Dama
     dama = Dama.objects.create(
         novia=novia,
-        nombre=data.get('nombre', ''),
-        telefono=data.get('telefono', ''),
+        cliente=cliente_obj,
+        nombre=nombre,
+        telefono=telefono,
         talla=data.get('talla', ''),
         modelo_especial=data.get('modelo_especial', ''),
         color_especial=data.get('color_especial', ''),
@@ -632,7 +660,7 @@ def api_agregar_dama(request, novia_id):
     )
     
     # Actualizar contador
-    novia.cantidad_damas = novia.damas.count()
+    novia.cantidad_damas = novia.damas.filter(activo=True).count()
     novia.save(update_fields=['cantidad_damas'])
     
     return JsonResponse({
@@ -820,6 +848,7 @@ def api_crear_pedido_completo(request):
             precio=precio,
             anticipo=0, # Se actualizará vía PagoPedido
             notas=data.get('notas', ''),
+            tipo_pedido='ESTANDAR_GRUPO', # Por defecto en flujo de grupo
             creado_por=request.active_profile
         )
 
@@ -887,53 +916,69 @@ def api_crear_pedido_completo(request):
 
 @profile_permission_required(['Agenda', 'Vendedor'])
 def pedidos_en_puerta(request):
-    """Vista de todos los pedidos pendientes agrupados por novia"""
+    """Tablero de taller/producción - Hechuras, Importaciones y Especiales"""
     from .models import Pedido
+    from django.db.models import F
+
+    q = request.GET.get('q', '')
+    mes = request.GET.get('mes', '') # Formato YYYY-MM
+    today = timezone.now().date()
+
+    # Tipos que requieren seguimiento externo (según ajuste de alcance)
+    tipos_seguimiento = ['HECHURA', 'IMPORTACION', 'PROVEEDOR', 'ESPECIAL']
     
-    # Pedidos no entregados
-    pedidos = Pedido.objects.exclude(
-        estado='ENTREGADO'
+    pedidos_qs = Pedido.objects.filter(
+        tipo_pedido__in=tipos_seguimiento
     ).exclude(
-        estado='CANCELADO'
-    ).select_related('novia', 'dama', 'color', 'tela', 'modelo').order_by('fecha_entrega_estimada')
-    
-    # Agrupar por novia
-    pedidos_por_novia = {}
-    for p in pedidos:
-        novia_id = p.novia_id
-        if novia_id not in pedidos_por_novia:
-            pedidos_por_novia[novia_id] = {
-                'novia': p.novia,
-                'pedidos': [],
-                'colores': set(),
-                'telas': set(),
-                'modelos': set(),
-                'total': 0,
-                'pagado': 0
-            }
-        pedidos_por_novia[novia_id]['pedidos'].append(p)
-        if p.color:
-            pedidos_por_novia[novia_id]['colores'].add(p.color.nombre)
-        if p.tela:
-            pedidos_por_novia[novia_id]['telas'].add(p.tela.nombre)
-        if p.modelo:
-            pedidos_por_novia[novia_id]['modelos'].add(p.modelo.nombre)
-        pedidos_por_novia[novia_id]['total'] += p.precio
-        pedidos_por_novia[novia_id]['pagado'] += p.total_pagado
-    
-    # Estadísticas generales
-    total_pedidos = pedidos.count()
-    por_estado = {
-        'nuevos': pedidos.filter(estado='NUEVO').count(),
-        'pendiente_tela': pedidos.filter(estado='PENDIENTE_TELA').count(),
-        'en_confeccion': pedidos.filter(estado='EN_CONFECCION').count(),
-        'listos': pedidos.filter(estado='LISTO').count(),
-    }
+        estado__in=['ENTREGADO', 'CANCELADO']
+    ).select_related('novia', 'dama', 'color', 'tela', 'modelo', 'cliente')
+
+    if q:
+        pedidos_qs = pedidos_qs.filter(
+            Q(numero_ticket__icontains=q) |
+            Q(novia__nombre__icontains=q) |
+            Q(dama__nombre__icontains=q) |
+            Q(cliente__nombre__icontains=q) |
+            Q(cliente__telefono__icontains=q)
+        )
+
+    if mes:
+        try:
+            y, m = map(int, mes.split('-'))
+            pedidos_qs = pedidos_qs.filter(fecha_entrega_estimada__year=y, fecha_entrega_estimada__month=m)
+        except:
+            pass
+
+    # Orden por urgencia (próximas primero, nulas al final)
+    pedidos_qs = pedidos_qs.order_by(F('fecha_entrega_estimada').asc(nulls_last=True))
+
+    # Agrupar por tipo_pedido para el tablero
+    pedidos_por_tipo = {}
+    for t_code, t_label in Pedido.TIPOS_PEDIDO:
+        if t_code in tipos_seguimiento:
+            pedidos_tipo = [p for p in pedidos_qs if p.tipo_pedido == t_code]
+            if pedidos_tipo or not q: # Mostrar siempre si no hay búsqueda
+                pedidos_por_tipo[t_code] = {
+                    'label': t_label,
+                    'pedidos': pedidos_tipo,
+                    'count': len(pedidos_tipo),
+                    # Contadores por estado específicos para este tipo
+                    'stats': {
+                        'NUEVO': sum(1 for p in pedidos_tipo if p.estado == 'NUEVO'),
+                        'EN_CONFECCION': sum(1 for p in pedidos_tipo if p.estado == 'EN_CONFECCION'),
+                        'LISTO': sum(1 for p in pedidos_tipo if p.estado == 'LISTO'),
+                        'SOLICITADO': sum(1 for p in pedidos_tipo if p.estado == 'SOLICITADO'),
+                        'EN_TRANSITO': sum(1 for p in pedidos_tipo if p.estado == 'EN_TRANSITO'),
+                        'RECIBIDO': sum(1 for p in pedidos_tipo if p.estado == 'RECIBIDO'),
+                    }
+                }
     
     return render(request, 'boutique/pedidos_en_puerta.html', {
-        'pedidos_por_novia': pedidos_por_novia,
-        'total_pedidos': total_pedidos,
-        'por_estado': por_estado
+        'pedidos_por_tipo': pedidos_por_tipo,
+        'total_pedidos': pedidos_qs.count(),
+        'q': q,
+        'mes_actual': mes,
+        'today': today
     })
 
 

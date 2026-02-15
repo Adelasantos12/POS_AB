@@ -623,6 +623,7 @@ def api_venta_rapida(request):
                     # Crear nueva dama si se proporcionó nombre
                     dama_obj = Dama.objects.create(
                         novia=novia_obj,
+                        cliente=cliente_obj,
                         nombre=nueva_dama_nombre,
                         telefono=cliente_telefono or '',
                         talla=talla
@@ -642,7 +643,7 @@ def api_venta_rapida(request):
                     precio=precio,
                     evento=evento,
                     tipo_operacion=tipo_op,
-                    tipo_pedido='HECHURA' if tipo_op == 'HECHURA_ESPECIAL' else 'SOBRE_PEDIDO',
+                    tipo_pedido='HECHURA' if tipo_op == 'HECHURA_ESPECIAL' else 'ESTANDAR_GRUPO',
                     creado_por=request.active_profile
                 )
 
