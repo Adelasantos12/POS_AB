@@ -620,5 +620,13 @@
         await fetch(`/api/dama/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });
         location.reload();
     }
+
+    // Hardening numeric inputs
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.value === '') this.value = '0';
+        });
+        if (input.value === '' && input.hasAttribute('required')) input.value = '0';
+    });
 </script>
 {% endblock %}

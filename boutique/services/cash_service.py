@@ -1,4 +1,5 @@
 from decimal import Decimal
+from ..utils import safe_decimal
 from django.db import transaction
 from django.utils import timezone
 from ..models import (
@@ -20,7 +21,7 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
         raise ValueError("No hay una caja abierta. Debe abrir caja antes de cobrar.")
 
     with transaction.atomic():
-        monto = Decimal(str(monto))
+        monto = safe_decimal(monto)
 
         # 1. Registrar en el modelo operativo
         ticket_tipo = 'VENTA'

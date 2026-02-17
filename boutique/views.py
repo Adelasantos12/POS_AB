@@ -14,6 +14,7 @@ from .models import (
     registrar_auditoria, Ticket, Pedido, Apartado
 )
 from .middleware import profile_permission_required
+from .utils import safe_decimal
 from django.utils import timezone
 from decimal import Decimal
 import logging
@@ -257,7 +258,7 @@ def apertura_caja(request):
         return redirect('pos_dashboard')
 
     if request.method == 'POST':
-        monto = Decimal(request.POST.get('monto_apertura', 0))
+        monto = safe_decimal(request.POST.get('monto_apertura', 0))
         corte = CorteCaja.objects.create(
             abierto_por=request.active_profile,
             monto_apertura=monto,
@@ -284,9 +285,9 @@ def cierre_caja(request):
         return redirect('apertura_caja')
 
     if request.method == 'POST':
-        efectivo_real = Decimal(request.POST.get('efectivo_real', 0))
-        tarjeta_real = Decimal(request.POST.get('tarjeta_real', 0))
-        transferencia_real = Decimal(request.POST.get('transferencia_real', 0))
+        efectivo_real = safe_decimal(request.POST.get('efectivo_real', 0))
+        tarjeta_real = safe_decimal(request.POST.get('tarjeta_real', 0))
+        transferencia_real = safe_decimal(request.POST.get('transferencia_real', 0))
 
         corte.efectivo_real = efectivo_real
         corte.tarjeta_real = tarjeta_real
@@ -317,7 +318,7 @@ def cierre_caja(request):
     tarjeta_movs = sum(m.monto for m in movs if m.metodo_pago == 'TARJETA')
     transf_movs = sum(m.monto for m in movs if m.metodo_pago == 'TRANSFERENCIA')
 
-    corte.efectivo_esperado = Decimal(corte.monto_apertura) + efectivo_movs
+    corte.efectivo_esperado = safe_decimal(corte.monto_apertura) + safe_decimal(efectivo_movs)
     corte.tarjeta_esperada = tarjeta_movs
     corte.transferencia_esperada = transf_movs
     corte.save()
@@ -427,7 +428,7 @@ def api_liquidar_pedido(request, pk):
     try:
         data = json.loads(request.body)
         metodo = data.get('metodo', 'EFECTIVO')
-        monto = Decimal(str(data.get('monto', pedido.saldo_pendiente)))
+        monto = safe_decimal(data.get('monto', pedido.saldo_pendiente))
 
         with transaction.atomic():
             # Registrar el cobro en caja
@@ -497,8 +498,8 @@ def api_venta_rapida(request):
         cat_nombre = request.POST.get('categoria', 'General')
         color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
-        precio = Decimal(request.POST.get('precio', 0))
-        anticipo = Decimal(request.POST.get('anticipo', precio))
+        precio = safe_decimal(request.POST.get('precio', 0))
+        anticipo = safe_decimal(request.POST.get('anticipo', precio))
         metodo = request.POST.get('metodo', 'EFECTIVO')
         rasgo1 = request.POST.get('rasgo1', '')
         rasgo2 = request.POST.get('rasgo2', '')
@@ -674,10 +675,7 @@ def api_venta_rapida(request):
                 if any([request.POST.get('m_busto'), request.POST.get('medidas_busto'), request.POST.get('m_cintura'), request.POST.get('m_notas')]):
                     def get_d(key1, key2):
                         val = request.POST.get(key1) or request.POST.get(key2)
-                        if val and str(val).strip():
-                            try: return Decimal(str(val))
-                            except: return None
-                        return None
+                        return safe_decimal(val, None)
 
                     Medidas.objects.create(
                         pedido=pedido,
@@ -829,8 +827,8 @@ def api_registrar_venta(request):
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
-        total = Decimal(str(data.get('total', 0)))
-        pago_inicial = Decimal(str(data.get('pago_inicial', total)))
+        total = safe_decimal(data.get('total', 0))
+        pago_inicial = safe_decimal(data.get('pago_inicial', total))
         metodo = data.get('metodo', 'EFECTIVO')
         es_apartado = data.get('es_apartado', False)
 
@@ -1092,7 +1090,7 @@ def api_validar_crear_producto(request):
             rasgo1=data.get('rasgo1', ''),
             rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
-            precio_venta=Decimal(str(data.get('precio', 0))),
+            precio_venta=safe_decimal(data.get('precio', 0)),
             estado=data.get('estado', 'TIENDA'),
             cantidad_actual=int(data.get('stock', 1)),
             foto=foto
@@ -1345,7 +1343,7 @@ def api_producto_regularizar(request, pk):
 
         producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
         producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
-        producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
+        producto.precio_venta = safe_decimal(data.get('precio', producto.precio_venta))
         producto.pendiente_regularizacion = data.get('pendiente_regularizacion', False)
 
         producto.save()
@@ -1393,7 +1391,7 @@ def api_editar_producto(request, pk):
     try:
         producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
         producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
-        producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
+        producto.precio_venta = safe_decimal(data.get('precio', producto.precio_venta))
         
         # Si cambia el stock, registrar movimiento
         nuevo_stock = int(data.get('stock', producto.cantidad_actual))
@@ -1770,7 +1768,7 @@ def importar_excel(request):
                         # Formato: Modelo, Descripción, Precio
                         nombre = str(row[0]).strip()
                         descripcion = str(row[1]) if len(row) > 1 and row[1] else ""
-                        precio = Decimal(str(row[2])) if len(row) > 2 and row[2] else 0
+                        precio = safe_decimal(row[2]) if len(row) > 2 and row[2] else 0
 
                         obj, created = Modelo.objects.update_or_create(
                             nombre=nombre,
@@ -1969,7 +1967,7 @@ def api_cobrar_item(request, tipo, pk):
 
     try:
         data = json.loads(request.body)
-        monto = Decimal(str(data.get('monto', 0)))
+        monto = safe_decimal(data.get('monto', 0))
         metodo = data.get('metodo', 'EFECTIVO')
         referencia = data.get('referencia', '')
         notas = data.get('notas', '')
@@ -2020,7 +2018,7 @@ def api_guardar_medidas(request, pedido_id):
                       'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']:
             if field in data:
                 val = data.get(field)
-                setattr(medidas, field, Decimal(str(val)) if val and val != '' else None)
+                setattr(medidas, field, safe_decimal(val, None) if val and val != '' else None)
 
         medidas.observaciones = data.get('observaciones', '')
         if pedido.novia:

@@ -20,6 +20,7 @@ from .models import (
     Producto, Modelo, registrar_auditoria
 )
 from .middleware import profile_permission_required
+from .utils import safe_decimal
 
 
 # ============================================================
@@ -759,8 +760,8 @@ def api_crear_pedido(request):
     dama_id = data.get('dama_id')
     dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
 
-    precio = Decimal(str(data.get('precio', 0)))
-    anticipo = Decimal(str(data.get('anticipo', 0)))
+    precio = safe_decimal(data.get('precio', 0))
+    anticipo = safe_decimal(data.get('anticipo', 0))
     metodo = data.get('metodo', 'EFECTIVO')
 
     with transaction.atomic():
@@ -821,8 +822,8 @@ def api_crear_pedido_completo(request):
     dama_id = data.get('dama_id')
     dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
 
-    precio = Decimal(str(data.get('precio', 0)))
-    anticipo = Decimal(str(data.get('anticipo', 0)))
+    precio = safe_decimal(data.get('precio', 0))
+    anticipo = safe_decimal(data.get('anticipo', 0))
     metodo = data.get('metodo', 'EFECTIVO')
     tipo_ticket = 'PEDIDO' # Unificado para todos los pedidos de grupo
 
@@ -874,10 +875,10 @@ def api_crear_pedido_completo(request):
             pedido=pedido,
             cliente=cliente_obj,
             cliente_nombre=nom,
-            busto=Decimal(str(m_busto)) if m_busto else None,
-            cintura=Decimal(str(m_cintura)) if m_cintura else None,
-            cadera=Decimal(str(m_cadera)) if m_cadera else None,
-            largo=Decimal(str(m_largo)) if m_largo else None,
+            busto=safe_decimal(m_busto, None) if m_busto else None,
+            cintura=safe_decimal(m_cintura, None) if m_cintura else None,
+            cadera=safe_decimal(m_cadera, None) if m_cadera else None,
+            largo=safe_decimal(m_largo, None) if m_largo else None,
             observaciones=m_notas
         )
 

@@ -5,6 +5,7 @@ from django.views.decorators.http import require_POST
 from django.db import transaction
 from .models import Apartado, ApartadoItem, Ticket, Producto, ConfiguracionTienda
 from .middleware import profile_permission_required
+from .utils import safe_decimal
 import json
 from decimal import Decimal
 
@@ -33,8 +34,8 @@ def api_crear_apartado(request):
         items = data.get('items', [])
         cliente_nombre = data.get('cliente_nombre', 'Cliente General')
         cliente_telefono = data.get('cliente_telefono', '')
-        anticipo = Decimal(str(data.get('anticipo', 0)))
-        total = Decimal(str(data.get('total', 0)))
+        anticipo = safe_decimal(data.get('anticipo', 0))
+        total = safe_decimal(data.get('total', 0))
         notas = data.get('notas', '')
 
         from .services.cash_service import registrar_cobro, get_caja_activa

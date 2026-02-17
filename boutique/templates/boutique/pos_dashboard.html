@@ -665,6 +665,14 @@
     }
 
     // Initial check
+    // Hardening numeric inputs
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.value === '') this.value = '0';
+        });
+        if (input.value === '' && input.hasAttribute('required')) input.value = '0';
+    });
+
     updateOfflineCount();
     updateOnlineStatus();
 
