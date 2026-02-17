@@ -514,35 +514,66 @@
         }
     });
 
-    // Product Search
+    // Global Search (Products, Orders, Layaways)
     document.getElementById('productSearch').addEventListener('input', function(e) {
         const q = e.target.value;
         if (q.length < 2) {
             document.getElementById('searchResults').innerHTML = '';
             return;
         }
-        fetch(`/api/search-productos/?q=${q}`)
+        fetch(`/api/search-global/?q=${q}`)
             .then(r => r.json())
             .then(data => {
                 let html = '';
-                data.results.forEach(p => {
-                    const stockBadge = p.stock > 0 
-                        ? `<span class="badge bg-success rounded-pill">${p.stock}</span>`
-                        : `<span class="badge bg-danger rounded-pill">Agotado</span>`;
-                    html += `
-                        <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
-                           onclick="addToCart(${p.id}, '${p.text.replace(/'/g, "\\'")}', ${p.precio}); return false;">
-                            <div>
-                                <strong>${p.text}</strong>
-                                <br><small class="text-muted">SKU: ${p.sku}</small>
-                            </div>
-                            <div class="text-end">
-                                <span class="fw-bold text-primary">$${p.precio.toLocaleString()}</span>
-                                <br>${stockBadge}
-                            </div>
-                        </a>`;
+                data.results.forEach(item => {
+                    if (item.type === 'PRODUCTO') {
+                        const stockBadge = item.stock > 0
+                            ? `<span class="badge bg-success rounded-pill">${item.stock}</span>`
+                            : `<span class="badge bg-danger rounded-pill">Agotado</span>`;
+                        html += `
+                            <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                               onclick="addToCart(${item.id}, '${item.text.replace(/'/g, "\\'")}', ${item.precio}); return false;">
+                                <div>
+                                    <span class="badge bg-secondary me-2" style="font-size: 0.6rem;">PROD</span>
+                                    <strong>${item.text}</strong>
+                                    <br><small class="text-muted">SKU: ${item.sku}</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="fw-bold text-primary">$${item.precio.toLocaleString()}</span>
+                                    <br>${stockBadge}
+                                </div>
+                            </a>`;
+                    } else {
+                        // Payable items: APARTADO, PEDIDO, NOVIA
+                        const balanceColor = item.balance > 0 ? 'text-danger' : 'text-success';
+                        let typeClass = 'bg-primary';
+                        if (item.type === 'APARTADO') typeClass = 'bg-info';
+                        if (item.type === 'NOVIA') typeClass = 'bg-danger';
+
+                        const detailUrl = item.type === 'NOVIA' ? `/novias/${item.id}/` : (item.type === 'APARTADO' ? `/apartados/${item.id}/` : `/pedidos/?q=${item.folio}`);
+
+                        html += `
+                            <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <div onclick="window.open('${detailUrl}', '_blank')" style="cursor: pointer; flex-grow: 1;">
+                                    <span class="badge ${typeClass} me-2" style="font-size: 0.6rem;">${item.type}</span>
+                                    <strong>${item.label}</strong>
+                                    <br><small class="text-muted">${item.customer}</small>
+                                    ${item.delivery_date ? `<br><small class="text-muted"><i class="bi bi-calendar-event me-1"></i>Entrega: ${item.delivery_date}</small>` : ''}
+                                </div>
+                                <div class="text-end">
+                                    <span class="fw-bold ${balanceColor}" style="font-size: 0.9rem;">Saldo: $${item.balance.toLocaleString()}</span>
+                                    <div class="mt-1">
+                                        ${item.balance > 0 ? `
+                                            <button class="btn btn-sm btn-success py-1 px-3 rounded-pill fw-bold"
+                                                    onclick="abrirModalCobro('${item.type.toLowerCase()}', ${item.id}, '${item.balance}', '${item.folio}')">
+                                                Cobrar
+                                            </button>` : `<span class="badge bg-success rounded-pill">PAGADO</span>`}
+                                    </div>
+                                </div>
+                            </div>`;
+                    }
                 });
-                document.getElementById('searchResults').innerHTML = html || '<div class="p-3 text-muted text-center">No se encontraron productos</div>';
+                document.getElementById('searchResults').innerHTML = html || '<div class="p-3 text-muted text-center">No se encontraron resultados</div>';
             });
     });
 

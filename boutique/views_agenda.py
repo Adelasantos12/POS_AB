@@ -17,10 +17,11 @@ from django.conf import settings
 
 from .models import (
     Color, Tela, Novia, Dama, CitaAgenda, 
-    Producto, Modelo, registrar_auditoria
+    Producto, Modelo, registrar_auditoria, Pedido, Apartado
 )
 from .middleware import profile_permission_required
 from .utils import safe_decimal
+from .services.agenda_service import sync_delivery_with_agenda
 
 
 # ============================================================
@@ -598,16 +599,9 @@ def api_crear_novia(request):
         creado_por=request.active_profile
     )
     
-    # Crear cita de entrega automática si hay fecha
+    # Sincronizar Agenda si tiene fecha de entrega
     if novia.fecha_entrega:
-        CitaAgenda.objects.create(
-            titulo=f"Entrega - {novia.nombre}",
-            tipo='ENTREGA',
-            fecha=novia.fecha_entrega,
-            hora_inicio=datetime.strptime('11:00', '%H:%M').time(),
-            novia=novia,
-            creado_por=request.active_profile
-        )
+        sync_delivery_with_agenda(novia)
     
     return JsonResponse({
         'status': 'ok',
@@ -697,6 +691,8 @@ def api_editar_novia(request, pk):
         novia.notas = data.get('notas', novia.notas)
 
         novia.save()
+        if novia.fecha_entrega:
+            sync_delivery_with_agenda(novia)
         return JsonResponse({'status': 'ok', 'message': 'Novia actualizada'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -772,6 +768,7 @@ def api_crear_pedido(request):
             precio=precio,
             anticipo=0, # Se registra vía registrar_cobro
             notas=data.get('notas', ''),
+            fecha_entrega_estimada=data.get('fecha_entrega_estimada') or None,
             creado_por=request.active_profile
         )
 
@@ -802,6 +799,9 @@ def api_crear_pedido(request):
         pedido.ticket = ticket
         pedido.save()
 
+        if pedido.fecha_entrega_estimada:
+            sync_delivery_with_agenda(pedido)
+
     return JsonResponse({
         'status': 'ok',
         'id': pedido.id,
@@ -816,6 +816,7 @@ def api_crear_pedido_completo(request):
     """Crea un pedido capturando todos los datos (modelo, color, talla, medidas, pago)"""
     from .models import Pedido, Ticket, Medidas, Modelo, Color, Cliente
     from .services.cash_service import registrar_cobro
+    from .services.agenda_service import sync_delivery_with_agenda
 
     data = json.loads(request.body)
     novia = get_object_or_404(Novia, pk=data.get('novia_id'))
@@ -861,6 +862,7 @@ def api_crear_pedido_completo(request):
             anticipo=0, # Se actualizará vía PagoPedido
             notas=data.get('notas', ''),
             tipo_pedido='ESTANDAR_GRUPO', # Por defecto en flujo de grupo
+            fecha_entrega_estimada=data.get('fecha_entrega_estimada') or None,
             creado_por=request.active_profile
         )
 
@@ -915,6 +917,10 @@ def api_crear_pedido_completo(request):
 
         pedido.ticket = ticket
         pedido.save()
+
+        # Sincronizar Agenda
+        if pedido.fecha_entrega_estimada:
+            sync_delivery_with_agenda(pedido)
 
     return JsonResponse({
         'status': 'ok',

@@ -549,6 +549,11 @@ class Apartado(models.Model):
     novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_independientes')
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados')
 
+    # Entrega y Agenda
+    fecha_entrega_estimada = models.DateField(null=True, blank=True)
+    notas_entrega = models.TextField(blank=True)
+    agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_vinculados')
+
     def save(self, *args, **kwargs):
         if not self.folio:
             today_str = timezone.now().strftime('%Y%m%d')
@@ -721,6 +726,8 @@ class Novia(models.Model):
     modelo_principal = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_modelo')
     
     notas = models.TextField(blank=True)
+    notas_entrega = models.TextField(blank=True)
+    agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_vinculadas')
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
@@ -979,7 +986,11 @@ class Pedido(models.Model):
     # Notas
     notas = models.TextField(blank=True)
     notas_ajustes = models.TextField(blank=True)
+    notas_entrega = models.TextField(blank=True)
     
+    # Agenda
+    agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_vinculados')
+
     # Ticket/referencia
     ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     numero_ticket = models.CharField(max_length=20, unique=True, blank=True)
@@ -1113,6 +1124,7 @@ class CitaAgenda(models.Model):
     # Relacionado a novia/pedido (opcional)
     novia = models.ForeignKey(Novia, on_delete=models.CASCADE, null=True, blank=True, related_name='citas')
     pedido = models.ForeignKey(Pedido, on_delete=models.SET_NULL, null=True, blank=True, related_name='citas')
+    apartado = models.ForeignKey(Apartado, on_delete=models.SET_NULL, null=True, blank=True, related_name='citas')
     
     # Info adicional para consultas nuevas
     nombre_cliente = models.CharField(max_length=200, blank=True)

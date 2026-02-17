@@ -8,6 +8,7 @@ from .middleware import profile_permission_required
 from .utils import safe_decimal
 import json
 from decimal import Decimal
+from django.utils import timezone
 
 @login_required
 @profile_permission_required(['Vendedor', 'Caja', 'Admin', 'CEO'])
@@ -22,7 +23,13 @@ def lista_apartados(request):
             Q(folio__icontains=q) |
             Q(cliente_telefono__icontains=q)
         )
-    return render(request, 'boutique/apartados_list.html', {'apartados': apartados, 'q': q})
+
+    context = {
+        'apartados': apartados,
+        'q': q,
+        'today': timezone.now().date()
+    }
+    return render(request, 'boutique/apartados_list.html', context)
 
 @require_POST
 @login_required

@@ -279,6 +279,10 @@
                                 <i class="bi bi-rulers"></i>
                             </button>
 
+                            <button class="btn btn-outline-primary rounded-pill" title="Entrega" onclick="abrirModalEntrega('pedido', {{ p.id }}, '{{ p.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ p.notas_entrega|escapejs }}')">
+                                <i class="bi bi-calendar-event"></i>
+                            </button>
+
                             {% if p.saldo_pendiente <= 0 and p.estado != 'ENTREGADO' %}
                             <button class="btn btn-success rounded-pill" title="Entregar" onclick="entregarItem('pedido', {{ p.id }})">
                                 <i class="bi bi-check-circle"></i>
@@ -342,6 +346,7 @@
 </div>
 
 {% include 'boutique/includes/modal_cobro_unificado.html' %}
+{% include 'boutique/includes/modal_entrega.html' %}
 
 <!-- MODAL MEDIDAS -->
 <div class="modal fade" id="modalMedidas" tabindex="-1">
@@ -449,6 +454,11 @@
                         <div class="col-md-4">
                             <label class="form-label small fw-bold">Talla</label>
                             <input type="text" name="talla" class="form-control" placeholder="Ej: 8">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Fecha Entrega</label>
+                            <input type="date" name="fecha_entrega_estimada" class="form-control">
                         </div>
 
                         <div class="col-12 mt-4">

@@ -28,12 +28,11 @@
                     <th>Folio</th>
                     <th>Cliente</th>
                     <th>Total</th>
-                    <th>Pagado</th>
                     <th>Saldo</th>
                     <th>Estado</th>
-                    <th>Fecha Límite</th>
+                    <th>Entrega Est.</th>
                     <th>Novia</th>
-                    <th>Acciones</th>
+                    <th class="text-end pe-4">Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -41,18 +40,24 @@
                 <tr>
                     <td><span class="fw-bold">{{ a.folio }}</span></td>
                     <td>
-                        <div>{{ a.cliente_nombre }}</div>
+                        <div class="fw-bold">{{ a.cliente_nombre }}</div>
                         <small class="text-muted">{{ a.cliente_telefono }}</small>
                     </td>
-                    <td>${{ a.total }}</td>
-                    <td class="text-success">${{ a.anticipo }}</td>
+                    <td class="small">
+                        Total: ${{ a.total }}<br>
+                        <span class="text-success">Pagado: ${{ a.anticipo }}</span>
+                    </td>
                     <td class="text-danger fw-bold">${{ a.saldo }}</td>
                     <td>
-                        <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% elif a.estado == 'CANCELADO' %}status-error{% else %}status-warning{% endif %}">
+                        <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% elif a.estado == 'CANCELADO' %}status-error{% else %}status-warning{% endif %}" style="font-size: 0.65rem;">
                             {{ a.get_estado_display }}
                         </span>
                     </td>
-                    <td>{{ a.fecha_vencimiento|date:"d/m/Y"|default:"-" }}</td>
+                    <td>
+                        <div class="small {% if a.fecha_entrega_estimada < today and a.estado == 'VIGENTE' %}text-danger fw-bold{% endif %}">
+                            {{ a.fecha_entrega_estimada|date:"d/m/Y"|default:"-" }}
+                        </div>
+                    </td>
                     <td>
                         {% if a.novia %}
                             <a href="{% url 'novia_detalle' a.novia.id %}" class="small">{{ a.novia.nombre }}</a>
@@ -60,14 +65,19 @@
                             <span class="text-muted small">N/A</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="text-end pe-4">
                         <div class="btn-group">
                             {% if a.saldo > 0 %}
-                            <button class="btn btn-sm btn-primary" onclick="abrirModalCobro('apartado', {{ a.id }}, {{ a.saldo }}, '{{ a.folio }}')">
-                                Cobrar
+                            <button class="btn btn-sm btn-outline-success" onclick="abrirModalCobro('apartado', {{ a.id }}, '{{ a.saldo|stringformat:".2f" }}', '{{ a.folio }}')" title="Cobrar">
+                                <i class="bi bi-cash"></i>
                             </button>
                             {% endif %}
-                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ a.folio }}')">
+                            <button class="btn btn-sm btn-outline-primary"
+                                    onclick="abrirModalEntrega('apartado', {{ a.id }}, '{{ a.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ a.notas_entrega|escapejs }}')"
+                                    title="Editar Entrega">
+                                <i class="bi bi-calendar-event"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ a.folio }}')" title="Imprimir Ticket">
                                 <i class="bi bi-printer"></i>
                             </button>
                         </div>
@@ -84,5 +94,6 @@
 </div>
 
 {% include 'boutique/includes/modal_cobro_unificado.html' %}
+{% include 'boutique/includes/modal_entrega.html' %}
 
 {% endblock %}

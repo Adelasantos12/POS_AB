@@ -11,7 +11,7 @@ from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
     CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
-    registrar_auditoria, Ticket, Pedido, Apartado
+    registrar_auditoria, Ticket, Pedido, Apartado, Novia, Dama
 )
 from .middleware import profile_permission_required
 from .utils import safe_decimal
@@ -26,6 +26,106 @@ from difflib import SequenceMatcher
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+@login_required
+def api_search_global(request):
+    """
+    Buscador global para POS: Productos, Pedidos, Apartados y Novias.
+    Habilita el cobro desde cualquier módulo.
+    """
+    q = request.GET.get('q', '').strip()
+    if not q:
+        return JsonResponse({'results': []})
+
+    results = []
+
+    # 1. Productos (SKU, Rasgos, Categoría)
+    productos = Producto.objects.filter(
+        Q(sku__icontains=q) |
+        Q(rasgo1__icontains=q) |
+        Q(rasgo2__icontains=q) |
+        Q(categoria__nombre__icontains=q)
+    ).select_related('categoria', 'color', 'modelo')[:10]
+
+    for p in productos:
+        results.append({
+            'type': 'PRODUCTO',
+            'id': p.id,
+            'sku': p.sku,
+            'text': str(p),
+            'precio': float(p.precio_venta),
+            'stock': p.cantidad_actual,
+            'folio': p.sku
+        })
+
+    # 2. Apartados (Folio, Cliente, Teléfono)
+    apartados = Apartado.objects.filter(
+        Q(folio__icontains=q) |
+        Q(cliente_nombre__icontains=q) |
+        Q(cliente_telefono__icontains=q)
+    ).order_by('-fecha_creacion')[:10]
+
+    for a in apartados:
+        results.append({
+            'type': 'APARTADO',
+            'id': a.id,
+            'folio': a.folio,
+            'label': f"Apartado: {a.folio}",
+            'customer': a.cliente_nombre,
+            'total': float(a.total),
+            'balance': float(a.saldo),
+            'delivery_date': a.fecha_entrega_estimada.isoformat() if a.fecha_entrega_estimada else None,
+            'status': a.estado
+        })
+
+    # 3. Pedidos (Folio, Cliente, Novia, Dama, Teléfono)
+    pedidos = Pedido.objects.filter(
+        Q(numero_ticket__icontains=q) |
+        Q(novia__nombre__icontains=q) |
+        Q(dama__nombre__icontains=q) |
+        Q(cliente__nombre__icontains=q) |
+        Q(cliente__telefono__icontains=q)
+    ).select_related('novia', 'dama', 'cliente').order_by('-fecha_creacion')[:10]
+
+    for ped in pedidos:
+        customer = ""
+        if ped.dama: customer = ped.dama.nombre
+        elif ped.novia: customer = ped.novia.nombre
+        elif ped.cliente: customer = ped.cliente.nombre
+
+        results.append({
+            'type': 'PEDIDO',
+            'id': ped.id,
+            'folio': ped.numero_ticket,
+            'label': f"Pedido: {ped.numero_ticket}",
+            'customer': customer,
+            'total': float(ped.precio),
+            'balance': float(ped.saldo_pendiente),
+            'delivery_date': ped.fecha_entrega_estimada.isoformat() if ped.fecha_entrega_estimada else None,
+            'status': ped.get_estado_display()
+        })
+
+    # 4. Novias (Nombre, Teléfono)
+    novias = Novia.objects.filter(
+        Q(nombre__icontains=q) |
+        Q(telefono__icontains=q)
+    ).filter(activo=True)[:5]
+
+    for n in novias:
+        results.append({
+            'type': 'NOVIA',
+            'id': n.id,
+            'folio': f"NV-{n.id}",
+            'label': f"Novia: {n.nombre}",
+            'customer': n.nombre,
+            'total': float(sum(p.precio for p in n.pedidos.all())),
+            'balance': float(n.total_pendiente),
+            'delivery_date': n.fecha_entrega.isoformat() if n.fecha_entrega else None,
+            'status': 'Activa'
+        })
+
+    return JsonResponse({'results': results})
 
 
 @login_required
@@ -492,6 +592,7 @@ def api_venta_rapida(request):
     """Crea producto al vuelo + registra venta/apartado/pedido + movimiento en una sola transacción"""
     from .models import Novia, Dama, PagoPedido, Apartado, ApartadoItem, Medidas, Pedido
     from .services.cash_service import registrar_cobro
+    from .services.agenda_service import sync_delivery_with_agenda
     try:
         # 1. Parámetros básicos
         tipo_op = request.POST.get('tipo_operacion', 'VENTA_NORMAL')
@@ -581,7 +682,8 @@ def api_venta_rapida(request):
                         categoria_cache=cat_nombre,
                         color_cache=color_nombre,
                         talla_cache=talla,
-                        notas=f"Apartado Rápido SKU {producto.sku}"
+                        notas=f"Apartado Rápido SKU {producto.sku}",
+                        fecha_entrega_estimada=fecha_entrega_est or None
                     )
                     ApartadoItem.objects.create(
                         apartado=apartado,
@@ -596,6 +698,10 @@ def api_venta_rapida(request):
                         monto=anticipo, metodo=metodo, usuario=request.active_profile,
                         notas='Anticipo Venta Rápida'
                     )
+
+                    if apartado.fecha_entrega_estimada:
+                        sync_delivery_with_agenda(apartado)
+
                     res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio, 'producto': {'id': producto.id, 'sku': producto.sku}}
                 else:
                     # FLUJO VENTA COMPLETA
@@ -698,6 +804,10 @@ def api_venta_rapida(request):
                     monto=anticipo, metodo=metodo, usuario=request.active_profile,
                     notas=f'Anticipo {tipo_op}'
                 )
+
+                if pedido.fecha_entrega_estimada:
+                    sync_delivery_with_agenda(pedido)
+
                 res = {'status': 'ok', 'tipo': 'pedido', 'id': pedido.id, 'folio': ticket.folio}
 
             registrar_auditoria(
@@ -2080,3 +2190,40 @@ def api_entregar_item(request, tipo, pk):
     item.estado = 'ENTREGADO'
     item.save()
     return JsonResponse({'status': 'ok'})
+
+@require_POST
+@login_required
+def api_editar_entrega(request, tipo, pk):
+    """
+    Actualiza la fecha de entrega y notas de un Pedido, Apartado o Novia.
+    Sincroniza automáticamente con la Agenda.
+    """
+    from .services.agenda_service import sync_delivery_with_agenda
+    from .models import Pedido, Apartado, Novia
+
+    try:
+        data = json.loads(request.body)
+        fecha_str = data.get('fecha_entrega')
+        notas = data.get('notas_entrega', '')
+
+        if tipo == 'pedido':
+            obj = get_object_or_404(Pedido, pk=pk)
+            obj.fecha_entrega_estimada = fecha_str if fecha_str else None
+            obj.notas_entrega = notas
+        elif tipo == 'apartado':
+            obj = get_object_or_404(Apartado, pk=pk)
+            obj.fecha_entrega_estimada = fecha_str if fecha_str else None
+            obj.notas_entrega = notas
+        elif tipo == 'novia':
+            obj = get_object_or_404(Novia, pk=pk)
+            obj.fecha_entrega = fecha_str if fecha_str else None
+            obj.notas_entrega = notas
+        else:
+            return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
+        obj.save()
+        sync_delivery_with_agenda(obj)
+
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

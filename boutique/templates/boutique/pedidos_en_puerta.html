@@ -80,12 +80,12 @@
                             <th>Evento</th>
                             <th>Entrega Est.</th>
                             <th>Estado</th>
-                            <th class="pe-4 text-end">Saldo</th>
+                            <th class="pe-4 text-end">Saldo / Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for p in data.pedidos %}
-                        <tr>
+                        <tr data-pedido-id="{{ p.id }}">
                             <td class="ps-4">
                                 <code class="fw-bold text-dark">{{ p.numero_ticket }}</code>
                                 <div class="fw-bold">
@@ -119,8 +119,25 @@
                                 </span>
                             </td>
                             <td class="pe-4 text-end">
-                                <div class="fw-bold small {% if p.saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
+                                <div class="fw-bold small {% if p.saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %} mb-1">
                                     ${{ p.saldo_pendiente }}
+                                </div>
+                                <div class="btn-group">
+                                    {% if p.saldo_pendiente > 0 %}
+                                    <button class="btn btn-xs btn-outline-success"
+                                            onclick="abrirModalCobro('pedido', {{ p.id }}, '{{ p.saldo_pendiente|stringformat:".2f" }}', '{{ p.numero_ticket }}')"
+                                            title="Cobrar">
+                                        <i class="bi bi-cash"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-xs btn-outline-primary"
+                                            onclick="abrirModalEntrega('pedido', {{ p.id }}, '{{ p.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ p.notas_entrega|escapejs }}')"
+                                            title="Editar Entrega">
+                                        <i class="bi bi-calendar-event"></i>
+                                    </button>
+                                    <a href="{% url 'novia_detalle' p.novia.id %}" class="btn btn-xs btn-outline-secondary" title="Ver Detalle" target="_blank">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
@@ -139,5 +156,8 @@
     <p class="mt-3 text-muted">No se encontraron pedidos con los filtros aplicados.</p>
 </div>
 {% endif %}
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+{% include 'boutique/includes/modal_entrega.html' %}
 
 {% endblock %}
