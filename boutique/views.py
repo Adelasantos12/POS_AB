@@ -607,6 +607,14 @@ def api_venta_rapida(request):
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
+        # Idempotencia
+        idem_key = request.POST.get('idempotency_key')
+        if idem_key:
+            from .models import IdempotencyLog
+            log, created = IdempotencyLog.objects.get_or_create(key=idem_key, defaults={'status': 'PROCESSING'})
+            if not created and log.status == 'DONE':
+                return JsonResponse(log.response_json)
+
         # Datos del cliente
         cliente_telefono = request.POST.get('cliente_telefono', '').strip()
         cliente_nombre = request.POST.get('cliente_nombre')
@@ -654,18 +662,21 @@ def api_venta_rapida(request):
                 tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
 
             # 4. Crear producto físico (si aplica)
-            producto = Producto.objects.create(
+            # Reutilizar si ya existe (prevención de duplicados)
+            producto, _ = Producto.objects.get_or_create(
                 categoria=categoria,
                 color=color,
                 tela=tela_obj,
                 rasgo1=rasgo1,
                 rasgo2=rasgo2,
                 talla=talla,
-                precio_venta=precio,
-                estado='TIENDA' if not es_apartado and tipo_op == 'VENTA_NORMAL' else 'APARTADO',
-                cantidad_actual=0,
-                stock_teorico=0,
-                foto=foto
+                defaults={
+                    'precio_venta': precio,
+                    'estado': 'TIENDA' if not es_apartado and tipo_op == 'VENTA_NORMAL' else 'APARTADO',
+                    'cantidad_actual': 0,
+                    'stock_teorico': 0,
+                    'foto': foto
+                }
             )
 
             # 5. Lógica según Tipo de Operación
@@ -817,6 +828,11 @@ def api_venta_rapida(request):
                 entidad=producto,
                 request=request
             )
+
+            if idem_key:
+                log.response_json = res
+                log.status = 'DONE'
+                log.save()
             return JsonResponse(res)
 
     except ValueError as ve:
@@ -1154,6 +1170,14 @@ def api_validar_crear_producto(request):
         data = request.POST
         foto = request.FILES.get('foto')
 
+    # Idempotencia
+    idem_key = data.get('idempotency_key')
+    if idem_key:
+        from .models import IdempotencyLog
+        log, created = IdempotencyLog.objects.get_or_create(key=idem_key, defaults={'status': 'PROCESSING'})
+        if not created and log.status == 'DONE':
+            return JsonResponse(log.response_json)
+
     forzar_crear = data.get('forzar_crear') == True or data.get('forzar_crear') == 'true'
     
     # Si no se fuerza, verificar duplicados primero
@@ -1193,26 +1217,36 @@ def api_validar_crear_producto(request):
         rasgo2 = data.get('rasgo2', '')
         tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
 
-        producto = Producto.objects.create(
+        # Usar get_or_create para prevenir duplicados a nivel BD
+        producto, created = Producto.objects.get_or_create(
             categoria=categoria,
             color=color_obj,
             tela=tela_obj,
             rasgo1=data.get('rasgo1', ''),
             rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
-            precio_venta=safe_decimal(data.get('precio', 0)),
-            estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=int(data.get('stock', 1)),
-            foto=foto
+            defaults={
+                'precio_venta': safe_decimal(data.get('precio', 0)),
+                'estado': data.get('estado', 'TIENDA'),
+                'cantidad_actual': int(data.get('stock', 1)),
+                'foto': foto
+            }
         )
         
-        return JsonResponse({
+        res = {
             'status': 'ok', 
             'sku': producto.sku, 
             'id': producto.id, 
             'text': str(producto),
-            'message': '✅ Producto creado correctamente'
-        })
+            'message': '✅ Producto creado correctamente' if created else '✅ Producto existente reutilizado'
+        }
+
+        if idem_key:
+            log.response_json = res
+            log.status = 'DONE'
+            log.save()
+
+        return JsonResponse(res)
         
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

@@ -176,7 +176,13 @@ class Producto(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
     class Meta:
-        unique_together = ('categoria', 'modelo', 'tela', 'color', 'talla', 'rasgo1', 'rasgo2')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['categoria', 'modelo', 'tela', 'color', 'talla', 'rasgo1', 'rasgo2'],
+                name='unique_producto_variant',
+                nulls_distinct=False
+            )
+        ]
         verbose_name = "Variante (SKU)"
         verbose_name_plural = "Variantes (SKU)"
     def save(self, *args, **kwargs):
@@ -423,6 +429,16 @@ class Pago(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     registrado_por = models.ForeignKey('auth.User', on_delete=models.PROTECT, null=True, blank=True)
     def __str__(self): return f"Pago de {self.monto} a Venta #{self.venta.id}"
+
+class IdempotencyLog(models.Model):
+    key = models.CharField(max_length=100, unique=True, db_index=True)
+    response_json = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, default='PROCESSING') # PROCESSING, DONE, ERROR
+
+    def __str__(self):
+        return f"{self.key} - {self.status}"
+
 
 class Auditoria(models.Model):
     """Auditoría centralizada para todas las acciones sensibles"""
