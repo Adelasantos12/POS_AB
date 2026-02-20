@@ -335,7 +335,7 @@ def api_search_productos(request):
         Q(rasgo1__icontains=q) |
         Q(rasgo2__icontains=q) |
         Q(categoria__nombre__icontains=q)
-    )[:15]
+    ).select_related('categoria', 'modelo', 'tela', 'color')[:15]  # Prefetch related fields to prevent N+1 queries in __str__
     results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual} for p in productos]
     return JsonResponse({'results': results})
 
