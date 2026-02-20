@@ -1,20 +1,32 @@
 from django.db import models
 
 class Proveedor(models.Model):
+    """
+    Representa a un proveedor de telas o insumos para la boutique.
+    """
     nombre = models.CharField(max_length=100, unique=True)
     contacto = models.CharField(max_length=100, blank=True)
     def __str__(self): return self.nombre
 
 class Categoria(models.Model):
+    """
+    Representa una categoría de productos (ej. Vestidos de Novia, Accesorios).
+    """
     nombre = models.CharField(max_length=100, unique=True)
     def __str__(self): return self.nombre
 
 class Modelo(models.Model):
+    """
+    Representa un diseño o modelo específico de prenda.
+    """
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True)
     def __str__(self): return self.nombre
 
 class Tela(models.Model):
+    """
+    Representa un tipo de tela, asociada a un proveedor específico.
+    """
     nombre = models.CharField(max_length=100)
     proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE)
     codigo_proveedor = models.CharField(max_length=50)
@@ -22,11 +34,18 @@ class Tela(models.Model):
     def __str__(self): return f"{self.nombre} ({self.proveedor.nombre})"
 
 class Color(models.Model):
+    """
+    Representa un color disponible para las telas o productos.
+    """
     nombre = models.CharField(max_length=100, unique=True)
     codigo_hex = models.CharField(max_length=7, blank=True, help_text="Ej: #FF5733")
     def __str__(self): return self.nombre
 
 class Producto(models.Model):
+    """
+    Representa una variante específica (SKU) de un producto,
+    definiendo la combinación de modelo, tela, color y talla.
+    """
     sku = models.CharField(max_length=100, unique=True, blank=True)
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT)
     modelo = models.ForeignKey(Modelo, on_delete=models.PROTECT)
