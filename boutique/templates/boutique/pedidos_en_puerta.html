@@ -135,9 +135,15 @@
                                             title="Editar Entrega">
                                         <i class="bi bi-calendar-event"></i>
                                     </button>
+                                    {% if p.novia %}
                                     <a href="{% url 'novia_detalle' p.novia.id %}" class="btn btn-xs btn-outline-secondary" title="Ver Detalle" target="_blank">
                                         <i class="bi bi-eye"></i>
                                     </a>
+                                    {% else %}
+                                    <button class="btn btn-xs btn-outline-secondary" disabled title="Sin detalle vinculado">
+                                        <i class="bi bi-eye-slash"></i>
+                                    </button>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
