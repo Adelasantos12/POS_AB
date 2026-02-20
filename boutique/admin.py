@@ -30,6 +30,7 @@ class ColorAdmin(admin.ModelAdmin):
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
     list_display = ('sku', 'modelo', 'tela', 'color', 'talla', 'precio_venta', 'cantidad_actual', 'vendible_sin_stock')
+    list_select_related = ('modelo', 'tela', 'tela__proveedor', 'color')
     list_filter = ('categoria', 'modelo', 'tela', 'color', 'vendible_sin_stock')
     search_fields = ('sku', 'modelo__nombre', 'tela__nombre', 'color__nombre')
     readonly_fields = ('sku', 'fecha_creacion', 'fecha_actualizacion')
