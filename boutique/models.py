@@ -41,10 +41,17 @@ class Producto(models.Model):
     fecha_actualizacion = models.DateTimeField(auto_now=True)
     class Meta: unique_together = ('categoria', 'modelo', 'tela', 'color', 'talla')
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
+        if not self.sku:
+            cat_id = self.categoria_id or 0
+            mod_id = self.modelo_id or 0
+            tela_id = self.tela_id or 0
+            col_id = self.color_id or 0
+            talla_code = (self.talla or 'U').upper()
+            self.sku = f"CAT{cat_id}-MOD{mod_id}-TELA{tela_id}-COL{col_id}-{talla_code}"
         super().save(*args, **kwargs)
-        if is_new and not self.sku:
-            self.sku = f"CAT{self.categoria.id}-MOD{self.modelo.id}-TELA{self.tela.id}-COL{self.color.id}-{self.talla.upper()}"
-            kwargs['force_insert'] = False
-            super().save(update_fields=['sku'])
-    def __str__(self): return f"{self.modelo.nombre} {self.tela.nombre} {self.color.nombre} - Talla: {self.talla}"
+
+    def __str__(self):
+        modelo = getattr(self.modelo, 'nombre', 'Sin modelo')
+        tela = getattr(self.tela, 'nombre', 'Sin tela')
+        color = getattr(self.color, 'nombre', 'Sin color')
+        return f"{modelo} {tela} {color} - Talla: {self.talla}"
