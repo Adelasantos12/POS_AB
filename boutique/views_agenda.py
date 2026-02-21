@@ -17,9 +17,11 @@ from django.conf import settings
 
 from .models import (
     Color, Tela, Novia, Dama, CitaAgenda, 
-    Producto, Modelo, registrar_auditoria
+    Producto, Modelo, registrar_auditoria, Pedido, Apartado
 )
 from .middleware import profile_permission_required
+from .utils import safe_decimal
+from .services.agenda_service import sync_delivery_with_agenda
 
 
 # ============================================================
@@ -281,6 +283,42 @@ def api_telas_list(request):
     return JsonResponse({'telas': data})
 
 
+@login_required
+def api_search_novias(request):
+    """Busca novias por nombre o teléfono"""
+    q = request.GET.get('q', '')
+    if not q:
+        return JsonResponse({'results': []})
+
+    novias = Novia.objects.filter(
+        Q(nombre__icontains=q) | Q(telefono__icontains=q)
+    ).filter(activo=True)[:10]
+
+    results = [{
+        'id': n.id,
+        'nombre': n.nombre,
+        'telefono': n.telefono,
+        'fecha_boda': n.fecha_boda.isoformat() if n.fecha_boda else None
+    } for n in novias]
+
+    return JsonResponse({'results': results})
+
+
+@login_required
+def api_get_damas_novia(request, novia_id):
+    """Retorna las damas asociadas a una novia"""
+    novia = get_object_or_404(Novia, pk=novia_id)
+    damas = novia.damas.filter(activo=True).order_by('nombre')
+
+    results = [{
+        'id': d.id,
+        'nombre': d.nombre,
+        'talla': d.talla
+    } for d in damas]
+
+    return JsonResponse({'results': results})
+
+
 # ============================================================
 # AGENDA - CALENDARIO
 # ============================================================
@@ -481,8 +519,10 @@ def api_citas_rango(request):
 
 @profile_permission_required(['Agenda', 'Vendedor'])
 def novias_list(request):
-    """Lista de todas las novias activas"""
+    """Lista de todas las novias activas con filtros y orden de urgencia"""
     q = request.GET.get('q', '')
+    mes = request.GET.get('mes', '') # Formato YYYY-MM
+
     novias = Novia.objects.filter(activo=True)
     
     if q:
@@ -559,16 +599,9 @@ def api_crear_novia(request):
         creado_por=request.active_profile
     )
     
-    # Crear cita de entrega automática si hay fecha
+    # Sincronizar Agenda si tiene fecha de entrega
     if novia.fecha_entrega:
-        CitaAgenda.objects.create(
-            titulo=f"Entrega - {novia.nombre}",
-            tipo='ENTREGA',
-            fecha=novia.fecha_entrega,
-            hora_inicio=datetime.strptime('11:00', '%H:%M').time(),
-            novia=novia,
-            creado_por=request.active_profile
-        )
+        sync_delivery_with_agenda(novia)
     
     return JsonResponse({
         'status': 'ok',
@@ -580,14 +613,40 @@ def api_crear_novia(request):
 @require_POST
 @profile_permission_required(['Agenda', 'Vendedor'])
 def api_agregar_dama(request, novia_id):
-    """Agregar dama al grupo de la novia"""
+    """Agregar dama al grupo de la novia con auto-vinculación a Cliente"""
+    from .models import Cliente
     novia = get_object_or_404(Novia, pk=novia_id)
     data = json.loads(request.body)
     
+    nombre = data.get('nombre', '').strip()
+    telefono = data.get('telefono', '').strip()
+    email = data.get('email', '').strip()
+
+    if not nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
+
+    # 1. Gestionar Cliente
+    cliente_obj = None
+    if telefono:
+        # Validar 10 dígitos (básico)
+        digits = ''.join(filter(str.isdigit, telefono))
+        if len(digits) != 10:
+            return JsonResponse({'status': 'error', 'message': 'El teléfono debe tener 10 dígitos'}, status=400)
+
+        cliente_obj, created = Cliente.objects.get_or_create(
+            telefono=digits,
+            defaults={'nombre': nombre, 'email': email}
+        )
+        if not created and not cliente_obj.email and email:
+            cliente_obj.email = email
+            cliente_obj.save(update_fields=['email'])
+
+    # 2. Crear Dama
     dama = Dama.objects.create(
         novia=novia,
-        nombre=data.get('nombre', ''),
-        telefono=data.get('telefono', ''),
+        cliente=cliente_obj,
+        nombre=nombre,
+        telefono=telefono,
         talla=data.get('talla', ''),
         modelo_especial=data.get('modelo_especial', ''),
         color_especial=data.get('color_especial', ''),
@@ -596,7 +655,7 @@ def api_agregar_dama(request, novia_id):
     )
     
     # Actualizar contador
-    novia.cantidad_damas = novia.damas.count()
+    novia.cantidad_damas = novia.damas.filter(activo=True).count()
     novia.save(update_fields=['cantidad_damas'])
     
     return JsonResponse({
@@ -632,6 +691,8 @@ def api_editar_novia(request, pk):
         novia.notas = data.get('notas', novia.notas)
 
         novia.save()
+        if novia.fecha_entrega:
+            sync_delivery_with_agenda(novia)
         return JsonResponse({'status': 'ok', 'message': 'Novia actualizada'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -686,45 +747,60 @@ def api_eliminar_dama(request, pk):
 @require_POST
 @profile_permission_required(['Agenda', 'Vendedor'])
 def api_crear_pedido(request):
-    """Crea un pedido para novia o dama con ticket"""
+    """Crea un pedido para novia o dama con ticket (Versión Simplificada)"""
     from .models import Pedido, Ticket
+    from .services.cash_service import registrar_cobro, get_caja_activa
     data = json.loads(request.body)
 
     novia = get_object_or_404(Novia, pk=data.get('novia_id'))
     dama_id = data.get('dama_id')
     dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
 
-    precio = Decimal(data.get('precio', 0))
-    anticipo = Decimal(data.get('anticipo', 0))
-    tipo_ticket = 'NOVIA' if data.get('es_vestido_novia') else 'DAMA'
+    precio = safe_decimal(data.get('precio', 0))
+    anticipo = safe_decimal(data.get('anticipo', 0))
+    metodo = data.get('metodo', 'EFECTIVO')
 
     with transaction.atomic():
-        ticket = Ticket.objects.create(
-            tipo=tipo_ticket,
-            novia=novia,
-            cliente_nombre=dama.nombre if dama else novia.nombre
-        )
-
         pedido = Pedido.objects.create(
             novia=novia,
             dama=dama,
-            ticket=ticket,
             es_vestido_novia=data.get('es_vestido_novia', False),
             precio=precio,
-            anticipo=anticipo,
+            anticipo=0, # Se registra vía registrar_cobro
             notas=data.get('notas', ''),
+            fecha_entrega_estimada=data.get('fecha_entrega_estimada') or None,
             creado_por=request.active_profile
         )
 
-        # Generar pago inicial si hay anticipo
+        ticket = None
         if anticipo > 0:
-            from .models import PagoPedido
-            PagoPedido.objects.create(
-                pedido=pedido,
+            ticket = registrar_cobro(
+                origen_tipo='pedido',
+                origen_obj=pedido,
                 monto=anticipo,
-                registrado_por=request.active_profile,
+                metodo=metodo,
+                usuario=request.active_profile,
                 notas='Anticipo inicial'
             )
+        else:
+            caja = get_caja_activa()
+            ticket = Ticket.objects.create(
+                tipo='PEDIDO',
+                novia=novia,
+                cliente_nombre=dama.nombre if dama else novia.nombre,
+                total=precio,
+                total_pagado=0,
+                cajero_nombre=request.active_profile.username,
+                pedido=pedido,
+                caja=caja
+            )
+            ticket.populate_from_obj(pedido)
+
+        pedido.ticket = ticket
+        pedido.save()
+
+        if pedido.fecha_entrega_estimada:
+            sync_delivery_with_agenda(pedido)
 
     return JsonResponse({
         'status': 'ok',
@@ -734,59 +810,197 @@ def api_crear_pedido(request):
     })
 
 
+@require_POST
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_crear_pedido_completo(request):
+    """Crea un pedido capturando todos los datos (modelo, color, talla, medidas, pago)"""
+    from .models import Pedido, Ticket, Medidas, Modelo, Color, Cliente
+    from .services.cash_service import registrar_cobro
+    from .services.agenda_service import sync_delivery_with_agenda
+
+    data = json.loads(request.body)
+    novia = get_object_or_404(Novia, pk=data.get('novia_id'))
+    dama_id = data.get('dama_id')
+    dama = get_object_or_404(Dama, pk=dama_id) if dama_id else None
+
+    precio = safe_decimal(data.get('precio', 0))
+    anticipo = safe_decimal(data.get('anticipo', 0))
+    metodo = data.get('metodo', 'EFECTIVO')
+    tipo_ticket = 'PEDIDO' # Unificado para todos los pedidos de grupo
+
+    with transaction.atomic():
+        # 1. Resolver Cliente (Novia o Dama puede ser cliente)
+        # Intentar vincular a un Cliente por teléfono si existe en Novia/Dama
+        tel = dama.telefono if dama else novia.telefono
+        nom = dama.nombre if dama else novia.nombre
+        cliente_obj = None
+        if tel:
+            cliente_obj, _ = Cliente.objects.get_or_create(
+                telefono=tel,
+                defaults={'nombre': nom}
+            )
+
+        # 2. Resolver Modelo y Color si se proporcionaron nombres
+        modelo_obj = None
+        if data.get('modelo_nombre'):
+            modelo_obj, _ = Modelo.objects.get_or_create(nombre=data['modelo_nombre'])
+
+        color_obj = None
+        if data.get('color_nombre'):
+            color_obj, _ = Color.objects.get_or_create(nombre=data['color_nombre'])
+
+        # 3. Crear Pedido
+        pedido = Pedido.objects.create(
+            novia=novia,
+            dama=dama,
+            cliente=cliente_obj,
+            es_vestido_novia=data.get('es_vestido_novia', False),
+            modelo=modelo_obj,
+            color=color_obj,
+            talla=data.get('talla', ''),
+            precio=precio,
+            anticipo=0, # Se actualizará vía PagoPedido
+            notas=data.get('notas', ''),
+            tipo_pedido='ESTANDAR_GRUPO', # Por defecto en flujo de grupo
+            fecha_entrega_estimada=data.get('fecha_entrega_estimada') or None,
+            creado_por=request.active_profile
+        )
+
+        # 4. Guardar Medidas (soportando ambos formatos de nombre)
+        m_busto = data.get('m_busto') or data.get('busto')
+        m_cintura = data.get('m_cintura') or data.get('cintura')
+        m_cadera = data.get('m_cadera') or data.get('cadera')
+        m_largo = data.get('m_largo') or data.get('largo')
+        m_notas = data.get('m_notas') or data.get('notas_medidas', '')
+
+        medidas = Medidas.objects.create(
+            pedido=pedido,
+            cliente=cliente_obj,
+            cliente_nombre=nom,
+            busto=safe_decimal(m_busto, None) if m_busto else None,
+            cintura=safe_decimal(m_cintura, None) if m_cintura else None,
+            cadera=safe_decimal(m_cadera, None) if m_cadera else None,
+            largo=safe_decimal(m_largo, None) if m_largo else None,
+            observaciones=m_notas
+        )
+
+        # 5. Registrar Cobro (Genera Ticket y MovimientoCaja)
+        ticket = None
+        if anticipo > 0:
+            try:
+                ticket = registrar_cobro(
+                    origen_tipo='pedido',
+                    origen_obj=pedido,
+                    monto=anticipo,
+                    metodo=metodo,
+                    usuario=request.active_profile,
+                    notas='Anticipo inicial (Captura Completa)'
+                )
+            except ValueError as ve:
+                # Si la caja está cerrada, lanzamos error para abortar transacción
+                raise ve
+        else:
+            # Crear ticket sin pago si es necesario
+            from .services.cash_service import get_caja_activa
+            caja = get_caja_activa()
+            ticket = Ticket.objects.create(
+                tipo='PEDIDO',
+                cliente_nombre=nom,
+                total=precio,
+                total_pagado=0,
+                cajero_nombre=request.active_profile.username,
+                pedido=pedido,
+                novia=novia,
+                caja=caja
+            )
+            ticket.populate_from_obj(pedido)
+
+        pedido.ticket = ticket
+        pedido.save()
+
+        # Sincronizar Agenda
+        if pedido.fecha_entrega_estimada:
+            sync_delivery_with_agenda(pedido)
+
+    return JsonResponse({
+        'status': 'ok',
+        'id': pedido.id,
+        'ticket_folio': ticket.folio,
+        'ticket_print_url': f"/api/tickets/{ticket.folio}/pdf/",
+        'message': f'Pedido y ticket {ticket.folio} generados con éxito'
+    })
+
+
 # ============================================================
 # PEDIDOS EN PUERTA - RESUMEN
 # ============================================================
 
 @profile_permission_required(['Agenda', 'Vendedor'])
 def pedidos_en_puerta(request):
-    """Vista de todos los pedidos pendientes agrupados por novia"""
+    """Tablero de taller/producción - Hechuras, Importaciones y Especiales"""
     from .models import Pedido
-    
-    # Pedidos no entregados
-    pedidos = Pedido.objects.exclude(
-        estado='ENTREGADO'
+    from django.db.models import F
+
+    q = request.GET.get('q', '')
+    mes = request.GET.get('mes', '') # Formato YYYY-MM
+    today = timezone.now().date()
+
+    # Tipos que requieren seguimiento externo (según ajuste de alcance)
+    tipos_seguimiento = ['HECHURA', 'PEDIDO_EXTERNO']
+
+    pedidos_qs = Pedido.objects.filter(
+        tipo_pedido__in=tipos_seguimiento
     ).exclude(
-        estado='CANCELADO'
-    ).select_related('novia', 'dama', 'color', 'tela', 'modelo').order_by('fecha_entrega_estimada')
-    
-    # Agrupar por novia
-    pedidos_por_novia = {}
-    for p in pedidos:
-        novia_id = p.novia_id
-        if novia_id not in pedidos_por_novia:
-            pedidos_por_novia[novia_id] = {
-                'novia': p.novia,
-                'pedidos': [],
-                'colores': set(),
-                'telas': set(),
-                'modelos': set(),
-                'total': 0,
-                'pagado': 0
-            }
-        pedidos_por_novia[novia_id]['pedidos'].append(p)
-        if p.color:
-            pedidos_por_novia[novia_id]['colores'].add(p.color.nombre)
-        if p.tela:
-            pedidos_por_novia[novia_id]['telas'].add(p.tela.nombre)
-        if p.modelo:
-            pedidos_por_novia[novia_id]['modelos'].add(p.modelo.nombre)
-        pedidos_por_novia[novia_id]['total'] += p.precio
-        pedidos_por_novia[novia_id]['pagado'] += p.total_pagado
-    
-    # Estadísticas generales
-    total_pedidos = pedidos.count()
-    por_estado = {
-        'nuevos': pedidos.filter(estado='NUEVO').count(),
-        'pendiente_tela': pedidos.filter(estado='PENDIENTE_TELA').count(),
-        'en_confeccion': pedidos.filter(estado='EN_CONFECCION').count(),
-        'listos': pedidos.filter(estado='LISTO').count(),
-    }
+        estado__in=['ENTREGADO', 'CANCELADO']
+    ).select_related('novia', 'dama', 'color', 'tela', 'modelo', 'cliente')
+
+    if q:
+        pedidos_qs = pedidos_qs.filter(
+            Q(numero_ticket__icontains=q) |
+            Q(novia__nombre__icontains=q) |
+            Q(dama__nombre__icontains=q) |
+            Q(cliente__nombre__icontains=q) |
+            Q(cliente__telefono__icontains=q)
+        )
+
+    if mes:
+        try:
+            y, m = map(int, mes.split('-'))
+            pedidos_qs = pedidos_qs.filter(fecha_entrega_estimada__year=y, fecha_entrega_estimada__month=m)
+        except:
+            pass
+
+    # Orden por urgencia (próximas primero, nulas al final)
+    pedidos_qs = pedidos_qs.order_by(F('fecha_entrega_estimada').asc(nulls_last=True))
+
+    # Agrupar por tipo_pedido para el tablero
+    pedidos_por_tipo = {}
+    for t_code, t_label in Pedido.TIPOS_PEDIDO:
+        if t_code in tipos_seguimiento:
+            pedidos_tipo = [p for p in pedidos_qs if p.tipo_pedido == t_code]
+            if pedidos_tipo or not q: # Mostrar siempre si no hay búsqueda
+                pedidos_por_tipo[t_code] = {
+                    'label': t_label,
+                    'pedidos': pedidos_tipo,
+                    'count': len(pedidos_tipo),
+                    # Contadores por estado específicos para este tipo
+                    'stats': {
+                        'NUEVO': sum(1 for p in pedidos_tipo if p.estado == 'NUEVO'),
+                        'EN_CONFECCION': sum(1 for p in pedidos_tipo if p.estado == 'EN_CONFECCION'),
+                        'LISTO': sum(1 for p in pedidos_tipo if p.estado == 'LISTO'),
+                        'SOLICITADO': sum(1 for p in pedidos_tipo if p.estado == 'SOLICITADO'),
+                        'EN_PROCESO': sum(1 for p in pedidos_tipo if p.estado == 'EN_PROCESO'),
+                        'POR_RECOGER': sum(1 for p in pedidos_tipo if p.estado == 'POR_RECOGER'),
+                        'RECIBIDO': sum(1 for p in pedidos_tipo if p.estado == 'RECIBIDO'),
+                    }
+                }
     
     return render(request, 'boutique/pedidos_en_puerta.html', {
-        'pedidos_por_novia': pedidos_por_novia,
-        'total_pedidos': total_pedidos,
-        'por_estado': por_estado
+        'pedidos_por_tipo': pedidos_por_tipo,
+        'total_pedidos': pedidos_qs.count(),
+        'q': q,
+        'mes_actual': mes,
+        'today': today
     })
 
 

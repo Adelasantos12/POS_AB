@@ -13,12 +13,25 @@
     </button>
 </div>
 
-<!-- Buscador -->
-<div class="card mb-4">
+<!-- Buscador y Filtros -->
+<div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
     <div class="card-body">
-        <form method="GET" action="{% url 'novias_list' %}" class="d-flex gap-2">
-            <input type="text" name="q" class="form-control" placeholder="Buscar por nombre o teléfono..." value="{{ q }}">
-            <button type="submit" class="btn btn-primary px-4">Buscar</button>
+        <form method="GET" action="{% url 'novias_list' %}" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small fw-bold">Búsqueda</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                    <input type="text" name="q" class="form-control border-start-0" placeholder="Nombre o teléfono..." value="{{ q }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Filtrar por Mes (Evento)</label>
+                <input type="month" name="mes" class="form-control" value="{{ mes_actual }}">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1 rounded-pill">Aplicar</button>
+                <a href="{% url 'novias_list' %}" class="btn btn-light rounded-pill"><i class="bi bi-x-lg"></i></a>
+            </div>
         </form>
     </div>
 </div>
@@ -33,7 +46,7 @@
                     <th>Fecha Boda</th>
                     <th>Teléfono</th>
                     <th>Damas</th>
-                    <th>Estado Pedidos</th>
+                    <th>Semáforo</th>
                     <th>Acciones</th>
                 </tr>
             </thead>
@@ -52,19 +65,12 @@
                         <span class="badge badge-role">{{ novia.damas.count }} / {{ novia.cantidad_damas }}</span>
                     </td>
                     <td>
-                        {% with pedidos=novia.pedidos.all %}
-                        {% if pedidos %}
-                            <div class="d-flex gap-1 flex-wrap">
-                            {% for p in pedidos %}
-                                <span class="status-badge {% if p.estado == 'ENTREGADO' %}status-active{% elif p.estado == 'NUEVO' %}status-warning{% else %}status-warning{% endif %}" title="{{ p.numero_ticket }}">
-                                    {{ p.get_estado_display }}
-                                </span>
-                            {% endfor %}
-                            </div>
-                        {% else %}
-                            <span class="text-muted small">Sin pedidos</span>
-                        {% endif %}
-                        {% endwith %}
+                        <div class="d-flex gap-1 align-items-center">
+                            <div class="rounded-circle bg-{{ novia.semaforo_medidas }}" style="width: 10px; height: 10px;" title="Medidas"></div>
+                            <div class="rounded-circle bg-{{ novia.semaforo_produccion }}" style="width: 10px; height: 10px;" title="Listo"></div>
+                            <div class="rounded-circle bg-{{ novia.semaforo_pago }}" style="width: 10px; height: 10px;" title="Pagado"></div>
+                            <div class="rounded-circle bg-{{ novia.semaforo_entrega }}" style="width: 10px; height: 10px;" title="Entregado"></div>
+                        </div>
                     </td>
                     <td>
                         <a href="{% url 'novia_detalle' novia.id %}" class="btn btn-sm btn-outline-primary">

@@ -247,6 +247,7 @@
             font-size: 0.75rem;
             font-weight: 600;
         }
+        .x-small { font-size: 0.65rem; }
         
         .status-active {
             background-color: #D1FAE5;
@@ -333,7 +334,7 @@
             
             <li class="nav-item">
                 <a href="{% url 'pedidos_en_puerta' %}" class="nav-link {% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}" data-testid="nav-pedidos">
-                    <i class="bi bi-bag-fill"></i>Pedidos
+                    <i class="bi bi-bag-check"></i>Pedidos
                 </a>
             </li>
 

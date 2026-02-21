@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.conf import settings
 from django.utils import timezone
 from decimal import Decimal
@@ -251,7 +252,9 @@ class Producto(models.Model):
 class Cliente(models.Model):
     nombre = models.CharField(max_length=100)
     email = models.EmailField(blank=True)
-    telefono = models.CharField(max_length=20, blank=True)
+    telefono = models.CharField(max_length=20, unique=True, db_index=True)
+    notas = models.TextField(blank=True)
+    fecha_alta = models.DateTimeField(default=timezone.now)
     def __str__(self): return self.nombre
 
 class Ticket(models.Model):
@@ -298,6 +301,7 @@ class Ticket(models.Model):
     apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_asociados')
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
     novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
+    caja = models.ForeignKey('CorteCaja', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
 
     def save(self, *args, **kwargs):
         if not self.folio:
@@ -377,8 +381,26 @@ class TicketItem(models.Model):
     def __str__(self): return f"{self.descripcion} x {self.cantidad}"
 
 class Venta(models.Model):
+    EVENTOS = [
+        ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
+        ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
+    ]
+    OPERACIONES = [
+        ('VENTA_NORMAL', 'Venta normal'),
+        ('DAMA_HONOR', 'Dama de honor'),
+        ('HECHURA', 'Hechura'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo'),
+    ]
     vendedor = models.ForeignKey('auth.User', on_delete=models.PROTECT)
     cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
+    evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+    tipo_operacion = models.CharField(max_length=30, choices=OPERACIONES, default='VENTA_NORMAL')
+
+    # Cache para marketing
+    categoria_cache = models.CharField(max_length=100, blank=True)
+    color_cache = models.CharField(max_length=100, blank=True)
+    talla_cache = models.CharField(max_length=50, blank=True)
+
     fecha = models.DateTimeField(auto_now_add=True)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     notas = models.TextField(blank=True)
@@ -489,10 +511,29 @@ class Apartado(models.Model):
         ('CANCELADO', 'Cancelado'),
         ('ENTREGADO', 'Entregado'),
     ]
+    EVENTOS = [
+        ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
+        ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
+    ]
+    OPERACIONES = [
+        ('VENTA_NORMAL', 'Venta normal'),
+        ('DAMA_HONOR', 'Dama de honor'),
+        ('HECHURA', 'Hechura'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo'),
+    ]
 
     folio = models.CharField(max_length=30, unique=True, blank=True)
+    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
     cliente_nombre = models.CharField(max_length=200)
     cliente_telefono = models.CharField(max_length=20)
+    evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+    tipo_operacion = models.CharField(max_length=30, choices=OPERACIONES, default='VENTA_NORMAL')
+
+    # Cache para marketing
+    categoria_cache = models.CharField(max_length=100, blank=True)
+    color_cache = models.CharField(max_length=100, blank=True)
+    talla_cache = models.CharField(max_length=50, blank=True)
+
     notas = models.TextField(blank=True)
 
     estado = models.CharField(max_length=20, choices=ESTADOS, default='VIGENTE')
@@ -507,6 +548,11 @@ class Apartado(models.Model):
     # Links opcionales
     novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_independientes')
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados')
+
+    # Entrega y Agenda
+    fecha_entrega_estimada = models.DateField(null=True, blank=True)
+    notas_entrega = models.TextField(blank=True)
+    agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_vinculados')
 
     def save(self, *args, **kwargs):
         if not self.folio:
@@ -680,6 +726,8 @@ class Novia(models.Model):
     modelo_principal = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_modelo')
     
     notas = models.TextField(blank=True)
+    notas_entrega = models.TextField(blank=True)
+    agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='novias_vinculadas')
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
@@ -718,7 +766,84 @@ class Novia(models.Model):
     @property
     def total_pendiente(self):
         return sum(p.saldo_pendiente for p in self.pedidos.all())
-    
+
+    @property
+    def medidas_completitud_promedio(self):
+        peds = self.pedidos.all()
+        if not peds.exists(): return 100
+        total_pct = sum(p.medidas_completitud for p in peds)
+        return int(total_pct / peds.count())
+
+    @property
+    def semaforo_medidas(self):
+        peds = self.pedidos.all()
+        if not peds.exists(): return 'secondary'
+
+        completos = sum(1 for p in peds if p.medidas_completitud == 100)
+        if completos == peds.count(): return 'success'
+        if completos > 0: return 'warning'
+        return 'danger' # Ninguna medida completa
+
+    @property
+    def semaforo_produccion(self):
+        """Punto 2: Pedido listo"""
+        peds = self.pedidos.exclude(estado='CANCELADO')
+        if not peds.exists(): return 'secondary'
+
+        listos = peds.filter(estado__in=['LISTO', 'RECIBIDO', 'ENTREGADO']).count()
+        if listos == peds.count(): return 'success'
+
+        # Verificar retrasos
+        hoy = timezone.now().date()
+        if peds.exclude(estado__in=['LISTO', 'RECIBIDO', 'ENTREGADO']).filter(
+            Q(fecha_entrega_estimada__lt=hoy) | Q(fecha_entrega_estimada__isnull=True)
+        ).exists():
+            return 'danger'
+
+        if listos > 0: return 'warning'
+        return 'secondary'
+
+    @property
+    def semaforo_pago(self):
+        """Punto 3: Liquidado"""
+        peds = self.pedidos.exclude(estado='CANCELADO')
+        if not peds.exists(): return 'secondary'
+
+        liquidados = peds.filter(estado_pago='LIQUIDADO').count()
+        if liquidados == peds.count(): return 'success'
+
+        # Alerta roja: entrega próxima y no liquidado
+        proxima_semana = timezone.now().date() + timezone.timedelta(days=7)
+        if peds.exclude(estado_pago='LIQUIDADO').filter(fecha_entrega_estimada__lte=proxima_semana).exists():
+            return 'danger'
+
+        if liquidados > 0 or peds.filter(estado_pago__in=['APARTADO', 'PARCIAL']).exists():
+            return 'warning'
+        return 'secondary'
+
+    @property
+    def semaforo_entrega(self):
+        """Punto 4: Entregado"""
+        peds = self.pedidos.exclude(estado='CANCELADO')
+        if not peds.exists(): return 'secondary'
+
+        entregados = peds.filter(estado='ENTREGADO').count()
+        if entregados == peds.count(): return 'success'
+        if entregados > 0: return 'warning'
+        return 'secondary'
+
+    @property
+    def resumen_pendientes(self):
+        peds = self.pedidos.all()
+        return {
+            'total_damas': self.damas.count(),
+            'medidas_completas': sum(1 for p in peds if p.medidas_completitud == 100),
+            'medidas_incompletas': sum(1 for p in peds if p.medidas_completitud < 100),
+            'listos_entrega': sum(1 for p in peds if p.estado == 'LISTO' and p.saldo_pendiente == 0),
+            'pendientes_pago': sum(1 for p in peds if p.saldo_pendiente > 0),
+            'entregados': sum(1 for p in peds if p.estado == 'ENTREGADO'),
+        }
+
     @property
     def resumen_grupo(self):
         """Genera resumen de todos los pedidos del grupo"""
@@ -750,6 +875,7 @@ class Novia(models.Model):
 class Dama(models.Model):
     """Integrante del grupo de la novia"""
     novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='damas')
+    cliente = models.ForeignKey('Cliente', on_delete=models.SET_NULL, null=True, blank=True, related_name='perfiles_dama')
     nombre = models.CharField(max_length=200)
     activo = models.BooleanField(default=True)
     telefono = models.CharField(max_length=20, blank=True)
@@ -786,10 +912,17 @@ class Dama(models.Model):
 class Pedido(models.Model):
     """Pedido de vestido - puede ser de novia o dama"""
     ESTADOS = [
+        # Taller / Hechura
         ('NUEVO', 'Nuevo'),
         ('PENDIENTE_TELA', 'Falta comprar tela'),
         ('TELA_COMPRADA', 'Tela comprada'),
         ('EN_CONFECCION', 'En confección'),
+        # Importación / Proveedor (Pedido Externo)
+        ('SOLICITADO', 'Solicitado'),
+        ('EN_PROCESO', 'En proceso'),
+        ('POR_RECOGER', 'Por recoger'),
+        ('RECIBIDO', 'Recibido en tienda'),
+        # Comunes
         ('LISTO', 'Listo en tienda'),
         ('ENTREGADO', 'Entregado'),
         ('CANCELADO', 'Cancelado'),
@@ -801,9 +934,26 @@ class Pedido(models.Model):
         ('PARCIAL', 'Pago parcial'),
         ('LIQUIDADO', 'Liquidado'),
     ]
+    EVENTOS = [
+        ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
+        ('Fiesta', 'Fiesta'), ('Civil', 'Civil'), ('Formal', 'Formal'), ('Otro', 'Otro')
+    ]
+    TIPOS_PEDIDO = [
+        ('HECHURA', 'Hechura Especial (Taller)'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo (Importación/Proveedor)'),
+        ('ESTANDAR_GRUPO', 'Estándar Grupo / Dama'),
+        ('SOBRE_PEDIDO', 'Sobre Pedido (Legacy)'),
+    ]
+    OPERACIONES = [
+        ('VENTA_NORMAL', 'Venta normal'),
+        ('DAMA_HONOR', 'Dama de honor'),
+        ('HECHURA', 'Hechura'),
+        ('PEDIDO_EXTERNO', 'Pedido Externo'),
+    ]
     
     # Puede ser para la novia o para una dama
-    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='pedidos')
+    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True)
+    novia = models.ForeignKey(Novia, on_delete=models.CASCADE, related_name='pedidos', null=True, blank=True)
     dama = models.ForeignKey(Dama, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     es_vestido_novia = models.BooleanField(default=False, help_text="Es el vestido de la novia")
     
@@ -820,6 +970,9 @@ class Pedido(models.Model):
     # Precio y pagos
     precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    evento = models.CharField(max_length=50, choices=EVENTOS, blank=True)
+    tipo_operacion = models.CharField(max_length=30, choices=OPERACIONES, default='VENTA_NORMAL')
+    tipo_pedido = models.CharField(max_length=20, choices=TIPOS_PEDIDO, default='SOBRE_PEDIDO')
     
     # Estados
     estado = models.CharField(max_length=20, choices=ESTADOS, default='NUEVO')
@@ -828,11 +981,16 @@ class Pedido(models.Model):
     # Fechas
     fecha_entrega_estimada = models.DateField(null=True, blank=True)
     fecha_entrega_real = models.DateField(null=True, blank=True)
+    fecha_evento = models.DateField(null=True, blank=True)
     
     # Notas
     notas = models.TextField(blank=True)
     notas_ajustes = models.TextField(blank=True)
+    notas_entrega = models.TextField(blank=True)
     
+    # Agenda
+    agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_vinculados')
+
     # Ticket/referencia
     ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
     numero_ticket = models.CharField(max_length=20, unique=True, blank=True)
@@ -867,6 +1025,24 @@ class Pedido(models.Model):
     @property
     def esta_pagado(self):
         return self.saldo_pendiente <= 0
+
+    @property
+    def medidas_completitud(self):
+        if not hasattr(self, 'medidas') or not self.medidas:
+            return 0
+
+        m = self.medidas
+        campos_clave = ['busto', 'cintura', 'cadera', 'largo']
+        campos_secundarios = ['hombro', 'brazo', 'espalda', 'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']
+
+        completos_clave = sum(1 for f in campos_clave if getattr(m, f) is not None)
+        completos_secundarios = sum(1 for f in campos_secundarios if getattr(m, f) is not None)
+
+        # Clave: 60% (15% cada uno), Secundarios: 40% (~5.7% cada uno)
+        pct_clave = completos_clave * 15
+        pct_sec = (completos_secundarios / len(campos_secundarios)) * 40 if campos_secundarios else 0
+
+        return int(pct_clave + pct_sec)
 
 
 class PagoApartado(models.Model):
@@ -948,6 +1124,7 @@ class CitaAgenda(models.Model):
     # Relacionado a novia/pedido (opcional)
     novia = models.ForeignKey(Novia, on_delete=models.CASCADE, null=True, blank=True, related_name='citas')
     pedido = models.ForeignKey(Pedido, on_delete=models.SET_NULL, null=True, blank=True, related_name='citas')
+    apartado = models.ForeignKey(Apartado, on_delete=models.SET_NULL, null=True, blank=True, related_name='citas')
     
     # Info adicional para consultas nuevas
     nombre_cliente = models.CharField(max_length=200, blank=True)

@@ -1,12 +1,12 @@
 {% extends 'boutique/base.html' %}
 
-{% block title %}Pedidos en Puerta - Adelé Boutique{% endblock %}
+{% block title %}Tablero de Pedidos - Adelé Boutique{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
-        <h1 class="page-title">Pedidos en Puerta</h1>
-        <p class="page-subtitle">Seguimiento de confección y entregas</p>
+        <h1 class="page-title">Pedidos</h1>
+        <p class="page-subtitle">Seguimiento de Hechuras y Pedidos Externos</p>
     </div>
     <div class="d-flex gap-3">
         <div class="text-end">
@@ -16,114 +16,148 @@
     </div>
 </div>
 
-<!-- Estadísticas Rápidas -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <small class="text-muted d-block mb-1">Nuevos</small>
-                <div class="h4 fw-bold mb-0 text-primary">{{ por_estado.nuevos }}</div>
+<!-- Buscador y Filtros -->
+<div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+    <div class="card-body">
+        <form method="GET" action="{% url 'pedidos_en_puerta' %}" class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small fw-bold">Búsqueda</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                    <input type="text" name="q" class="form-control border-start-0" placeholder="Folio, nombre o teléfono..." value="{{ q }}">
+                </div>
             </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <small class="text-muted d-block mb-1">Pendiente Tela</small>
-                <div class="h4 fw-bold mb-0 text-warning">{{ por_estado.pendiente_tela }}</div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Filtrar por Mes (Entrega)</label>
+                <input type="month" name="mes" class="form-control" value="{{ mes_actual }}">
             </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <small class="text-muted d-block mb-1">En Confección</small>
-                <div class="h4 fw-bold mb-0 text-info">{{ por_estado.en_confeccion }}</div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1 rounded-pill">Aplicar</button>
+                <a href="{% url 'pedidos_en_puerta' %}" class="btn btn-light rounded-pill"><i class="bi bi-x-lg"></i></a>
             </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <small class="text-muted d-block mb-1">Listos</small>
-                <div class="h4 fw-bold mb-0 text-success">{{ por_estado.listos }}</div>
-            </div>
-        </div>
+        </form>
     </div>
 </div>
 
-<!-- Lista de Pedidos Agrupados por Novia -->
-{% for novia_id, data in pedidos_por_novia.items %}
-<div class="card mb-4 overflow-hidden border-0 shadow-sm">
-    <div class="card-header bg-white border-bottom-0 pt-4 px-4 d-flex justify-content-between align-items-center">
-        <div>
-            <h5 class="heading mb-0 text-primary">Grupo: {{ data.novia.nombre }}</h5>
-            <small class="text-muted"><i class="bi bi-calendar-event me-1"></i>Boda: {{ data.novia.fecha_boda|date:"d M, Y" }}</small>
+<!-- Tabs por Tipo de Pedido -->
+<ul class="nav nav-pills mb-4 gap-2" id="pedidoTabs" role="tablist">
+    {% for type_code, data in pedidos_por_tipo.items %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 fw-bold {% if forloop.first %}active{% endif %}"
+                id="tab-{{ type_code }}" data-bs-toggle="pill" data-bs-target="#content-{{ type_code }}"
+                type="button" role="tab">
+            {{ data.label }} ({{ data.count }})
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="tab-content" id="pedidoTabsContent">
+    {% for type_code, data in pedidos_por_tipo.items %}
+    <div class="tab-pane fade {% if forloop.first %}show active{% endif %}" id="content-{{ type_code }}" role="tabpanel">
+        <!-- Estadísticas Rápidas por Tipo -->
+        <div class="row mb-4 g-2">
+            {% if type_code == 'HECHURA' %}
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">NUEVOS</small><div class="h5 mb-0 fw-bold">{{ data.stats.NUEVO }}</div></div></div></div>
+                <div class="col-md-3"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">EN CONFECCIÓN</small><div class="h5 mb-0 fw-bold">{{ data.stats.EN_CONFECCION }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">LISTOS</small><div class="h5 mb-0 fw-bold text-success">{{ data.stats.LISTO }}</div></div></div></div>
+            {% else %}
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">SOLICITADOS</small><div class="h5 mb-0 fw-bold">{{ data.stats.SOLICITADO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">EN PROCESO</small><div class="h5 mb-0 fw-bold">{{ data.stats.EN_PROCESO }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">POR RECOGER</small><div class="h5 mb-0 fw-bold text-warning">{{ data.stats.POR_RECOGER }}</div></div></div></div>
+                <div class="col-md-2"><div class="card bg-light border-0"><div class="card-body py-2 px-3 text-center"><small class="text-muted d-block x-small fw-bold">RECIBIDOS</small><div class="h5 mb-0 fw-bold text-success">{{ data.stats.RECIBIDO }}</div></div></div></div>
+            {% endif %}
         </div>
-        <div class="text-end">
-            <div class="fw-bold">${{ data.pagado }} / ${{ data.total }}</div>
-            <small class="text-muted small">Liquidación de grupo</small>
+
+        <div class="card shadow-sm border-0 mb-5" style="border-radius: 15px; overflow: hidden;">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Folio / Cliente</th>
+                            <th>Descripción / Modelo</th>
+                            <th>Semáforo</th>
+                            <th>Evento</th>
+                            <th>Entrega Est.</th>
+                            <th>Estado</th>
+                            <th class="pe-4 text-end">Saldo / Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in data.pedidos %}
+                        <tr data-pedido-id="{{ p.id }}">
+                            <td class="ps-4">
+                                <code class="fw-bold text-dark">{{ p.numero_ticket }}</code>
+                                <div class="fw-bold">
+                                    {% if p.dama %}{{ p.dama.nombre }}{% elif p.cliente %}{{ p.cliente.nombre }}{% elif p.novia %}{{ p.novia.nombre }}{% else %}Cliente Gral.{% endif %}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="small fw-bold">{{ p.modelo.nombre|default:"Hechura Especial" }}</div>
+                                <small class="text-muted">{{ p.tela.nombre|default:"Sin tela" }} · {{ p.color.nombre|default:"-" }}</small>
+                            </td>
+                            <td>
+                                {% with pct=p.medidas_completitud %}
+                                <div class="d-flex align-items-center">
+                                    <div class="progress flex-grow-1 me-2" style="height: 6px; width: 40px;">
+                                        <div class="progress-bar {% if pct < 50 %}bg-danger{% elif pct < 100 %}bg-warning{% else %}bg-success{% endif %}"
+                                             role="progressbar" style="width: {{ pct }}%"></div>
+                                    </div>
+                                    <small class="fw-bold">{{ pct }}%</small>
+                                </div>
+                                {% endwith %}
+                            </td>
+                            <td class="small">{{ p.fecha_evento|date:"d/m/y"|default:"-" }}</td>
+                            <td>
+                                <div class="small {% if p.fecha_entrega_estimada < today and p.estado != 'LISTO' %}text-danger fw-bold{% endif %}">
+                                    {{ p.fecha_entrega_estimada|date:"d/m/y"|default:"-" }}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="status-badge {% if p.estado == 'LISTO' or p.estado == 'RECIBIDO' %}status-active{% else %}status-warning{% endif %}" style="font-size: 0.65rem;">
+                                    {{ p.get_estado_display }}
+                                </span>
+                            </td>
+                            <td class="pe-4 text-end">
+                                <div class="fw-bold small {% if p.saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %} mb-1">
+                                    ${{ p.saldo_pendiente }}
+                                </div>
+                                <div class="btn-group">
+                                    {% if p.saldo_pendiente > 0 %}
+                                    <button class="btn btn-xs btn-outline-success"
+                                            onclick="abrirModalCobro('pedido', {{ p.id }}, '{{ p.saldo_pendiente|stringformat:".2f" }}', '{{ p.numero_ticket }}')"
+                                            title="Cobrar">
+                                        <i class="bi bi-cash"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-xs btn-outline-primary"
+                                            onclick="abrirModalEntrega('pedido', {{ p.id }}, '{{ p.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ p.notas_entrega|escapejs }}')"
+                                            title="Editar Entrega">
+                                        <i class="bi bi-calendar-event"></i>
+                                    </button>
+                                    <a href="{% url 'novia_detalle' p.novia.id %}" class="btn btn-xs btn-outline-secondary" title="Ver Detalle" target="_blank">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-    <div class="card-body px-0 pb-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
-                <thead class="bg-light">
-                    <tr>
-                        <th class="ps-4">Ticket</th>
-                        <th>Dama / Beneficiaria</th>
-                        <th>Modelo / Características</th>
-                        <th>Fecha Entrega</th>
-                        <th>Estado</th>
-                        <th class="pe-4 text-end">Saldo</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in data.pedidos %}
-                    <tr>
-                        <td class="ps-4">
-                            <code class="fw-bold text-dark">{{ p.numero_ticket }}</code>
-                        </td>
-                        <td>
-                            <div class="fw-semibold">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</div>
-                            <small class="text-muted">{{ p.talla|default:"Sin talla" }}</small>
-                        </td>
-                        <td>
-                            <div class="small fw-bold">{{ p.modelo.nombre|default:"Modelo Especial" }}</div>
-                            <small class="text-muted">{{ p.tela.nombre }} · {{ p.color.nombre }}</small>
-                        </td>
-                        <td>
-                            <div class="{% if p.fecha_entrega_estimada < today %}text-danger fw-bold{% endif %}">
-                                {{ p.fecha_entrega_estimada|date:"d/m/Y" }}
-                            </div>
-                        </td>
-                        <td>
-                            <span class="status-badge {% if p.estado == 'LISTO' %}status-active{% elif p.estado == 'EN_CONFECCION' %}status-warning{% else %}status-warning{% endif %}">
-                                {{ p.get_estado_display }}
-                            </span>
-                        </td>
-                        <td class="pe-4 text-end">
-                            <div class="fw-bold {% if p.saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">
-                                ${{ p.saldo_pendiente }}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div class="bg-light p-3 text-center">
-            <a href="{% url 'novia_detalle' novia_id %}" class="btn btn-sm btn-link text-decoration-none fw-bold">
-                Gestionar Grupo Completo <i class="bi bi-arrow-right ms-1"></i>
-            </a>
-        </div>
-    </div>
+    {% endfor %}
 </div>
-{% empty %}
+
+{% if not pedidos_por_tipo %}
 <div class="text-center py-5">
     <i class="bi bi-bag-x display-1 text-muted opacity-25"></i>
-    <p class="mt-3 text-muted">No hay pedidos pendientes en este momento.</p>
+    <p class="mt-3 text-muted">No se encontraron pedidos con los filtros aplicados.</p>
 </div>
-{% endfor %}
+{% endif %}
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+{% include 'boutique/includes/modal_entrega.html' %}
 
 {% endblock %}

@@ -1,0 +1,86 @@
+<!-- Modal Editar Entrega -->
+<div class="modal fade" id="modalEditarEntrega" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold heading">Actualizar Entrega</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarEntrega">
+                    <input type="hidden" id="ee_tipo" name="tipo">
+                    <input type="hidden" id="ee_id" name="id">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Fecha de Entrega Estimada</label>
+                        <input type="date" id="ee_fecha" name="fecha_entrega" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Notas de Entrega / Seguimiento</label>
+                        <textarea id="ee_notas" name="notas_entrega" class="form-control" rows="3" placeholder="Ej: Retraso por tela, cambio de fecha solicitado por clienta..."></textarea>
+                    </div>
+                    <div class="text-end mt-4">
+                        <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
+                            <i class="bi bi-calendar-check me-2"></i>Guardar y Sincronizar Agenda
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let modalEntrega;
+document.addEventListener('DOMContentLoaded', function() {
+    const modalEl = document.getElementById('modalEditarEntrega');
+    if (modalEl) modalEntrega = new bootstrap.Modal(modalEl);
+});
+
+function abrirModalEntrega(tipo, id, fecha, notas) {
+    document.getElementById('ee_tipo').value = tipo;
+    document.getElementById('ee_id').value = id;
+    document.getElementById('ee_fecha').value = fecha || '';
+    document.getElementById('ee_notas').value = (notas || '').replace(/\\n/g, '\n');
+    modalEntrega.show();
+}
+
+document.getElementById('formEditarEntrega').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sincronizando...';
+
+    const tipo = document.getElementById('ee_tipo').value;
+    const id = document.getElementById('ee_id').value;
+    const data = {
+        fecha_entrega: document.getElementById('ee_fecha').value,
+        notas_entrega: document.getElementById('ee_notas').value
+    };
+
+    try {
+        const response = await fetch(`/api/editar-entrega/${tipo}/${id}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            location.reload();
+        } else {
+            const result = await response.json();
+            alert('Error: ' + result.message);
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Ocurrió un error al procesar');
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+    }
+});
+</script>

@@ -418,15 +418,19 @@
     function crearProducto() {
         const form = document.getElementById('formNuevoProducto');
         const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
 
-        // Adaptar nombres para la API
-        data.forzar_crear = true;
+        // Adjuntar foto si se subió para IA
+        const aiImage = document.getElementById('ai_image');
+        if (aiImage.files.length > 0) {
+            formData.append('foto', aiImage.files[0]);
+        }
+
+        formData.append('forzar_crear', 'true');
 
         fetch('{% url "api_validar_crear_producto" %}', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify(data)
+            headers: { 'X-CSRFToken': csrfToken },
+            body: formData
         })
         .then(r => r.json())
         .then(res => {

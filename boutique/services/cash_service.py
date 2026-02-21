@@ -1,4 +1,5 @@
 from decimal import Decimal
+from ..utils import safe_decimal
 from django.db import transaction
 from django.utils import timezone
 from ..models import (
@@ -20,7 +21,7 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
         raise ValueError("No hay una caja abierta. Debe abrir caja antes de cobrar.")
 
     with transaction.atomic():
-        monto = Decimal(str(monto))
+        monto = safe_decimal(monto)
 
         # 1. Registrar en el modelo operativo
         ticket_tipo = 'VENTA'
@@ -30,7 +31,13 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
                 referencia=referencia, registrado_por=usuario, notas=notas
             )
             ticket_tipo = 'PEDIDO'
-            cliente_nombre = origen_obj.dama.nombre if origen_obj.dama else origen_obj.novia.nombre
+            cliente_nombre = 'Cliente Gral.'
+            if origen_obj.dama:
+                cliente_nombre = origen_obj.dama.nombre
+            elif origen_obj.novia:
+                cliente_nombre = origen_obj.novia.nombre
+            elif origen_obj.cliente:
+                cliente_nombre = origen_obj.cliente.nombre
         elif origen_tipo == 'apartado':
             PagoApartado.objects.create(
                 apartado=origen_obj, monto=monto, metodo=metodo,
@@ -67,7 +74,8 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
             cliente_nombre=cliente_nombre,
             total=getattr(origen_obj, 'precio', getattr(origen_obj, 'total', 0)),
             total_pagado=monto, # En este ticket
-            cajero_nombre=usuario.username
+            cajero_nombre=usuario.username,
+            caja=caja
         )
         if origen_tipo == 'pedido': ticket.pedido = origen_obj
         if origen_tipo == 'apartado': ticket.apartado = origen_obj

@@ -48,7 +48,21 @@ def generate_pdf_ticket(ticket_id):
     # Cliente
     if ticket.cliente_nombre:
         p.drawString(0.2 * inch, y, f"Cliente: {ticket.cliente_nombre}")
-        y -= 0.2 * inch
+        y -= 0.15 * inch
+
+    # Añadir info de grupo y medidas si aplica
+    if ticket.pedido:
+        p.setFont("Helvetica-Bold", 8)
+        p.drawString(0.2 * inch, y, f"Grupo: {ticket.novia.nombre if ticket.novia else 'N/A'}")
+        y -= 0.15 * inch
+        if hasattr(ticket.pedido, 'medidas'):
+            m = ticket.pedido.medidas
+            med_str = f"B:{m.busto or '-'} C:{m.cintura or '-'} Ca:{m.cadera or '-'} L:{m.largo or '-'}"
+            p.setFont("Helvetica", 7)
+            p.drawString(0.2 * inch, y, f"Medidas: {med_str}")
+            y -= 0.15 * inch
+
+    y -= 0.05 * inch
 
     # Detalle de Items
     p.setFont("Helvetica-Bold", 8)
@@ -163,6 +177,13 @@ def generate_escpos_data(ticket_id):
 
     if ticket.cliente_nombre:
         d.text(f"Cliente: {ticket.cliente_nombre}\n")
+
+    if ticket.pedido:
+        d.text(f"Grupo: {ticket.novia.nombre if ticket.novia else 'N/A'}\n")
+        if hasattr(ticket.pedido, 'medidas'):
+            m = ticket.pedido.medidas
+            med_str = f"B:{m.busto or '-'} C:{m.cintura or '-'} Ca:{m.cadera or '-'} L:{m.largo or '-'}"
+            d.text(f"Medidas: {med_str}\n")
 
     snapshot = ticket.snapshot_json or {}
     items = snapshot.get('items', [])

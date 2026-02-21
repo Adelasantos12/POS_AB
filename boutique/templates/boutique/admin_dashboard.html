@@ -31,13 +31,50 @@
     </div>
 </div>
 
+<!-- Daily Summary Row -->
+<div class="row g-4 mb-4" data-testid="daily-summary-row">
+    <div class="col-12">
+        <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #1e293b, #334155); color: white;">
+            <div class="card-body p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <span class="text-white-50 small text-uppercase fw-bold">Ingresos de Hoy</span>
+                        <h1 class="display-5 mb-0 fw-bold">${{ resumen_diario.total|floatformat:2 }}</h1>
+                        <p class="mb-0 text-white-50"><i class="bi bi-receipt me-1"></i>{{ resumen_diario.tickets_count }} Tickets generados</p>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="row text-center border-start border-white-10">
+                            <div class="col-4">
+                                <span class="text-white-50 small d-block">Anticipos</span>
+                                <span class="h4 mb-0 fw-bold">${{ resumen_diario.anticipos|floatformat:0 }}</span>
+                            </div>
+                            <div class="col-4">
+                                <span class="text-white-50 small d-block">Liquidaciones</span>
+                                <span class="h4 mb-0 fw-bold">${{ resumen_diario.liquidaciones|floatformat:0 }}</span>
+                            </div>
+                            <div class="col-4">
+                                <span class="text-white-50 small d-block">Métodos</span>
+                                <div class="d-flex justify-content-center gap-2 mt-1">
+                                    {% for b in resumen_diario.breakdown %}
+                                        <span class="badge bg-white text-dark small">{{ b.metodo_pago }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- KPIs Row -->
 <div class="row g-4 mb-4" data-testid="kpis-row">
     <div class="col-md-3">
         <div class="card h-100">
             <div class="card-body p-4">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                    <span class="text-muted small">Ventas este mes</span>
+                    <span class="text-muted small">Ingresos este mes</span>
                     <span class="badge bg-success-subtle text-success rounded-pill" style="background: #D1FAE5 !important;">
                         <i class="bi bi-arrow-up"></i>
                     </span>
@@ -50,9 +87,9 @@
         <div class="card h-100">
             <div class="card-body p-4">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                    <span class="text-muted small">Transacciones</span>
+                    <span class="text-muted small">Días con Venta</span>
                     <span class="badge bg-primary-subtle text-primary rounded-pill" style="background: #DBEAFE !important;">
-                        <i class="bi bi-receipt"></i>
+                        <i class="bi bi-calendar-check"></i>
                     </span>
                 </div>
                 <h2 class="mb-0">{{ ventas_dia|length }}</h2>

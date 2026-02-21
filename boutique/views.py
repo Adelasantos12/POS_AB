@@ -11,9 +11,10 @@ from django.db.models.functions import TruncDate
 from .models import (
     Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
     CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
-    registrar_auditoria, Ticket, Pedido
+    registrar_auditoria, Ticket, Pedido, Apartado, Novia, Dama
 )
 from .middleware import profile_permission_required
+from .utils import safe_decimal
 from django.utils import timezone
 from decimal import Decimal
 import logging
@@ -28,6 +29,106 @@ logger = logging.getLogger(__name__)
 
 
 @login_required
+def api_search_global(request):
+    """
+    Buscador global para POS: Productos, Pedidos, Apartados y Novias.
+    Habilita el cobro desde cualquier módulo.
+    """
+    q = request.GET.get('q', '').strip()
+    if not q:
+        return JsonResponse({'results': []})
+
+    results = []
+
+    # 1. Productos (SKU, Rasgos, Categoría)
+    productos = Producto.objects.filter(
+        Q(sku__icontains=q) |
+        Q(rasgo1__icontains=q) |
+        Q(rasgo2__icontains=q) |
+        Q(categoria__nombre__icontains=q)
+    ).select_related('categoria', 'color', 'modelo')[:10]
+
+    for p in productos:
+        results.append({
+            'type': 'PRODUCTO',
+            'id': p.id,
+            'sku': p.sku,
+            'text': str(p),
+            'precio': float(p.precio_venta),
+            'stock': p.cantidad_actual,
+            'folio': p.sku
+        })
+
+    # 2. Apartados (Folio, Cliente, Teléfono)
+    apartados = Apartado.objects.filter(
+        Q(folio__icontains=q) |
+        Q(cliente_nombre__icontains=q) |
+        Q(cliente_telefono__icontains=q)
+    ).order_by('-fecha_creacion')[:10]
+
+    for a in apartados:
+        results.append({
+            'type': 'APARTADO',
+            'id': a.id,
+            'folio': a.folio,
+            'label': f"Apartado: {a.folio}",
+            'customer': a.cliente_nombre,
+            'total': float(a.total),
+            'balance': float(a.saldo),
+            'delivery_date': a.fecha_entrega_estimada.isoformat() if a.fecha_entrega_estimada else None,
+            'status': a.estado
+        })
+
+    # 3. Pedidos (Folio, Cliente, Novia, Dama, Teléfono)
+    pedidos = Pedido.objects.filter(
+        Q(numero_ticket__icontains=q) |
+        Q(novia__nombre__icontains=q) |
+        Q(dama__nombre__icontains=q) |
+        Q(cliente__nombre__icontains=q) |
+        Q(cliente__telefono__icontains=q)
+    ).select_related('novia', 'dama', 'cliente').order_by('-fecha_creacion')[:10]
+
+    for ped in pedidos:
+        customer = ""
+        if ped.dama: customer = ped.dama.nombre
+        elif ped.novia: customer = ped.novia.nombre
+        elif ped.cliente: customer = ped.cliente.nombre
+
+        results.append({
+            'type': 'PEDIDO',
+            'id': ped.id,
+            'folio': ped.numero_ticket,
+            'label': f"Pedido: {ped.numero_ticket}",
+            'customer': customer,
+            'total': float(ped.precio),
+            'balance': float(ped.saldo_pendiente),
+            'delivery_date': ped.fecha_entrega_estimada.isoformat() if ped.fecha_entrega_estimada else None,
+            'status': ped.get_estado_display()
+        })
+
+    # 4. Novias (Nombre, Teléfono)
+    novias = Novia.objects.filter(
+        Q(nombre__icontains=q) |
+        Q(telefono__icontains=q)
+    ).filter(activo=True)[:5]
+
+    for n in novias:
+        results.append({
+            'type': 'NOVIA',
+            'id': n.id,
+            'folio': f"NV-{n.id}",
+            'label': f"Novia: {n.nombre}",
+            'customer': n.nombre,
+            'total': float(sum(p.precio for p in n.pedidos.all())),
+            'balance': float(n.total_pendiente),
+            'delivery_date': n.fecha_entrega.isoformat() if n.fecha_entrega else None,
+            'status': 'Activa'
+        })
+
+    return JsonResponse({'results': results})
+
+
+@login_required
 @profile_permission_required('Vendedor')
 def api_ai_analyze_image(request):
     """Analiza imagen de producto usando Gemini Vision"""
@@ -39,6 +140,13 @@ def api_ai_analyze_image(request):
 
             atributos = analyze_product_image(image_data)
             if atributos:
+                # Validar contra catálogo
+                cat_exists = Categoria.objects.filter(nombre=atributos.get('categoria')).exists()
+                if not cat_exists: atributos['categoria'] = None
+
+                col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
+                if not col_exists: atributos['color'] = None
+
                 return JsonResponse({'status': 'ok', 'atributos': atributos})
             else:
                 return JsonResponse({'status': 'error', 'message': 'No se pudo analizar la imagen'}, status=500)
@@ -60,6 +168,13 @@ def api_ai_extract_attributes(request):
 
         atributos = extract_product_attributes(descripcion)
         if atributos:
+            # Validar contra catálogo
+            cat_exists = Categoria.objects.filter(nombre=atributos.get('categoria')).exists()
+            if not cat_exists: atributos['categoria'] = None
+
+            col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
+            if not col_exists: atributos['color'] = None
+
             return JsonResponse({'status': 'ok', 'atributos': atributos})
         else:
             return JsonResponse({'status': 'error', 'message': 'No se pudo procesar la descripción'}, status=500)
@@ -226,7 +341,14 @@ def pos_dashboard(request):
     corte = get_caja_activa()
     if not corte:
         return redirect('apertura_caja')
-    return render(request, 'boutique/pos_dashboard.html', {'corte': corte})
+
+    context = {
+        'corte': corte,
+        'telas': Tela.objects.filter(activa=True),
+        'colores': Color.objects.filter(activo=True),
+        'categorias': Categoria.objects.all(),
+    }
+    return render(request, 'boutique/pos_dashboard.html', context)
 
 
 @profile_permission_required(['Caja', 'Vendedor'])
@@ -236,7 +358,7 @@ def apertura_caja(request):
         return redirect('pos_dashboard')
 
     if request.method == 'POST':
-        monto = Decimal(request.POST.get('monto_apertura', 0))
+        monto = safe_decimal(request.POST.get('monto_apertura', 0))
         corte = CorteCaja.objects.create(
             abierto_por=request.active_profile,
             monto_apertura=monto,
@@ -263,9 +385,9 @@ def cierre_caja(request):
         return redirect('apertura_caja')
 
     if request.method == 'POST':
-        efectivo_real = Decimal(request.POST.get('efectivo_real', 0))
-        tarjeta_real = Decimal(request.POST.get('tarjeta_real', 0))
-        transferencia_real = Decimal(request.POST.get('transferencia_real', 0))
+        efectivo_real = safe_decimal(request.POST.get('efectivo_real', 0))
+        tarjeta_real = safe_decimal(request.POST.get('tarjeta_real', 0))
+        transferencia_real = safe_decimal(request.POST.get('transferencia_real', 0))
 
         corte.efectivo_real = efectivo_real
         corte.tarjeta_real = tarjeta_real
@@ -296,7 +418,7 @@ def cierre_caja(request):
     tarjeta_movs = sum(m.monto for m in movs if m.metodo_pago == 'TARJETA')
     transf_movs = sum(m.monto for m in movs if m.metodo_pago == 'TRANSFERENCIA')
 
-    corte.efectivo_esperado = Decimal(corte.monto_apertura) + efectivo_movs
+    corte.efectivo_esperado = safe_decimal(corte.monto_apertura) + safe_decimal(efectivo_movs)
     corte.tarjeta_esperada = tarjeta_movs
     corte.transferencia_esperada = transf_movs
     corte.save()
@@ -406,7 +528,7 @@ def api_liquidar_pedido(request, pk):
     try:
         data = json.loads(request.body)
         metodo = data.get('metodo', 'EFECTIVO')
-        monto = Decimal(str(data.get('monto', pedido.saldo_pendiente)))
+        monto = safe_decimal(data.get('monto', pedido.saldo_pendiente))
 
         with transaction.atomic():
             # Registrar el cobro en caja
@@ -467,23 +589,54 @@ def api_liquidar_pedido(request, pk):
 @login_required
 @profile_permission_required('Vendedor')
 def api_venta_rapida(request):
-    """Crea producto al vuelo + registra venta/apartado + movimiento en una sola transacción"""
-    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    """Crea producto al vuelo + registra venta/apartado/pedido + movimiento en una sola transacción"""
+    from .models import Novia, Dama, PagoPedido, Apartado, ApartadoItem, Medidas, Pedido
     from .services.cash_service import registrar_cobro
+    from .services.agenda_service import sync_delivery_with_agenda
     try:
-        # Usar multipart/form-data para recibir foto
+        # 1. Parámetros básicos
+        tipo_op = request.POST.get('tipo_operacion', 'VENTA_NORMAL')
         cat_nombre = request.POST.get('categoria', 'General')
         color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
-        precio = Decimal(request.POST.get('precio', 0))
-        anticipo = Decimal(request.POST.get('anticipo', precio))
+        precio = safe_decimal(request.POST.get('precio', 0))
+        anticipo = safe_decimal(request.POST.get('anticipo', precio))
         metodo = request.POST.get('metodo', 'EFECTIVO')
         rasgo1 = request.POST.get('rasgo1', '')
         rasgo2 = request.POST.get('rasgo2', '')
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
+        # Datos del cliente
+        cliente_telefono = request.POST.get('cliente_telefono', '').strip()
+        cliente_nombre = request.POST.get('cliente_nombre')
+        cliente_notas = request.POST.get('cliente_notas')
+        evento = request.POST.get('evento', '')
+        fecha_entrega_est = request.POST.get('fecha_entrega_estimada')
+        fecha_evento = request.POST.get('fecha_evento')
+
+        # 1.5 Validaciones duras para Pedidos
+        if tipo_op in ['HECHURA', 'PEDIDO_EXTERNO']:
+            if not cliente_telefono:
+                return JsonResponse({'status': 'error', 'message': 'El teléfono del cliente es obligatorio para este tipo de pedido.'}, status=400)
+            if not fecha_entrega_est:
+                return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
+
         with transaction.atomic():
+            # 2. Gestionar cliente
+            cliente_obj = None
+            if cliente_telefono:
+                cliente_obj, created = Cliente.objects.get_or_create(
+                    telefono=cliente_telefono,
+                    defaults={'nombre': cliente_nombre or 'Sin nombre', 'notas': cliente_notas or ''}
+                )
+                if not created and cliente_nombre:
+                    cliente_obj.nombre = cliente_nombre
+                    if cliente_notas:
+                        cliente_obj.notas = cliente_notas
+                    cliente_obj.save()
+
+            # 3. Gestionar Catálogos
             categoria = Categoria.objects.filter(nombre=cat_nombre).first()
             if not categoria:
                 categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
@@ -492,10 +645,15 @@ def api_venta_rapida(request):
             if not color:
                 color, _ = Color.objects.get_or_create(nombre="Sin definir")
 
-            # Intentar asociar Tela desde rasgo2 si coincide con el catálogo
-            tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+            # Intentar asociar Tela desde rasgo2 o tela_id
+            tela_id = request.POST.get('tela_id')
+            tela_obj = None
+            if tela_id:
+                tela_obj = Tela.objects.filter(id=tela_id).first()
+            if not tela_obj:
+                tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
 
-            # 1. Crear producto con stock 0
+            # 4. Crear producto físico (si aplica)
             producto = Producto.objects.create(
                 categoria=categoria,
                 color=color,
@@ -504,108 +662,163 @@ def api_venta_rapida(request):
                 rasgo2=rasgo2,
                 talla=talla,
                 precio_venta=precio,
-                estado='TIENDA' if not es_apartado else 'APARTADO',
+                estado='TIENDA' if not es_apartado and tipo_op == 'VENTA_NORMAL' else 'APARTADO',
                 cantidad_actual=0,
                 stock_teorico=0,
                 foto=foto
             )
 
-            if es_apartado:
-                # Flujo de Apartado Independiente
-                apartado = Apartado.objects.create(
-                    cliente_nombre=f"Venta Rápida {producto.sku}",
-                    total=precio,
-                    anticipo=0,
-                    notas=f"Apartado Rápido SKU {producto.sku}"
-                )
-                ApartadoItem.objects.create(
-                    apartado=apartado,
+            # 5. Lógica según Tipo de Operación
+            if tipo_op == 'VENTA_NORMAL':
+                if es_apartado:
+                    # FLUJO APARTADO
+                    apartado = Apartado.objects.create(
+                        cliente=cliente_obj,
+                        cliente_nombre=cliente_nombre or f"Venta Rápida {producto.sku}",
+                        cliente_telefono=cliente_telefono or '',
+                        total=precio,
+                        anticipo=0,
+                        evento=evento,
+                        categoria_cache=cat_nombre,
+                        color_cache=color_nombre,
+                        talla_cache=talla,
+                        notas=f"Apartado Rápido SKU {producto.sku}",
+                        fecha_entrega_estimada=fecha_entrega_est or None
+                    )
+                    ApartadoItem.objects.create(
+                        apartado=apartado,
+                        producto=producto,
+                        descripcion=str(producto),
+                        cantidad=1,
+                        precio_unitario=precio,
+                        subtotal=precio
+                    )
+                    ticket = registrar_cobro(
+                        origen_tipo='apartado', origen_obj=apartado,
+                        monto=anticipo, metodo=metodo, usuario=request.active_profile,
+                        notas='Anticipo Venta Rápida'
+                    )
+
+                    if apartado.fecha_entrega_estimada:
+                        sync_delivery_with_agenda(apartado)
+
+                    res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio, 'producto': {'id': producto.id, 'sku': producto.sku}}
+                else:
+                    # FLUJO VENTA COMPLETA
+                    venta = Venta.objects.create(
+                        vendedor=request.active_profile, cliente=cliente_obj,
+                        total=precio, evento=evento, categoria_cache=cat_nombre,
+                        color_cache=color_nombre, talla_cache=talla, tipo_operacion=tipo_op
+                    )
+                    ItemVenta.objects.create(venta=venta, producto=producto, cantidad=1, precio_unitario=precio)
+                    MovimientoInventario.objects.create(
+                        producto=producto, tipo='VENTA', cantidad=-1, motivo='VENTA',
+                        perfil_activo=request.active_profile, venta=venta,
+                        stock_resultante=producto.stock_teorico - 1
+                    )
+                    ticket = registrar_cobro(
+                        origen_tipo='venta', origen_obj=venta,
+                        monto=anticipo, metodo=metodo, usuario=request.active_profile
+                    )
+                    res = {'status': 'ok', 'tipo': 'venta', 'id': venta.id, 'sku': producto.sku, 'folio': ticket.folio}
+
+            elif tipo_op in ['DAMA_HONOR', 'HECHURA', 'PEDIDO_EXTERNO']:
+                # FLUJO PEDIDO (Dama, Hechura o Pedido Externo)
+                novia_id = request.POST.get('novia_id')
+                dama_id = request.POST.get('dama_id')
+                nueva_dama_nombre = request.POST.get('nueva_dama_nombre')
+                novia_obj = None
+                dama_obj = None
+
+                if novia_id:
+                    novia_obj = Novia.objects.filter(id=novia_id).first()
+
+                if dama_id:
+                    dama_obj = Dama.objects.filter(id=dama_id).first()
+                elif nueva_dama_nombre and novia_obj:
+                    # Crear nueva dama si se proporcionó nombre
+                    dama_obj = Dama.objects.create(
+                        novia=novia_obj,
+                        cliente=cliente_obj,
+                        nombre=nueva_dama_nombre,
+                        telefono=cliente_telefono or '',
+                        talla=talla
+                    )
+                    # Actualizar contador
+                    novia_obj.cantidad_damas = novia_obj.damas.count()
+                    novia_obj.save(update_fields=['cantidad_damas'])
+
+                # Determinar tipo de pedido y estado inicial
+                tp = 'ESTANDAR_GRUPO'
+                est = 'NUEVO'
+
+                if tipo_op == 'HECHURA':
+                    tp = 'HECHURA'
+                    est = 'NUEVO'
+                elif tipo_op == 'PEDIDO_EXTERNO':
+                    tp = 'PEDIDO_EXTERNO'
+                    est = 'SOLICITADO'
+
+                pedido = Pedido.objects.create(
+                    cliente=cliente_obj,
+                    novia=novia_obj or (dama_obj.novia if dama_obj else None),
+                    dama=dama_obj,
                     producto=producto,
-                    descripcion=str(producto),
-                    cantidad=1,
-                    precio_unitario=precio,
-                    subtotal=precio
+                    color=color,
+                    tela=tela_obj,
+                    talla=talla,
+                    precio=precio,
+                    evento=evento,
+                    tipo_operacion=tipo_op,
+                    tipo_pedido=tp,
+                    estado=est,
+                    fecha_entrega_estimada=fecha_entrega_est or None,
+                    fecha_evento=fecha_evento or None,
+                    creado_por=request.active_profile
                 )
 
-                # Registrar cobro en caja
+                # Guardar medidas si vienen en el POST
+                if any([request.POST.get('m_busto'), request.POST.get('medidas_busto'), request.POST.get('m_cintura'), request.POST.get('m_notas')]):
+                    def get_d(key1, key2):
+                        val = request.POST.get(key1) or request.POST.get(key2)
+                        return safe_decimal(val, None)
+
+                    Medidas.objects.create(
+                        pedido=pedido,
+                        cliente=cliente_obj,
+                        cliente_nombre=cliente_nombre or (dama_obj.nombre if dama_obj else 'Sin nombre'),
+                        busto=get_d('m_busto', 'medidas_busto'),
+                        cintura=get_d('m_cintura', 'medidas_cintura'),
+                        cadera=get_d('m_cadera', 'medidas_cadera'),
+                        hombro=get_d('m_hombro', 'medidas_hombro'),
+                        largo=get_d('m_largo', 'medidas_largo'),
+                        brazo=get_d('m_brazo', 'medidas_brazo'),
+                        espalda=get_d('m_espalda', 'medidas_espalda'),
+                        talle_delantero=get_d('m_talle_frente', 'medidas_talle_frente'),
+                        talle_trasero=get_d('m_talle_espalda', 'medidas_talle_espalda'),
+                        observaciones=request.POST.get('m_notas') or request.POST.get('medidas_notas', '')
+                    )
+
                 ticket = registrar_cobro(
-                    origen_tipo='apartado',
-                    origen_obj=apartado,
-                    monto=anticipo,
-                    metodo=metodo,
-                    usuario=request.active_profile,
-                    notas='Anticipo Venta Rápida'
+                    origen_tipo='pedido', origen_obj=pedido,
+                    monto=anticipo, metodo=metodo, usuario=request.active_profile,
+                    notas=f'Anticipo {tipo_op}'
                 )
 
-                registrar_auditoria(
-                    usuario=request.active_profile,
-                    accion='VENTA',
-                    detalles=f'Apartado Rápido Ticket {ticket.folio} - Producto {producto.sku}',
-                    entidad=apartado,
-                    request=request
-                )
+                if pedido.fecha_entrega_estimada:
+                    sync_delivery_with_agenda(pedido)
 
-                return JsonResponse({
-                    'status': 'ok',
-                    'tipo': 'apartado',
-                    'ticket': ticket.folio,
-                    'producto': {'id': producto.id, 'sku': producto.sku}
-                })
+                res = {'status': 'ok', 'tipo': 'pedido', 'id': pedido.id, 'folio': ticket.folio}
 
-            else:
-                # Flujo de Venta normal
-                venta = Venta.objects.create(
-                    vendedor=request.active_profile,
-                    total=precio
-                )
+            registrar_auditoria(
+                usuario=request.active_profile,
+                accion='VENTA',
+                detalles=f'Venta Rápida ({tipo_op}) Ticket {ticket.folio}',
+                entidad=producto,
+                request=request
+            )
+            return JsonResponse(res)
 
-                ItemVenta.objects.create(
-                    venta=venta,
-                    producto=producto,
-                    cantidad=1,
-                    precio_unitario=precio
-                )
-
-                # Movimiento de inventario
-                MovimientoInventario.objects.create(
-                    producto=producto,
-                    tipo='VENTA',
-                    cantidad=-1,
-                    motivo='VENTA',
-                    perfil_activo=request.active_profile,
-                    venta=venta,
-                    stock_resultante=producto.stock_teorico - 1
-                )
-
-                # Registrar cobro en caja
-                ticket = registrar_cobro(
-                    origen_tipo='venta',
-                    origen_obj=venta,
-                    monto=anticipo,
-                    metodo=metodo,
-                    usuario=request.active_profile
-                )
-
-                registrar_auditoria(
-                    usuario=request.active_profile,
-                    accion='VENTA',
-                    detalles=f'Venta Rápida Ticket {ticket.folio} - Producto {producto.sku}',
-                    entidad=venta,
-                    request=request
-                )
-
-                return JsonResponse({
-                    'status': 'ok',
-                    'tipo': 'venta',
-                    'id': venta.id,
-                    'sku': producto.sku,
-                    'folio': ticket.folio,
-                    'producto': {
-                        'id': producto.id,
-                        'sku': producto.sku,
-                        'text': str(producto)
-                    }
-                })
     except ValueError as ve:
         return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
@@ -666,6 +879,54 @@ def api_search_productos(request):
     return JsonResponse({'results': results})
 
 
+@login_required
+def cliente_detalle(request, pk):
+    """Ficha del cliente con historial estructurado"""
+    cliente = get_object_or_404(Cliente, pk=pk)
+    ventas = Venta.objects.filter(cliente=cliente).order_by('-fecha')
+    apartados = Apartado.objects.filter(cliente=cliente).order_by('-fecha_creacion')
+    pedidos = Pedido.objects.filter(cliente=cliente).order_by('-fecha_creacion')
+
+    # Consolidar historial cronológico
+    historial = []
+    for v in ventas:
+        historial.append({'tipo': 'VENTA', 'obj': v, 'fecha': v.fecha})
+    for a in apartados:
+        historial.append({'tipo': 'APARTADO', 'obj': a, 'fecha': a.fecha_creacion})
+    for p in pedidos:
+        historial.append({'tipo': 'PEDIDO', 'obj': p, 'fecha': p.fecha_creacion})
+
+    historial.sort(key=lambda x: x['fecha'], reverse=True)
+
+    return render(request, 'boutique/cliente_detalle.html', {
+        'cliente': cliente,
+        'historial': historial,
+        'apartados_activos': apartados.exclude(estado__in=['CANCELADO', 'ENTREGADO'])
+    })
+
+
+@login_required
+def api_search_clientes(request):
+    """Buscador de clientes por teléfono o nombre"""
+    q = request.GET.get('q', '')
+    if not q:
+        return JsonResponse({'results': []})
+
+    clientes = Cliente.objects.filter(
+        Q(telefono__icontains=q) |
+        Q(nombre__icontains=q)
+    )[:10]
+
+    results = [{
+        'id': c.id,
+        'nombre': c.nombre,
+        'telefono': c.telefono,
+        'email': c.email,
+        'notas': c.notas
+    } for c in clientes]
+    return JsonResponse({'results': results})
+
+
 @require_POST
 @login_required
 @profile_permission_required('Vendedor')
@@ -676,8 +937,8 @@ def api_registrar_venta(request):
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
-        total = Decimal(str(data.get('total', 0)))
-        pago_inicial = Decimal(str(data.get('pago_inicial', total)))
+        total = safe_decimal(data.get('total', 0))
+        pago_inicial = safe_decimal(data.get('pago_inicial', total))
         metodo = data.get('metodo', 'EFECTIVO')
         es_apartado = data.get('es_apartado', False)
 
@@ -886,12 +1147,17 @@ def api_check_duplicados(request):
 @profile_permission_required('Inventario')
 def api_validar_crear_producto(request):
     """Valida y crea producto solo si no hay duplicados confirmados"""
-    data = json.loads(request.body)
-    forzar_crear = data.get('forzar_crear', False)
+    if request.content_type == 'application/json':
+        data = json.loads(request.body)
+        foto = None
+    else:
+        data = request.POST
+        foto = request.FILES.get('foto')
+
+    forzar_crear = data.get('forzar_crear') == True or data.get('forzar_crear') == 'true'
     
     # Si no se fuerza, verificar duplicados primero
     if not forzar_crear:
-        # Verificar si hay duplicados con score > 80%
         cat = data.get('categoria', '')
         r1 = data.get('rasgo1', '')
         r2 = data.get('rasgo2', '')
@@ -934,9 +1200,10 @@ def api_validar_crear_producto(request):
             rasgo1=data.get('rasgo1', ''),
             rasgo2=rasgo2,
             talla=data.get('talla', 'U'),
-            precio_venta=data.get('precio', 0),
+            precio_venta=safe_decimal(data.get('precio', 0)),
             estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=int(data.get('stock', 1))
+            cantidad_actual=int(data.get('stock', 1)),
+            foto=foto
         )
         
         return JsonResponse({
@@ -1186,7 +1453,7 @@ def api_producto_regularizar(request, pk):
 
         producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
         producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
-        producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
+        producto.precio_venta = safe_decimal(data.get('precio', producto.precio_venta))
         producto.pendiente_regularizacion = data.get('pendiente_regularizacion', False)
 
         producto.save()
@@ -1234,7 +1501,7 @@ def api_editar_producto(request, pk):
     try:
         producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
         producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
-        producto.precio_venta = Decimal(data.get('precio', producto.precio_venta))
+        producto.precio_venta = safe_decimal(data.get('precio', producto.precio_venta))
         
         # Si cambia el stock, registrar movimiento
         nuevo_stock = int(data.get('stock', producto.cantidad_actual))
@@ -1285,33 +1552,53 @@ def imprimir_etiquetas(request):
 
 @login_required
 def admin_dashboard(request):
-    """Dashboard para Administradores con analítica"""
+    """Dashboard para Administradores con analítica y resumen diario"""
     if not es_admin(request.active_profile):
         return redirect('index')
 
     from .models import MovimientoCaja
     from django.db.models.functions import TruncDate
 
-    # Ingresos por día (Venta + Abonos)
+    # 1. Resumen Diario (Hoy) - Basado en MovimientoCaja
+    hoy_date = timezone.now().date()
+    movs_hoy = MovimientoCaja.objects.filter(fecha__date=hoy_date)
+
+    resumen_diario = {
+        'total': movs_hoy.aggregate(Sum('monto'))['monto__sum'] or 0,
+        'breakdown': movs_hoy.values('metodo_pago').annotate(total=Sum('monto')),
+        'tickets_count': movs_hoy.exclude(ticket_folio='').count(),
+        'anticipos': movs_hoy.filter(tipo__in=['ABONO_PEDIDO', 'ABONO_APARTADO']).aggregate(Sum('monto'))['monto__sum'] or 0,
+        'liquidaciones': movs_hoy.filter(tipo='VENTA').aggregate(Sum('monto'))['monto__sum'] or 0,
+    }
+
+    # 2. Ingresos por día (Venta + Abonos) - últimos 30 días
     ventas_dia = MovimientoCaja.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
         total=Sum('monto'),
         cantidad=Count('id')
     ).order_by('dia')
 
-    # Ventas por categoría (Seguimos usando ItemVenta para detalles de productos vendidos)
-    # Nota: Esto solo cuenta ventas directas, no pedidos aún no liquidados.
+    # Serializar fechas para JSON
+    ventas_dia_list = []
+    for v in ventas_dia:
+        ventas_dia_list.append({
+            'dia': v['dia'].strftime('%Y-%m-%d') if hasattr(v['dia'], 'strftime') else str(v['dia']),
+            'total': float(v['total'])
+        })
+
+    # 3. Ventas por categoría
     ventas_cat = ItemVenta.objects.values('producto__categoria__nombre').annotate(
         total=Sum('cantidad')
     ).order_by('-total')
 
-    # Ventas por Color
+    # 4. Ventas por Color
     ventas_color = ItemVenta.objects.values('producto__color__nombre').annotate(
         total=Sum('cantidad')
     ).order_by('-total')
 
     ahora = timezone.now()
     context = {
-        'ventas_dia': list(ventas_dia),
+        'resumen_diario': resumen_diario,
+        'ventas_dia': ventas_dia_list,
         'ventas_cat': list(ventas_cat),
         'ventas_color': list(ventas_color),
         'total_mensual': MovimientoCaja.objects.filter(fecha__month=ahora.month, fecha__year=ahora.year).aggregate(Sum('monto'))['monto__sum'] or 0
@@ -1591,7 +1878,7 @@ def importar_excel(request):
                         # Formato: Modelo, Descripción, Precio
                         nombre = str(row[0]).strip()
                         descripcion = str(row[1]) if len(row) > 1 and row[1] else ""
-                        precio = Decimal(str(row[2])) if len(row) > 2 and row[2] else 0
+                        precio = safe_decimal(row[2]) if len(row) > 2 and row[2] else 0
 
                         obj, created = Modelo.objects.update_or_create(
                             nombre=nombre,
@@ -1790,7 +2077,7 @@ def api_cobrar_item(request, tipo, pk):
 
     try:
         data = json.loads(request.body)
-        monto = Decimal(str(data.get('monto', 0)))
+        monto = safe_decimal(data.get('monto', 0))
         metodo = data.get('metodo', 'EFECTIVO')
         referencia = data.get('referencia', '')
         notas = data.get('notas', '')
@@ -1841,7 +2128,7 @@ def api_guardar_medidas(request, pedido_id):
                       'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']:
             if field in data:
                 val = data.get(field)
-                setattr(medidas, field, Decimal(str(val)) if val and val != '' else None)
+                setattr(medidas, field, safe_decimal(val, None) if val and val != '' else None)
 
         medidas.observaciones = data.get('observaciones', '')
         if pedido.novia:
@@ -1903,3 +2190,40 @@ def api_entregar_item(request, tipo, pk):
     item.estado = 'ENTREGADO'
     item.save()
     return JsonResponse({'status': 'ok'})
+
+@require_POST
+@login_required
+def api_editar_entrega(request, tipo, pk):
+    """
+    Actualiza la fecha de entrega y notas de un Pedido, Apartado o Novia.
+    Sincroniza automáticamente con la Agenda.
+    """
+    from .services.agenda_service import sync_delivery_with_agenda
+    from .models import Pedido, Apartado, Novia
+
+    try:
+        data = json.loads(request.body)
+        fecha_str = data.get('fecha_entrega')
+        notas = data.get('notas_entrega', '')
+
+        if tipo == 'pedido':
+            obj = get_object_or_404(Pedido, pk=pk)
+            obj.fecha_entrega_estimada = fecha_str if fecha_str else None
+            obj.notas_entrega = notas
+        elif tipo == 'apartado':
+            obj = get_object_or_404(Apartado, pk=pk)
+            obj.fecha_entrega_estimada = fecha_str if fecha_str else None
+            obj.notas_entrega = notas
+        elif tipo == 'novia':
+            obj = get_object_or_404(Novia, pk=pk)
+            obj.fecha_entrega = fecha_str if fecha_str else None
+            obj.notas_entrega = notas
+        else:
+            return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
+        obj.save()
+        sync_delivery_with_agenda(obj)
+
+        return JsonResponse({'status': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

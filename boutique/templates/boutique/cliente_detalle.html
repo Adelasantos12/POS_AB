@@ -1,0 +1,94 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Ficha Cliente - {{ cliente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <h1 class="page-title">{{ cliente.nombre }}</h1>
+        <p class="page-subtitle"><i class="bi bi-telephone me-2"></i>{{ cliente.telefono }} | Alta: {{ cliente.fecha_alta|date:"d/m/Y" }}</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
+            <div class="card-body">
+                <h5 class="heading mb-3">Información General</h5>
+                <p><strong>Email:</strong> {{ cliente.email|default:"No registrado" }}</p>
+                <p><strong>Notas:</strong><br>{{ cliente.notas|default:"Sin notas" }}</p>
+
+                <hr>
+
+                <h6 class="fw-bold small">Apartados Activos</h6>
+                {% for a in apartados_activos %}
+                    <div class="p-2 bg-light rounded-3 mb-2 small">
+                        <strong>Folio: {{ a.folio }}</strong><br>
+                        Saldo: ${{ a.saldo }} | Vence: {{ a.fecha_vencimiento|default:"-" }}
+                    </div>
+                {% empty %}
+                    <p class="text-muted small italic">No tiene apartados vigentes.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="heading">Historial de Interacciones</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light">
+                            <tr>
+                                <th class="ps-4">Fecha</th>
+                                <th>Tipo</th>
+                                <th>Detalles</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in historial %}
+                            <tr>
+                                <td class="ps-4 small">{{ item.fecha|date:"d/m/Y H:i" }}</td>
+                                <td>
+                                    <span class="badge {% if item.tipo == 'VENTA' %}bg-success{% elif item.tipo == 'APARTADO' %}bg-info{% else %}bg-primary{% endif %}">
+                                        {{ item.tipo }}
+                                    </span>
+                                </td>
+                                <td class="small">
+                                    {% if item.tipo == 'VENTA' %}
+                                        Venta #{{ item.obj.id }}<br>
+                                        {{ item.obj.categoria_cache }} | {{ item.obj.color_cache }}
+                                    {% elif item.tipo == 'APARTADO' %}
+                                        {{ item.obj.folio }}<br>
+                                        {{ item.obj.categoria_cache }} | {{ item.obj.color_cache }}
+                                    {% else %}
+                                        {{ item.obj.numero_ticket }}<br>
+                                        {{ item.obj.modelo.nombre }} | {{ item.obj.color.nombre }}
+                                    {% endif %}
+                                    <br><span class="text-muted italic">{{ item.obj.evento }}</span>
+                                </td>
+                                <td class="fw-bold">${{ item.obj.total|default:item.obj.precio }}</td>
+                                <td>
+                                    {% if item.tipo == 'PEDIDO' %}
+                                        {{ item.obj.get_estado_display }}
+                                    {% else %}
+                                        {{ item.obj.estado|default:"Completada" }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center py-4 text-muted">Sin historial registrado</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -62,6 +62,14 @@ let modalCobro;
 document.addEventListener('DOMContentLoaded', function() {
     modalCobro = new bootstrap.Modal(document.getElementById('modalCobroUnificado'));
 
+    // Hardening numeric inputs
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.value === '') this.value = '0';
+        });
+        if (input.value === '' && input.hasAttribute('required')) input.value = '0';
+    });
+
     // Mostrar/Ocultar referencia según método
     const radios = document.querySelectorAll('input[name="metodo"]');
     if (radios.length > 0) {
