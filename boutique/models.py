@@ -1,8 +1,33 @@
-from django.db import models
-from django.db.models import Q
+from django.db import models, transaction
+from django.db.models import Q, F
 from django.conf import settings
 from django.utils import timezone
 from decimal import Decimal
+
+
+class Secuencia(models.Model):
+    """Contador atómico de folios por prefijo y fecha (reemplaza COUNT+1)"""
+    prefijo = models.CharField(max_length=20)
+    fecha = models.DateField()
+    ultimo_numero = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = [('prefijo', 'fecha')]
+
+    @classmethod
+    def siguiente(cls, prefijo):
+        hoy = timezone.now().date()
+        with transaction.atomic():
+            seq, created = cls.objects.get_or_create(
+                prefijo=prefijo, fecha=hoy,
+                defaults={'ultimo_numero': 1}
+            )
+            if not created:
+                cls.objects.filter(prefijo=prefijo, fecha=hoy).update(
+                    ultimo_numero=F('ultimo_numero') + 1
+                )
+                seq.refresh_from_db()
+        return f"{prefijo}-{hoy.strftime('%Y%m%d')}-{seq.ultimo_numero:04d}"
 
 
 class Tienda(models.Model):
@@ -322,15 +347,7 @@ class Ticket(models.Model):
     def save(self, *args, **kwargs):
         if not self.folio:
             config = ConfiguracionTienda.get_solo()
-            prefix = config.prefijo_sucursal
-            today_str = timezone.now().strftime('%Y%m%d')
-
-            # Formato: PREFIX-YYYYMMDD-####
-            from django.db import transaction
-            with transaction.atomic():
-                # Contar tickets del mismo día para el consecutivo
-                count = Ticket.objects.filter(fecha_hora__date=timezone.now().date()).count() + 1
-                self.folio = f"{prefix}-{today_str}-{count:04d}"
+            self.folio = Secuencia.siguiente(config.prefijo_sucursal)
         super().save(*args, **kwargs)
 
     def __str__(self): return self.folio
@@ -741,6 +758,12 @@ class MovimientoCaja(models.Model):
     apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True)
     servicio = models.ForeignKey('Servicio', on_delete=models.SET_NULL, null=True, blank=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['fecha'], name='movcaja_fecha_idx'),
+            models.Index(fields=['caja', 'fecha'], name='movcaja_caja_fecha_idx'),
+        ]
+
     def __str__(self):
         return f"{self.get_tipo_display()} - {self.metodo_pago} - ${self.monto}"
 
@@ -1116,13 +1139,18 @@ class Pedido(models.Model):
     
     class Meta:
         ordering = ['-fecha_creacion']
-    
+        indexes = [
+            models.Index(fields=['estado'], name='pedido_estado_idx'),
+            models.Index(fields=['fecha_entrega_estimada'], name='pedido_entrega_idx'),
+            models.Index(fields=['estado', 'fecha_entrega_estimada'], name='pedido_estado_entrega_idx'),
+        ]
+
     def save(self, *args, **kwargs):
         if not self.numero_ticket:
             import uuid
             self.numero_ticket = f"PED-{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)
-    
+
     def __str__(self):
         quien = "Novia" if self.es_vestido_novia else (self.dama.nombre if self.dama else "Dama")
         return f"{self.numero_ticket} - {quien} ({self.novia.nombre})"
