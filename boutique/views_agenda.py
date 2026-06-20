@@ -866,29 +866,52 @@ def api_crear_pedido_completo(request):
             creado_por=request.active_profile
         )
 
-        # 4. Guardar Medidas (soportando ambos formatos de nombre)
-        m_busto = data.get('m_busto') or data.get('busto')
-        m_cintura = data.get('m_cintura') or data.get('cintura')
-        m_cadera = data.get('m_cadera') or data.get('cadera')
-        m_largo = data.get('m_largo') or data.get('largo') or data.get('largo_aproximado')
-        m_bajo_busto = data.get('m_bajo_busto') or data.get('bajo_busto')
-        m_largo_talle = data.get('m_largo_talle') or data.get('largo_talle')
-        m_hombro_pezon = data.get('m_hombro_pezon') or data.get('hombro_pezon')
-        m_hombro_bajo_busto = data.get('m_hombro_bajo_busto') or data.get('hombro_bajo_busto')
-        m_notas = data.get('m_notas') or data.get('notas_medidas', '')
+        # 4. Guardar Medidas (soportando ambos formatos de nombre: m_campo y campo)
+        def _med(key, *aliases):
+            for k in (key, *aliases):
+                v = data.get(k)
+                if v: return v
+            return None
+
+        m_busto             = _med('m_busto', 'busto')
+        m_cintura           = _med('m_cintura', 'cintura')
+        m_cadera            = _med('m_cadera', 'cadera')
+        m_largo             = _med('m_largo', 'largo_aproximado', 'largo')
+        m_bajo_busto        = _med('m_bajo_busto', 'bajo_busto')
+        m_largo_talle       = _med('m_largo_talle', 'largo_talle')
+        m_hombro_pezon      = _med('m_hombro_pezon', 'hombro_pezon')
+        m_hombro_bajo_busto = _med('m_hombro_bajo_busto', 'hombro_bajo_busto')
+        m_hombro            = _med('m_hombro', 'hombro')
+        m_brazo             = _med('m_brazo', 'brazo')
+        m_espalda           = _med('m_espalda', 'espalda')
+        m_talle_del         = _med('m_talle_delantero', 'talle_delantero')
+        m_talle_tras        = _med('m_talle_trasero', 'talle_trasero')
+        m_altura_busto      = _med('m_altura_busto', 'altura_busto')
+        m_sep_busto         = _med('m_separacion_busto', 'separacion_busto')
+        m_notas             = _med('m_notas', 'notas_medidas', 'observaciones') or ''
+
+        def _d(v):
+            return safe_decimal(v, None) if v else None
 
         medidas = Medidas.objects.create(
             pedido=pedido,
             cliente=cliente_obj,
             cliente_nombre=nom,
-            busto=safe_decimal(m_busto, None) if m_busto else None,
-            cintura=safe_decimal(m_cintura, None) if m_cintura else None,
-            cadera=safe_decimal(m_cadera, None) if m_cadera else None,
-            largo_aproximado=safe_decimal(m_largo, None) if m_largo else None,
-            bajo_busto=safe_decimal(m_bajo_busto, None) if m_bajo_busto else None,
-            largo_talle=safe_decimal(m_largo_talle, None) if m_largo_talle else None,
-            hombro_pezon=safe_decimal(m_hombro_pezon, None) if m_hombro_pezon else None,
-            hombro_bajo_busto=safe_decimal(m_hombro_bajo_busto, None) if m_hombro_bajo_busto else None,
+            busto=_d(m_busto),
+            cintura=_d(m_cintura),
+            cadera=_d(m_cadera),
+            largo_aproximado=_d(m_largo),
+            bajo_busto=_d(m_bajo_busto),
+            largo_talle=_d(m_largo_talle),
+            hombro_pezon=_d(m_hombro_pezon),
+            hombro_bajo_busto=_d(m_hombro_bajo_busto),
+            hombro=_d(m_hombro),
+            brazo=_d(m_brazo),
+            espalda=_d(m_espalda),
+            talle_delantero=_d(m_talle_del),
+            talle_trasero=_d(m_talle_tras),
+            altura_busto=_d(m_altura_busto),
+            separacion_busto=_d(m_sep_busto),
             observaciones=m_notas
         )
 
