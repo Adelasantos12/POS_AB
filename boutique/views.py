@@ -73,26 +73,39 @@ def api_search_global(request):
             'folio': a.folio,
             'label': f"Apartado: {a.folio}",
             'customer': a.cliente_nombre,
+            'telefono': a.cliente_telefono,
+            'detalle': f"{a.categoria_cache} {a.color_cache} {a.talla_cache}".strip(),
             'total': float(a.total),
             'balance': float(a.saldo),
             'delivery_date': a.fecha_entrega_estimada.isoformat() if a.fecha_entrega_estimada else None,
-            'status': a.estado
+            'status': a.get_estado_display(),
+            'status_code': a.estado,
         })
 
-    # 3. Pedidos (Folio, Cliente, Novia, Dama, Teléfono)
+    # 3. Pedidos (Folio, Cliente, Novia, Dama, Teléfono, Modelo, Color, Talla)
     pedidos = Pedido.objects.filter(
         Q(numero_ticket__icontains=q) |
         Q(novia__nombre__icontains=q) |
         Q(dama__nombre__icontains=q) |
         Q(cliente__nombre__icontains=q) |
-        Q(cliente__telefono__icontains=q)
-    ).select_related('novia', 'dama', 'cliente').order_by('-fecha_creacion')[:10]
+        Q(cliente__telefono__icontains=q) |
+        Q(novia__telefono__icontains=q) |
+        Q(dama__telefono__icontains=q)
+    ).select_related('novia', 'dama', 'cliente', 'modelo', 'color').order_by('-fecha_creacion')[:10]
 
     for ped in pedidos:
-        customer = ""
-        if ped.dama: customer = ped.dama.nombre
-        elif ped.novia: customer = ped.novia.nombre
-        elif ped.cliente: customer = ped.cliente.nombre
+        customer, telefono = "", ""
+        if ped.dama:
+            customer, telefono = ped.dama.nombre, ped.dama.telefono or ""
+        elif ped.novia:
+            customer, telefono = ped.novia.nombre, ped.novia.telefono or ""
+        elif ped.cliente:
+            customer, telefono = ped.cliente.nombre, ped.cliente.telefono or ""
+
+        detalle_parts = []
+        if ped.modelo: detalle_parts.append(ped.modelo.nombre)
+        if ped.color: detalle_parts.append(ped.color.nombre)
+        if ped.talla: detalle_parts.append(f"T:{ped.talla}")
 
         results.append({
             'type': 'PEDIDO',
@@ -100,29 +113,38 @@ def api_search_global(request):
             'folio': ped.numero_ticket,
             'label': f"Pedido: {ped.numero_ticket}",
             'customer': customer,
+            'telefono': telefono,
+            'detalle': " · ".join(detalle_parts),
             'total': float(ped.precio),
             'balance': float(ped.saldo_pendiente),
             'delivery_date': ped.fecha_entrega_estimada.isoformat() if ped.fecha_entrega_estimada else None,
-            'status': ped.get_estado_display()
+            'status': ped.get_estado_display(),
+            'status_code': ped.estado,
         })
 
-    # 4. Novias (Nombre, Teléfono)
+    # 4. Novias (Nombre, Teléfono) — prefetch to avoid N+1
     novias = Novia.objects.filter(
         Q(nombre__icontains=q) |
         Q(telefono__icontains=q)
-    ).filter(activo=True)[:5]
+    ).filter(activo=True).prefetch_related('pedidos__pagos_pedido')[:5]
 
     for n in novias:
+        pedidos_n = list(n.pedidos.all())
+        total_n = sum(p.precio for p in pedidos_n)
+        pendiente_n = sum(p.saldo_pendiente for p in pedidos_n)
         results.append({
             'type': 'NOVIA',
             'id': n.id,
             'folio': f"NV-{n.id}",
             'label': f"Novia: {n.nombre}",
             'customer': n.nombre,
-            'total': float(sum(p.precio for p in n.pedidos.all())),
-            'balance': float(n.total_pendiente),
+            'telefono': n.telefono,
+            'detalle': f"Boda: {n.fecha_boda.strftime('%d/%m/%Y') if n.fecha_boda else '—'}",
+            'total': float(total_n),
+            'balance': float(pendiente_n),
             'delivery_date': n.fecha_entrega.isoformat() if n.fecha_entrega else None,
-            'status': 'Activa'
+            'status': 'Activa',
+            'status_code': 'ACTIVA',
         })
 
     return JsonResponse({'results': results})
