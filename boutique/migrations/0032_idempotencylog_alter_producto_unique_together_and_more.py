@@ -32,20 +32,4 @@ class Migration(migrations.Migration):
             name="producto",
             unique_together=set(),
         ),
-        migrations.AddConstraint(
-            model_name="producto",
-            constraint=models.UniqueConstraint(
-                fields=(
-                    "categoria",
-                    "modelo",
-                    "tela",
-                    "color",
-                    "talla",
-                    "rasgo1",
-                    "rasgo2",
-                ),
-                name="unique_producto_variant",
-                nulls_distinct=False,
-            ),
-        ),
     ]
