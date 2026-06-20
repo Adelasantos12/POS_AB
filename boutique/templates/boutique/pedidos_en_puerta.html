@@ -130,6 +130,20 @@
                                         <i class="bi bi-cash"></i>
                                     </button>
                                     {% endif %}
+                                    {% if p.estado not in 'LISTO,RECIBIDO,ENTREGADO' %}
+                                    <button class="btn btn-xs btn-outline-warning"
+                                            onclick="marcarLlegoATienda({{ p.id }})"
+                                            title="Llegó a tienda">
+                                        <i class="bi bi-box-arrow-in-down"></i>
+                                    </button>
+                                    {% endif %}
+                                    {% if p.saldo_pendiente == 0 and p.estado != 'ENTREGADO' %}
+                                    <button class="btn btn-xs btn-outline-danger"
+                                            onclick="marcarEntregado('pedido', {{ p.id }})"
+                                            title="Marcar entregado">
+                                        <i class="bi bi-check2-circle"></i>
+                                    </button>
+                                    {% endif %}
                                     <button class="btn btn-xs btn-outline-primary"
                                             onclick="abrirModalEntrega('pedido', {{ p.id }}, '{{ p.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ p.notas_entrega|escapejs }}')"
                                             title="Editar Entrega">
@@ -165,5 +179,33 @@
 
 {% include 'boutique/includes/modal_cobro_unificado.html' %}
 {% include 'boutique/includes/modal_entrega.html' %}
+
+<script>
+async function marcarLlegoATienda(pedidoId) {
+    if (!confirm('¿Confirmar que este pedido llegó a tienda?')) return;
+    try {
+        const res = await fetch(`/api/llego-a-tienda/pedido/${pedidoId}/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+        const data = await res.json();
+        if (data.status === 'ok') { location.reload(); }
+        else { alert('Error: ' + (data.message || 'Error desconocido')); }
+    } catch (e) { alert('Error de red'); }
+}
+
+async function marcarEntregado(tipo, id) {
+    if (!confirm('¿Marcar como ENTREGADO? Esta acción es definitiva.')) return;
+    try {
+        const res = await fetch(`/api/entregar/${tipo}/${id}/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+        const data = await res.json();
+        if (data.status === 'ok') { location.reload(); }
+        else { alert(data.message || 'Error al marcar entregado'); }
+    } catch (e) { alert('Error de red'); }
+}
+</script>
 
 {% endblock %}

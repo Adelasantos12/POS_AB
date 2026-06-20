@@ -94,6 +94,7 @@ urlpatterns = [
     path('api/pedido/<int:pedido_id>/medidas/', views.api_guardar_medidas, name='api_guardar_medidas'),
     path('api/pedido/<int:pedido_id>/medidas/reutilizar/', views.api_obtener_medidas_reutilizar, name='api_obtener_medidas_reutilizar'),
     path('api/entregar/<str:tipo>/<int:pk>/', views.api_entregar_item, name='api_entregar_item'),
+    path('api/llego-a-tienda/<str:tipo>/<int:pk>/', views.api_llego_a_tienda, name='api_llego_a_tienda'),
 
     # Tickets e Impresión
     path('api/tickets/<str:folio>/detalle/', views.api_ticket_detalle, name='api_ticket_detalle'),
@@ -106,6 +107,13 @@ urlpatterns = [
     path('api/apartado/crear/', views_apartados.api_crear_apartado, name='api_crear_apartado'),
     path('api/apartado/editar/<int:pk>/', views_apartados.api_apartado_editar, name='api_apartado_editar'),
     
+    # Servicios y ajustes
+    path('servicios/', views.servicios_list, name='servicios_list'),
+    path('api/servicio/crear/', views.api_crear_servicio, name='api_crear_servicio'),
+    path('api/servicio/<int:pk>/cobrar/', views.api_cobrar_servicio, name='api_cobrar_servicio'),
+    path('api/servicio/<int:pk>/estado/', views.api_cambiar_estado_servicio, name='api_cambiar_estado_servicio'),
+    path('api/servicio/<int:pk>/eliminar/', views.api_eliminar_servicio, name='api_eliminar_servicio'),
+
     # Pedidos en puerta
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),
     path('resumen-nocturno/', views_agenda.resumen_nocturno, name='resumen_nocturno'),

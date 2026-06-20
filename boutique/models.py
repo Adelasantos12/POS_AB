@@ -29,6 +29,7 @@ class ConfiguracionTienda(models.Model):
     # Políticas
     politica_cambios = models.TextField(blank=True, verbose_name="Políticas de Cambios/Devoluciones")
     politica_apartados = models.TextField(blank=True, verbose_name="Políticas de Apartados")
+    horarios = models.TextField(blank=True, verbose_name="Horarios de atención", help_text="Ej: Lun-Vie 10:00-20:00")
 
     # Folios
     prefijo_sucursal = models.CharField(max_length=10, default="GDL", help_text="Ej: GDL")
@@ -107,20 +108,26 @@ class Medidas(models.Model):
     # Datos snapshot o para reuso
     cliente_nombre = models.CharField(max_length=200, blank=True)
 
-    # Medidas en cm
+    # Medidas en cm — primarias
     busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     cintura = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     cadera = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    largo_aproximado = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Largo aprox.")
+    # Medidas secundarias ampliadas
     hombro = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    largo = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     brazo = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     espalda = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     talle_delantero = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     talle_trasero = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     altura_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     separacion_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    bajo_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Bajo busto")
+    largo_talle = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Largo talle")
+    hombro_pezon = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Hombro-pezón")
+    hombro_bajo_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Hombro-bajo busto")
 
     observaciones = models.TextField(blank=True)
+    notas = models.TextField(blank=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -269,6 +276,8 @@ class Ticket(models.Model):
         ('VENTA', 'Venta'),
         ('APARTADO', 'Apartado'),
         ('PEDIDO', 'Pedido/Hechura'),
+        ('SERVICIO', 'Servicio/Ajuste'),
+        ('ABONO', 'Abono'),
         ('AJUSTE', 'Ajuste'),
         ('DEVOLUCION', 'Devolución'),
     ]
@@ -307,6 +316,7 @@ class Ticket(models.Model):
     apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_asociados')
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
     novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets_relacionados')
+    servicio = models.ForeignKey('Servicio', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
     caja = models.ForeignKey('CorteCaja', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
 
     def save(self, *args, **kwargs):
@@ -524,6 +534,7 @@ class Apartado(models.Model):
     ESTADOS = [
         ('VIGENTE', 'Vigente'),
         ('VENCIDO', 'Vencido'),
+        ('LLEGO_A_TIENDA', 'Llegó a tienda'),
         ('CANCELADO', 'Cancelado'),
         ('ENTREGADO', 'Entregado'),
     ]
@@ -569,6 +580,10 @@ class Apartado(models.Model):
     fecha_entrega_estimada = models.DateField(null=True, blank=True)
     notas_entrega = models.TextField(blank=True)
     agenda_evento = models.ForeignKey('CitaAgenda', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_vinculados')
+
+    # Tracking "llegó a tienda"
+    llego_a_tienda_en = models.DateTimeField(null=True, blank=True)
+    llego_a_tienda_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='apartados_llegaron')
 
     def save(self, *args, **kwargs):
         if not self.folio:
@@ -636,6 +651,7 @@ class MovimientoCaja(models.Model):
         ('VENTA', 'Venta'),
         ('ABONO_PEDIDO', 'Abono de Pedido'),
         ('ABONO_APARTADO', 'Abono de Apartado'),
+        ('ABONO_SERVICIO', 'Abono de Servicio'),
         ('INGRESO', 'Ingreso Extra'),
         ('GASTO', 'Gasto/Egreso'),
         ('DEVOLUCION', 'Devolución'),
@@ -659,6 +675,7 @@ class MovimientoCaja(models.Model):
     venta = models.ForeignKey('Venta', on_delete=models.SET_NULL, null=True, blank=True)
     pedido = models.ForeignKey('Pedido', on_delete=models.SET_NULL, null=True, blank=True)
     apartado = models.ForeignKey('Apartado', on_delete=models.SET_NULL, null=True, blank=True)
+    servicio = models.ForeignKey('Servicio', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         return f"{self.get_tipo_display()} - {self.metodo_pago} - ${self.monto}"
@@ -757,6 +774,10 @@ class Novia(models.Model):
     m_talle_trasero = models.CharField(max_length=50, blank=True, verbose_name="Talle Trasero")
     m_altura_busto = models.CharField(max_length=50, blank=True, verbose_name="Altura Busto")
     m_separacion_busto = models.CharField(max_length=50, blank=True, verbose_name="Separación Busto")
+    m_bajo_busto = models.CharField(max_length=50, blank=True, verbose_name="Bajo Busto")
+    m_largo_talle = models.CharField(max_length=50, blank=True, verbose_name="Largo Talle")
+    m_hombro_pezon = models.CharField(max_length=50, blank=True, verbose_name="Hombro-Pezón")
+    m_hombro_bajo_busto = models.CharField(max_length=50, blank=True, verbose_name="Hombro-Bajo Busto")
     m_notas_medidas = models.TextField(blank=True, verbose_name="Notas de Medidas")
 
     # Detalles para Hechura Especial
@@ -917,7 +938,17 @@ class Dama(models.Model):
     m_talle_trasero = models.CharField(max_length=50, blank=True, verbose_name="Talle Trasero")
     m_altura_busto = models.CharField(max_length=50, blank=True, verbose_name="Altura Busto")
     m_separacion_busto = models.CharField(max_length=50, blank=True, verbose_name="Separación Busto")
+    m_bajo_busto = models.CharField(max_length=50, blank=True, verbose_name="Bajo Busto")
+    m_largo_talle = models.CharField(max_length=50, blank=True, verbose_name="Largo Talle")
+    m_hombro_pezon = models.CharField(max_length=50, blank=True, verbose_name="Hombro-Pezón")
+    m_hombro_bajo_busto = models.CharField(max_length=50, blank=True, verbose_name="Hombro-Bajo Busto")
     m_notas_medidas = models.TextField(blank=True, verbose_name="Notas de Medidas")
+
+    # Fechas individuales de la dama
+    fecha_evento = models.DateField(null=True, blank=True, help_text="Fecha del evento de la dama")
+    fecha_entrega = models.DateField(null=True, blank=True, help_text="Fecha de entrega del vestido")
+    deadline_medidas = models.DateField(null=True, blank=True, help_text="Fecha límite para tomar medidas")
+    medidas_tomadas = models.BooleanField(default=False, help_text="¿Ya se tomaron todas las medidas?")
 
     notas_ajustes = models.TextField(blank=True, help_text="Notas de ajustes específicos")
     
@@ -1016,6 +1047,8 @@ class Pedido(models.Model):
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, related_name='pedidos_creados')
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
+    llego_a_tienda_en = models.DateTimeField(null=True, blank=True)
+    llego_a_tienda_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_recibidos')
     
     class Meta:
         ordering = ['-fecha_creacion']
@@ -1048,8 +1081,8 @@ class Pedido(models.Model):
             return 0
 
         m = self.medidas
-        campos_clave = ['busto', 'cintura', 'cadera', 'largo']
-        campos_secundarios = ['hombro', 'brazo', 'espalda', 'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']
+        campos_clave = ['busto', 'cintura', 'cadera', 'largo_aproximado']
+        campos_secundarios = ['hombro', 'brazo', 'espalda', 'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto', 'bajo_busto', 'largo_talle', 'hombro_pezon', 'hombro_bajo_busto']
 
         completos_clave = sum(1 for f in campos_clave if getattr(m, f) is not None)
         completos_secundarios = sum(1 for f in campos_secundarios if getattr(m, f) is not None)
@@ -1166,9 +1199,84 @@ class NotaPedido(models.Model):
     texto = models.TextField()
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     fecha = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-fecha']
-    
+
     def __str__(self):
         return f"Nota {self.fecha.strftime('%d/%m')} - {self.pedido.numero_ticket}"
+
+
+# ============================================================
+# SERVICIOS Y AJUSTES
+# ============================================================
+
+class Servicio(models.Model):
+    """Servicio de ajuste, costura u otro trabajo sin pedido de vestido"""
+    TIPOS = [
+        ('AJUSTE', 'Ajuste de vestido'),
+        ('COSTURA', 'Costura / Arreglo'),
+        ('LAVADO', 'Lavado'),
+        ('BORDADO', 'Bordado'),
+        ('OTRO', 'Otro servicio'),
+    ]
+    ESTADOS = [
+        ('RECIBIDO', 'Recibido'),
+        ('EN_PROCESO', 'En proceso'),
+        ('LISTO', 'Listo para entrega'),
+        ('ENTREGADO', 'Entregado'),
+        ('CANCELADO', 'Cancelado'),
+    ]
+
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='AJUSTE')
+    descripcion = models.TextField()
+    cliente = models.ForeignKey('Cliente', on_delete=models.SET_NULL, null=True, blank=True, related_name='servicios')
+    novia = models.ForeignKey('Novia', on_delete=models.SET_NULL, null=True, blank=True, related_name='servicios')
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='RECIBIDO', db_index=True)
+    costo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    fecha_prometida = models.DateField(null=True, blank=True)
+    notas = models.TextField(blank=True)
+    creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-fecha_creacion']
+
+    def __str__(self):
+        cliente_str = self.cliente.nombre if self.cliente else (self.novia.nombre if self.novia else 'S/C')
+        return f"SRV-{self.pk} {self.get_tipo_display()} - {cliente_str}"
+
+    @property
+    def total_pagado(self):
+        return sum(p.monto for p in self.pagos_servicio.all())
+
+    @property
+    def saldo_pendiente(self):
+        return max(self.costo - self.total_pagado, Decimal('0'))
+
+
+class PagoServicio(models.Model):
+    """Pagos contra un Servicio"""
+    METODOS = [
+        ('EFECTIVO', 'Efectivo'),
+        ('TARJETA', 'Tarjeta'),
+        ('TRANSFERENCIA', 'Transferencia'),
+    ]
+    servicio = models.ForeignKey(Servicio, on_delete=models.CASCADE, related_name='pagos_servicio')
+    monto = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo = models.CharField(max_length=20, choices=METODOS, default='EFECTIVO')
+    referencia = models.CharField(max_length=100, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+    registrado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
+    notas = models.CharField(max_length=200, blank=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        srv = self.servicio
+        srv.anticipo = sum(p.monto for p in srv.pagos_servicio.all())
+        srv.save(update_fields=['anticipo'])
+
+    def __str__(self):
+        return f"${self.monto} - {self.servicio}"

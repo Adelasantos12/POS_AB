@@ -1614,6 +1614,141 @@ def imprimir_etiquetas(request):
 
 
 # ============================================================
+# SERVICIOS Y AJUSTES
+# ============================================================
+
+@login_required
+@profile_permission_required('Vendedor')
+def servicios_list(request):
+    """Lista de servicios activos y búsqueda"""
+    from .models import Servicio
+    q = request.GET.get('q', '').strip()
+    estado = request.GET.get('estado', '')
+
+    servicios = Servicio.objects.select_related('cliente', 'novia', 'creado_por').prefetch_related('pagos_servicio')
+
+    if q:
+        servicios = servicios.filter(
+            Q(descripcion__icontains=q) |
+            Q(cliente__nombre__icontains=q) |
+            Q(cliente__telefono__icontains=q) |
+            Q(novia__nombre__icontains=q)
+        )
+    if estado:
+        servicios = servicios.filter(estado=estado)
+    else:
+        servicios = servicios.exclude(estado__in=['ENTREGADO', 'CANCELADO'])
+
+    clientes = []
+    try:
+        from .models import Cliente
+        clientes = Cliente.objects.order_by('nombre').values('id', 'nombre', 'telefono')[:200]
+    except Exception:
+        pass
+
+    return render(request, 'boutique/servicios_list.html', {
+        'servicios': servicios,
+        'q': q,
+        'estado_filtro': estado,
+        'clientes': list(clientes),
+        'ESTADOS': Servicio.ESTADOS,
+        'TIPOS': Servicio.TIPOS,
+    })
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_crear_servicio(request):
+    """Crea un nuevo servicio/ajuste"""
+    from .models import Servicio, Cliente
+    try:
+        data = json.loads(request.body)
+        cliente = None
+        if data.get('cliente_id'):
+            cliente = Cliente.objects.filter(pk=data['cliente_id']).first()
+        elif data.get('cliente_nombre'):
+            tel = data.get('cliente_telefono', '0000000000')
+            cliente, _ = Cliente.objects.get_or_create(
+                telefono=tel,
+                defaults={'nombre': data['cliente_nombre']}
+            )
+
+        srv = Servicio.objects.create(
+            tipo=data.get('tipo', 'AJUSTE'),
+            descripcion=data.get('descripcion', ''),
+            cliente=cliente,
+            costo=safe_decimal(data.get('costo', 0)),
+            anticipo=safe_decimal(data.get('anticipo', 0)),
+            fecha_prometida=data.get('fecha_prometida') or None,
+            notas=data.get('notas', ''),
+            creado_por=request.active_profile,
+        )
+        return JsonResponse({'status': 'ok', 'id': srv.pk})
+    except Exception as e:
+        logger.exception("Error en api_crear_servicio")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_cobrar_servicio(request, pk):
+    """Registra un pago para un servicio"""
+    from .models import Servicio, PagoServicio
+    srv = get_object_or_404(Servicio, pk=pk)
+    try:
+        data = json.loads(request.body)
+        monto = safe_decimal(data.get('monto', 0))
+        if monto <= 0:
+            return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
+
+        PagoServicio.objects.create(
+            servicio=srv,
+            monto=monto,
+            metodo=data.get('metodo', 'EFECTIVO'),
+            referencia=data.get('referencia', ''),
+            registrado_por=request.active_profile,
+            notas=data.get('notas', ''),
+        )
+        srv.refresh_from_db()
+        return JsonResponse({'status': 'ok', 'saldo': float(srv.saldo_pendiente)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_cambiar_estado_servicio(request, pk):
+    """Cambia el estado de un servicio"""
+    from .models import Servicio
+    srv = get_object_or_404(Servicio, pk=pk)
+    try:
+        data = json.loads(request.body)
+        nuevo_estado = data.get('estado')
+        estados_validos = [s[0] for s in Servicio.ESTADOS]
+        if nuevo_estado not in estados_validos:
+            return JsonResponse({'status': 'error', 'message': 'Estado inválido'}, status=400)
+        srv.estado = nuevo_estado
+        srv.save(update_fields=['estado'])
+        return JsonResponse({'status': 'ok', 'estado_display': srv.get_estado_display()})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO'])
+def api_eliminar_servicio(request, pk):
+    """Elimina un servicio (solo admin)"""
+    from .models import Servicio
+    srv = get_object_or_404(Servicio, pk=pk)
+    srv.delete()
+    return JsonResponse({'status': 'ok'})
+
+
+# ============================================================
 # DASHBOARD Y REPORTES
 # ============================================================
 
@@ -2191,13 +2326,20 @@ def api_guardar_medidas(request, pedido_id):
         data = json.loads(request.body)
         medidas, _ = Medidas.objects.get_or_create(pedido=pedido)
 
-        for field in ['busto', 'cintura', 'cadera', 'hombro', 'largo', 'brazo', 'espalda',
-                      'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']:
-            if field in data:
-                val = data.get(field)
+        for field in ['busto', 'cintura', 'cadera', 'hombro', 'largo_aproximado', 'brazo', 'espalda',
+                      'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto',
+                      'bajo_busto', 'largo_talle', 'hombro_pezon', 'hombro_bajo_busto']:
+            # Accept 'largo' as alias for backwards compat
+            key = 'largo_aproximado' if field == 'largo_aproximado' and 'largo_aproximado' not in data and 'largo' in data else field
+            src_key = 'largo' if field == 'largo_aproximado' and 'largo' in data and 'largo_aproximado' not in data else field
+            if src_key in data:
+                val = data.get(src_key)
                 setattr(medidas, field, safe_decimal(val, None) if val and val != '' else None)
 
         medidas.observaciones = data.get('observaciones', '')
+        medidas.notas = data.get('notas', medidas.notas)
+        if pedido.cliente:
+            medidas.cliente = pedido.cliente
         if pedido.novia:
             medidas.cliente_nombre = pedido.novia.nombre
 
@@ -2220,19 +2362,17 @@ def api_obtener_medidas_reutilizar(request, pedido_id):
 
     if prev_pedido and hasattr(prev_pedido, 'medidas'):
         m = prev_pedido.medidas
+        def fv(val):
+            return float(val) if val is not None else None
         data = {
-            'busto': float(m.busto) if m.busto else None,
-            'cintura': float(m.cintura) if m.cintura else None,
-            'cadera': float(m.cadera) if m.cadera else None,
-            'hombro': float(m.hombro) if m.hombro else None,
-            'largo': float(m.largo) if m.largo else None,
-            'brazo': float(m.brazo) if m.brazo else None,
-            'espalda': float(m.espalda) if m.espalda else None,
-            'talle_delantero': float(m.talle_delantero) if m.talle_delantero else None,
-            'talle_trasero': float(m.talle_trasero) if m.talle_trasero else None,
-            'altura_busto': float(m.altura_busto) if m.altura_busto else None,
-            'separacion_busto': float(m.separacion_busto) if m.separacion_busto else None,
-            'observaciones': m.observaciones
+            'busto': fv(m.busto), 'cintura': fv(m.cintura), 'cadera': fv(m.cadera),
+            'hombro': fv(m.hombro), 'largo_aproximado': fv(m.largo_aproximado),
+            'brazo': fv(m.brazo), 'espalda': fv(m.espalda),
+            'talle_delantero': fv(m.talle_delantero), 'talle_trasero': fv(m.talle_trasero),
+            'altura_busto': fv(m.altura_busto), 'separacion_busto': fv(m.separacion_busto),
+            'bajo_busto': fv(m.bajo_busto), 'largo_talle': fv(m.largo_talle),
+            'hombro_pezon': fv(m.hombro_pezon), 'hombro_bajo_busto': fv(m.hombro_bajo_busto),
+            'observaciones': m.observaciones, 'notas': m.notas,
         }
         return JsonResponse({'medidas': data})
 
@@ -2257,6 +2397,27 @@ def api_entregar_item(request, tipo, pk):
     item.estado = 'ENTREGADO'
     item.save()
     return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_llego_a_tienda(request, tipo, pk):
+    """Marca un Pedido o Apartado como llegado a tienda."""
+    from .models import Pedido, Apartado
+    if tipo == 'pedido':
+        item = get_object_or_404(Pedido, pk=pk)
+        item.estado = 'RECIBIDO'
+    elif tipo == 'apartado':
+        item = get_object_or_404(Apartado, pk=pk)
+        item.estado = 'LLEGO_A_TIENDA'
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+    item.llego_a_tienda_en = timezone.now()
+    item.llego_a_tienda_por = request.active_profile
+    item.save()
+    return JsonResponse({'status': 'ok'})
+
 
 @require_POST
 @login_required
