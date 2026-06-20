@@ -95,6 +95,7 @@ urlpatterns = [
     path('api/pedido/<int:pedido_id>/medidas/reutilizar/', views.api_obtener_medidas_reutilizar, name='api_obtener_medidas_reutilizar'),
     path('api/entregar/<str:tipo>/<int:pk>/', views.api_entregar_item, name='api_entregar_item'),
     path('api/llego-a-tienda/<str:tipo>/<int:pk>/', views.api_llego_a_tienda, name='api_llego_a_tienda'),
+    path('api/pedido/<int:pk>/estado/', views.api_cambiar_estado_pedido, name='api_cambiar_estado_pedido'),
 
     # Tickets e Impresión
     path('api/tickets/<str:folio>/detalle/', views.api_ticket_detalle, name='api_ticket_detalle'),

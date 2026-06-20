@@ -336,45 +336,109 @@ class Ticket(models.Model):
     def __str__(self): return self.folio
 
     def populate_from_obj(self, obj):
-        """Pobla el ticket desde una Venta, Apartado o Pedido"""
-        from django.core.serializers.json import DjangoJSONEncoder
-        import json
-
-        self.total = getattr(obj, 'total', getattr(obj, 'precio', 0))
-        self.subtotal = self.total # Ajustar si hay desglose real
-        self.cliente_nombre = getattr(obj, 'cliente_nombre', '') or (obj.cliente.nombre if hasattr(obj, 'cliente') and obj.cliente else '')
+        """Pobla el ticket desde una Venta, Apartado, Pedido o Servicio"""
+        self.total = getattr(obj, 'total', getattr(obj, 'precio', getattr(obj, 'costo', 0)))
+        self.subtotal = self.total
+        self.cliente_nombre = (
+            getattr(obj, 'cliente_nombre', '')
+            or (obj.cliente.nombre if hasattr(obj, 'cliente') and obj.cliente else '')
+        )
+        self.cliente_telefono = (
+            getattr(obj, 'cliente_telefono', '')
+            or (obj.cliente.telefono if hasattr(obj, 'cliente') and obj.cliente else '')
+        )
 
         if hasattr(obj, 'anticipo'):
             self.total_pagado = obj.anticipo
             self.cambio = 0
 
-        # Generar snapshot JSON
+        # Items
         items_data = []
         if hasattr(obj, 'items'):
             for item in obj.items.all():
                 desc = str(item.producto) if hasattr(item, 'producto') and item.producto else getattr(item, 'descripcion', 'Sin descripción')
                 items_data.append({
                     'descripcion': desc,
-                    'modelo': getattr(item, 'modelo', ''),
-                    'color': getattr(item, 'color', ''),
-                    'talla': getattr(item, 'talla', ''),
+                    'modelo': str(getattr(item, 'modelo', '') or ''),
+                    'color': str(getattr(item, 'color', '') or ''),
+                    'talla': getattr(item, 'talla', '') or '',
                     'cantidad': item.cantidad,
                     'precio_unitario': float(item.precio_unitario),
                     'subtotal': float(item.subtotal if hasattr(item, 'subtotal') else item.cantidad * item.precio_unitario)
                 })
 
-        # Datos de pago si es abono
-        pago_actual = float(getattr(obj, 'monto_abono', 0)) # Si viene de un servicio que lo inyecta
+        # Historial de abonos
+        abonos = []
+        abono_qs = None
+        if hasattr(obj, 'pagos_pedido'):
+            abono_qs = obj.pagos_pedido.order_by('fecha')
+        elif hasattr(obj, 'pagos_apartado'):
+            abono_qs = obj.pagos_apartado.order_by('fecha')
+        elif hasattr(obj, 'pagos'):
+            abono_qs = obj.pagos.order_by('fecha')
+        elif hasattr(obj, 'pagos_servicio'):
+            abono_qs = obj.pagos_servicio.order_by('fecha')
+        if abono_qs is not None:
+            for p in abono_qs:
+                abonos.append({
+                    'fecha': p.fecha.isoformat(),
+                    'monto': float(p.monto),
+                    'metodo': p.metodo,
+                })
+
+        total_pagado_acumulado = sum(a['monto'] for a in abonos)
+
+        # Medidas
+        medidas_dict = {}
+        if hasattr(obj, 'medidas'):
+            try:
+                m = obj.medidas
+                medidas_dict = {
+                    'busto': str(m.busto or ''),
+                    'cintura': str(m.cintura or ''),
+                    'cadera': str(m.cadera or ''),
+                    'largo_aproximado': str(m.largo_aproximado or ''),
+                    'bajo_busto': str(m.bajo_busto or ''),
+                    'largo_talle': str(m.largo_talle or ''),
+                    'hombro_pezon': str(m.hombro_pezon or ''),
+                    'hombro_bajo_busto': str(m.hombro_bajo_busto or ''),
+                }
+            except Exception:
+                pass
+
+        # Novia/dama
+        novia_nombre = ''
+        dama_nombre = ''
+        if hasattr(obj, 'novia') and obj.novia:
+            novia_nombre = obj.novia.nombre
+        if hasattr(obj, 'dama') and obj.dama:
+            dama_nombre = obj.dama.nombre
+
+        # Fecha de entrega
+        fecha_entrega = ''
+        if getattr(obj, 'fecha_entrega_estimada', None):
+            fecha_entrega = str(obj.fecha_entrega_estimada)
+        elif getattr(obj, 'fecha_prometida', None):
+            fecha_entrega = str(obj.fecha_prometida)
 
         snapshot = {
             'folio': self.folio,
             'tipo': self.tipo,
             'fecha': self.fecha_hora.isoformat(),
             'cliente': self.cliente_nombre,
+            'cliente_telefono': self.cliente_telefono,
+            'metodo_pago': getattr(self, '_metodo_pago_snapshot', ''),
+            'fecha_entrega_estimada': fecha_entrega,
+            'notas_entrega': getattr(obj, 'notas_entrega', '') or '',
+            'novia_nombre': novia_nombre,
+            'dama_nombre': dama_nombre,
+            'medidas': medidas_dict,
             'total': float(self.total),
             'total_pagado': float(self.total_pagado),
+            'total_pagado_acumulado': total_pagado_acumulado,
             'saldo_pendiente': float(self.total - self.total_pagado),
-            'items': items_data
+            'abonos': abonos,
+            'items': items_data,
         }
         self.snapshot_json = snapshot
         self.save()

@@ -870,7 +870,11 @@ def api_crear_pedido_completo(request):
         m_busto = data.get('m_busto') or data.get('busto')
         m_cintura = data.get('m_cintura') or data.get('cintura')
         m_cadera = data.get('m_cadera') or data.get('cadera')
-        m_largo = data.get('m_largo') or data.get('largo')
+        m_largo = data.get('m_largo') or data.get('largo') or data.get('largo_aproximado')
+        m_bajo_busto = data.get('m_bajo_busto') or data.get('bajo_busto')
+        m_largo_talle = data.get('m_largo_talle') or data.get('largo_talle')
+        m_hombro_pezon = data.get('m_hombro_pezon') or data.get('hombro_pezon')
+        m_hombro_bajo_busto = data.get('m_hombro_bajo_busto') or data.get('hombro_bajo_busto')
         m_notas = data.get('m_notas') or data.get('notas_medidas', '')
 
         medidas = Medidas.objects.create(
@@ -880,7 +884,11 @@ def api_crear_pedido_completo(request):
             busto=safe_decimal(m_busto, None) if m_busto else None,
             cintura=safe_decimal(m_cintura, None) if m_cintura else None,
             cadera=safe_decimal(m_cadera, None) if m_cadera else None,
-            largo=safe_decimal(m_largo, None) if m_largo else None,
+            largo_aproximado=safe_decimal(m_largo, None) if m_largo else None,
+            bajo_busto=safe_decimal(m_bajo_busto, None) if m_bajo_busto else None,
+            largo_talle=safe_decimal(m_largo_talle, None) if m_largo_talle else None,
+            hombro_pezon=safe_decimal(m_hombro_pezon, None) if m_hombro_pezon else None,
+            hombro_bajo_busto=safe_decimal(m_hombro_bajo_busto, None) if m_hombro_bajo_busto else None,
             observaciones=m_notas
         )
 

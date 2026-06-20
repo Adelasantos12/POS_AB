@@ -5,7 +5,7 @@ from django.db.models import F
 from django.utils import timezone
 from ..models import (
     CorteCaja, MovimientoCaja, PagoPedido, PagoApartado,
-    Ticket, Venta, Pago, MovimientoInventario
+    Ticket, Venta, Pago, MovimientoInventario, PagoServicio
 )
 
 METODOS_VALIDOS = ('EFECTIVO', 'TARJETA', 'TRANSFERENCIA')
@@ -74,6 +74,17 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
                 cliente_nombre = origen_obj.cliente.nombre
                 cliente_telefono = origen_obj.cliente.telefono or ''
 
+        elif origen_tipo == 'servicio':
+            PagoServicio.objects.create(
+                servicio=origen_obj, monto=monto, metodo=metodo,
+                referencia=referencia, registrado_por=usuario, notas=notas
+            )
+            ticket_tipo = 'SERVICIO'
+            mov_tipo = 'ABONO_SERVICIO'
+            if origen_obj.cliente:
+                cliente_nombre = origen_obj.cliente.nombre
+                cliente_telefono = origen_obj.cliente.telefono or ''
+
         else:
             raise ValueError(f"Origen de cobro no soportado: {origen_tipo}")
 
@@ -85,6 +96,7 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
         if origen_tipo == 'pedido':   mov_kwargs['pedido']   = origen_obj
         if origen_tipo == 'apartado': mov_kwargs['apartado'] = origen_obj
         if origen_tipo == 'venta':    mov_kwargs['venta']    = origen_obj
+        if origen_tipo == 'servicio': mov_kwargs['servicio'] = origen_obj
         mov = MovimientoCaja.objects.create(**mov_kwargs)
 
         # 3. Ticket
@@ -106,6 +118,8 @@ def registrar_cobro(origen_tipo, origen_obj, monto, metodo, usuario, referencia=
             ticket.apartado = origen_obj
         elif origen_tipo == 'venta':
             ticket.venta = origen_obj
+        elif origen_tipo == 'servicio':
+            ticket.servicio = origen_obj
         ticket.save()
         ticket.populate_from_obj(origen_obj)
 

@@ -1716,8 +1716,9 @@ def api_crear_servicio(request):
 @login_required
 @profile_permission_required('Vendedor')
 def api_cobrar_servicio(request, pk):
-    """Registra un pago para un servicio"""
-    from .models import Servicio, PagoServicio
+    """Registra un pago para un servicio (pasa por caja y genera ticket)"""
+    from .models import Servicio
+    from .services.cash_service import registrar_cobro
     srv = get_object_or_404(Servicio, pk=pk)
     try:
         data = json.loads(request.body)
@@ -1725,17 +1726,21 @@ def api_cobrar_servicio(request, pk):
         if monto <= 0:
             return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
 
-        PagoServicio.objects.create(
-            servicio=srv,
+        ticket = registrar_cobro(
+            origen_tipo='servicio',
+            origen_obj=srv,
             monto=monto,
             metodo=data.get('metodo', 'EFECTIVO'),
+            usuario=request.active_profile,
             referencia=data.get('referencia', ''),
-            registrado_por=request.active_profile,
             notas=data.get('notas', ''),
         )
         srv.refresh_from_db()
-        return JsonResponse({'status': 'ok', 'saldo': float(srv.saldo_pendiente)})
+        return JsonResponse({'status': 'ok', 'saldo': float(srv.saldo_pendiente), 'folio': ticket.folio})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     except Exception as e:
+        logger.exception("Error en api_cobrar_servicio")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
@@ -2439,6 +2444,28 @@ def api_llego_a_tienda(request, tipo, pk):
     item.llego_a_tienda_por = request.active_profile
     item.save()
     return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_cambiar_estado_pedido(request, pk):
+    """Actualiza el estado de un Pedido (transiciones de taller/proveedor)."""
+    from .models import Pedido
+    pedido = get_object_or_404(Pedido, pk=pk)
+    try:
+        data = json.loads(request.body)
+        nuevo_estado = data.get('estado', '').strip()
+        estados_validos = [s[0] for s in Pedido.ESTADOS]
+        if nuevo_estado not in estados_validos:
+            return JsonResponse({'status': 'error', 'message': f'Estado inválido: {nuevo_estado}'}, status=400)
+        if nuevo_estado == 'ENTREGADO' and pedido.saldo_pendiente > 0:
+            return JsonResponse({'status': 'error', 'message': 'No se puede entregar con saldo pendiente'}, status=400)
+        pedido.estado = nuevo_estado
+        pedido.save(update_fields=['estado', 'fecha_actualizacion'])
+        return JsonResponse({'status': 'ok', 'estado_display': pedido.get_estado_display()})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 @require_POST
