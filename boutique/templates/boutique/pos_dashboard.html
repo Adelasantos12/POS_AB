@@ -108,230 +108,253 @@
     </div>
 </div>
 
-<!-- Venta Rápida Modal -->
+<!-- Venta Rápida Modal — Wizard 3 pasos -->
 <div class="modal fade" id="ventaRapidaModal" tabindex="-1" data-testid="venta-rapida-modal">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow" style="border-radius: 20px;">
-            <div class="modal-header border-0 p-4 pb-0">
-                <h5 class="modal-title fw-bold">Venta Rápida / No Registrado</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header border-0 px-4 pt-4 pb-2">
+                <div class="w-100">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="modal-title fw-bold mb-0" id="vrStepTitle">¿Qué quieres registrar?</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <!-- Step dots -->
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="vr-step-dot active" data-step="1" style="width:10px;height:10px;border-radius:50%;background:var(--primary);transition:all .2s;"></div>
+                        <div class="vr-step-dot" data-step="2" style="width:8px;height:8px;border-radius:50%;background:#E2E8F0;transition:all .2s;"></div>
+                        <div class="vr-step-dot" data-step="3" style="width:8px;height:8px;border-radius:50%;background:#E2E8F0;transition:all .2s;"></div>
+                        <span id="vrStepLabel" class="small text-muted ms-1">Paso 1 de 3</span>
+                    </div>
+                </div>
             </div>
-            <div class="modal-body p-4">
+            <div class="modal-body px-4 py-3" style="min-height: 300px; max-height: 65vh; overflow-y: auto;">
                 <form id="ventaRapidaForm">
-                    <div class="mb-4">
-                        <label class="form-label small fw-bold">Tipo de Operación</label>
-                        <div class="d-flex flex-wrap gap-2" role="group">
-                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_normal" value="VENTA_NORMAL" checked>
-                            <label class="btn btn-outline-primary flex-grow-1 small py-2 fw-bold" for="vr_op_normal">Venta Normal</label>
 
-                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_dama" value="DAMA_HONOR">
-                            <label class="btn btn-outline-primary flex-grow-1 small py-2 fw-bold" for="vr_op_dama">Dama de Honor</label>
-
-                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_hechura" value="HECHURA">
-                            <label class="btn btn-outline-primary flex-grow-1 small py-2 fw-bold" for="vr_op_hechura">Hechura</label>
-
-                            <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_externo" value="PEDIDO_EXTERNO">
-                            <label class="btn btn-outline-primary flex-grow-1 small py-2 fw-bold" for="vr_op_externo">Pedido Externo</label>
-                        </div>
-                    </div>
-
-                    <div class="mb-4 text-center">
-                        <div id="vr_image_preview" class="bg-light mb-2 d-flex align-items-center justify-content-center" style="height: 150px; border-radius: 12px; border: 2px dashed #ddd;">
-                            <i class="bi bi-camera text-muted fs-1"></i>
-                        </div>
-                        <input type="file" id="vr_foto" name="foto" class="form-control form-control-sm" accept="image/*">
-                        <button type="button" class="btn btn-sm btn-outline-primary mt-2 rounded-pill" id="btnVRAnalyze">
-                            <i class="bi bi-stars me-1"></i>Analizar con IA
-                        </button>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Categoría</label>
-                            <input type="text" name="categoria" class="form-control" placeholder="Ej: Vestido" list="catOptions" required>
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Color</label>
-                            <input type="text" name="color" class="form-control" placeholder="Ej: Rojo" list="colorOptions" required>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Talla</label>
-                            <select name="talla" class="form-select">
-                                <option value="U">Única</option>
-                                <option value="XS">XS</option>
-                                <option value="S">S</option>
-                                <option value="M">M</option>
-                                <option value="L">L</option>
-                                <option value="XL">XL</option>
-                            </select>
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Precio *</label>
-                            <input type="number" name="precio" class="form-control" required>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Método de Pago</label>
-                            <select name="metodo" class="form-select">
-                                <option value="EFECTIVO">💵 Efectivo</option>
-                                <option value="TARJETA">💳 Tarjeta</option>
-                                <option value="TRANSFERENCIA">📱 Transferencia</option>
-                            </select>
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Anticipo (Apartado)</label>
-                            <input type="number" name="anticipo" class="form-control">
-                        </div>
-                    </div>
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" name="es_apartado" id="vr_es_apartado" value="true">
-                        <label class="form-check-label fw-bold" for="vr_es_apartado">Solo Apartado</label>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Evento</label>
-                            <select name="evento" class="form-select">
-                                <option value="">Seleccione evento...</option>
-                                <option value="Boda">Boda</option>
-                                <option value="Graduación">Graduación</option>
-                                <option value="XV años">XV años</option>
-                                <option value="Fiesta">Fiesta</option>
-                                <option value="Civil">Civil</option>
-                                <option value="Formal">Formal</option>
-                                <option value="Otro">Otro</option>
-                            </select>
-                        </div>
-                        <div id="hechura_fecha_evento_col" class="col-6 mb-3 d-none">
-                            <label class="form-label small fw-bold">Fecha del Evento</label>
-                            <input type="date" name="fecha_evento" class="form-control">
-                        </div>
-                    </div>
-
-                    <!-- Flow B: Dama de Honor -->
-                    <div id="vr_section_dama" class="p-3 bg-primary-subtle rounded-3 mb-3 border border-primary-subtle d-none">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h6 class="fw-bold mb-0 small"><i class="bi bi-people me-1"></i>Vincular a Grupo/Novia</h6>
-                            <a href="{% url 'novias_list' %}" target="_blank" class="x-small fw-bold text-primary">Crear nueva novia <i class="bi bi-box-arrow-up-right"></i></a>
-                        </div>
-                        <div class="mb-3 position-relative">
-                            <label class="form-label small">Buscar Novia/Grupo (Selección Obligatoria)</label>
-                            <input type="text" id="vr_search_novia" class="form-control form-control-sm" placeholder="Nombre o teléfono...">
-                            <div id="vr_novia_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index: 1060; max-height: 150px; overflow-y: auto;"></div>
-                            <input type="hidden" name="novia_id" id="vr_novia_id">
-                        </div>
-
-                        <div id="vr_dama_selection" class="d-none">
-                            <div class="mb-2">
-                                <label class="form-label small">Asignar a Dama:</label>
-                                <select id="vr_dama_id" name="dama_id" class="form-select form-select-sm">
-                                    <option value="">-- Seleccionar o Crear Nueva --</option>
-                                </select>
-                            </div>
-                            <div id="vr_new_dama_fields" class="mt-2 p-2 bg-white rounded border">
-                                <label class="small fw-bold mb-1">Nueva Dama en el Grupo</label>
-                                <input type="text" name="nueva_dama_nombre" class="form-control form-control-sm mb-1" placeholder="Nombre de la dama">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Flow C: Hechura / Pedido Externo -->
-                    <div id="vr_section_hechura" class="p-3 bg-warning-subtle rounded-3 mb-3 border border-warning-subtle d-none">
-                        <h6 id="vr_hechura_title" class="fw-bold mb-2 small"><i class="bi bi-scissors me-1"></i>Detalles de Seguimiento</h6>
-                        <div class="row g-2">
+                    <!-- ═══ PASO 1: Tipo de operación ═══ -->
+                    <div id="vrStep1" class="vr-step">
+                        <div class="row g-3">
                             <div class="col-6">
-                                <label class="form-label small">Tela</label>
-                                <select name="tela_id" class="form-select form-select-sm">
-                                    <option value="">Seleccione tela...</option>
-                                    {% for t in telas %}
-                                        <option value="{{ t.id }}">{{ t.nombre }}</option>
-                                    {% endfor %}
+                                <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_normal" value="VENTA_NORMAL" checked>
+                                <label class="btn btn-outline-primary w-100 py-4 fw-bold d-flex flex-column align-items-center gap-2" for="vr_op_normal" style="border-radius:16px; border-width:2px;">
+                                    <i class="bi bi-bag-check fs-2"></i>Venta
+                                </label>
+                            </div>
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_dama" value="DAMA_HONOR">
+                                <label class="btn btn-outline-primary w-100 py-4 fw-bold d-flex flex-column align-items-center gap-2" for="vr_op_dama" style="border-radius:16px; border-width:2px;">
+                                    <i class="bi bi-people-fill fs-2"></i>Dama de Honor
+                                </label>
+                            </div>
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_hechura" value="HECHURA">
+                                <label class="btn btn-outline-primary w-100 py-4 fw-bold d-flex flex-column align-items-center gap-2" for="vr_op_hechura" style="border-radius:16px; border-width:2px;">
+                                    <i class="bi bi-scissors fs-2"></i>Hechura
+                                </label>
+                            </div>
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="tipo_operacion" id="vr_op_externo" value="PEDIDO_EXTERNO">
+                                <label class="btn btn-outline-primary w-100 py-4 fw-bold d-flex flex-column align-items-center gap-2" for="vr_op_externo" style="border-radius:16px; border-width:2px;">
+                                    <i class="bi bi-box-seam fs-2"></i>Pedido Externo
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ PASO 2: Producto + Cliente ═══ -->
+                    <div id="vrStep2" class="vr-step d-none">
+
+                        <!-- Foto + IA (opcional) -->
+                        <div class="mb-3 text-center">
+                            <div id="vr_image_preview" class="bg-light mb-2 d-flex align-items-center justify-content-center mx-auto" style="height:100px;width:100px;border-radius:12px;border:2px dashed #ddd;">
+                                <i class="bi bi-camera text-muted fs-2"></i>
+                            </div>
+                            <input type="file" id="vr_foto" name="foto" class="form-control form-control-sm mb-1" accept="image/*">
+                            <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill" id="btnVRAnalyze">
+                                <i class="bi bi-stars me-1"></i>Analizar con IA
+                            </button>
+                        </div>
+
+                        <!-- Producto -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Categoría</label>
+                                <input type="text" name="categoria" class="form-control" placeholder="Vestido, Tocado..." list="catOptions" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Color</label>
+                                <input type="text" name="color" class="form-control" placeholder="Rosa, Vino..." list="colorOptions" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Talla</label>
+                                <select name="talla" class="form-select">
+                                    <option value="U">Única</option>
+                                    <option value="XS">XS</option><option value="S">S</option>
+                                    <option value="M">M</option><option value="L">L</option>
+                                    <option value="XL">XL</option><option value="2XL">2XL</option>
                                 </select>
                             </div>
                             <div class="col-6">
-                                <label class="form-label small">Fecha Entrega Est.</label>
-                                <input type="date" name="fecha_entrega_estimada" class="form-control form-control-sm">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="p-3 bg-light rounded-3 mb-3 border">
-                        <h6 class="fw-bold mb-2 small"><i class="bi bi-person me-1"></i>Datos del Cliente <span id="vr_cliente_required_label" class="d-none text-danger">*</span></h6>
-                        <div class="row g-2">
-                            <div class="col-12">
-                                <label class="form-label small">Teléfono (Auto-completar)</label>
-                                <div class="position-relative">
-                                    <input type="text" id="vr_cliente_telefono" name="cliente_telefono" class="form-control form-control-sm" placeholder="10 dígitos" autocomplete="off">
-                                    <div id="vr_cliente_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index: 1050; max-height: 150px; overflow-y: auto;"></div>
+                                <label class="form-label small fw-bold">Precio *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" name="precio" class="form-control" placeholder="0" required min="1">
                                 </div>
                             </div>
-                            <div class="col-12">
-                                <label class="form-label small">Nombre Completo</label>
-                                <input type="text" id="vr_cliente_nombre" name="cliente_nombre" class="form-control form-control-sm" placeholder="Nombre">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Evento</label>
+                                <select name="evento" class="form-select">
+                                    <option value="">— Tipo de evento —</option>
+                                    <option>Boda</option><option>Graduación</option>
+                                    <option>XV años</option><option>Fiesta</option>
+                                    <option>Civil</option><option>Formal</option><option>Otro</option>
+                                </select>
                             </div>
-                            <div class="col-12">
-                                <label class="form-label small">Notas Cliente</label>
-                                <textarea name="cliente_notas" class="form-control form-control-sm" rows="2" placeholder="Notas..."></textarea>
+                            <div id="hechura_fecha_evento_col" class="col-6 d-none">
+                                <label class="form-label small fw-bold">Fecha del Evento</label>
+                                <input type="date" name="fecha_evento" class="form-control">
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Reusable Measurements Block -->
-                    <div id="vr_section_medidas" class="p-3 bg-light rounded-3 mb-3 border d-none">
-                        <h6 class="fw-bold mb-3 small"><i class="bi bi-rulers me-1"></i>Medidas (cm)</h6>
-                        <div class="row g-2">
-                            <div class="col-3">
-                                <label class="small x-small" style="font-size: 0.6rem;">Busto</label>
-                                <input type="number" step="0.1" name="m_busto" class="form-control form-control-sm px-1 text-center">
+                        <!-- Dama de Honor -->
+                        <div id="vr_section_dama" class="p-3 bg-primary-subtle rounded-3 mb-3 border border-primary-subtle d-none">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="fw-bold mb-0 small"><i class="bi bi-people me-1"></i>Grupo / Novia</h6>
+                                <a href="{% url 'novias_list' %}" target="_blank" class="x-small fw-bold text-primary">Nueva novia <i class="bi bi-box-arrow-up-right"></i></a>
                             </div>
-                            <div class="col-3">
-                                <label class="small x-small" style="font-size: 0.6rem;">Cintura</label>
-                                <input type="number" step="0.1" name="m_cintura" class="form-control form-control-sm px-1 text-center">
+                            <div class="mb-2 position-relative">
+                                <input type="text" id="vr_search_novia" class="form-control form-control-sm" placeholder="Buscar novia por nombre o teléfono...">
+                                <div id="vr_novia_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1060;max-height:140px;overflow-y:auto;"></div>
+                                <input type="hidden" name="novia_id" id="vr_novia_id">
                             </div>
-                            <div class="col-3">
-                                <label class="small x-small" style="font-size: 0.6rem;">Cadera</label>
-                                <input type="number" step="0.1" name="m_cadera" class="form-control form-control-sm px-1 text-center">
-                            </div>
-                            <div class="col-3">
-                                <label class="small x-small" style="font-size: 0.6rem;">Largo</label>
-                                <input type="number" step="0.1" name="m_largo" class="form-control form-control-sm px-1 text-center">
-                            </div>
-                        </div>
-                        <div class="mt-2">
-                            <label class="form-label small">Especificaciones adicionales</label>
-                            <textarea name="m_notas" class="form-control form-control-sm" rows="2"></textarea>
-                        </div>
-                    </div>
-
-                    <!-- Duplicate Alert for Venta Rápida -->
-                    <div id="vr_duplicateAlert" class="d-none mt-3">
-                        <div class="alert alert-warning mb-2" style="border-radius: 12px;">
-                            <div class="d-flex align-items-start">
-                                <i class="bi bi-exclamation-triangle fs-4 me-3"></i>
-                                <div class="flex-grow-1">
-                                    <strong id="vr_duplicateAlertTitle">Posible duplicado</strong>
-                                    <p class="mb-2 small" id="vr_duplicateAlertMsg"></p>
-                                    <div id="vr_aiAnalysisBox" class="ai-analysis small mb-2 d-none">
-                                        <i class="bi bi-robot me-1"></i> <span id="vr_aiAnalysisText"></span>
-                                    </div>
+                            <div id="vr_dama_selection" class="d-none">
+                                <select id="vr_dama_id" name="dama_id" class="form-select form-select-sm mb-2">
+                                    <option value="">— Dama existente o nueva —</option>
+                                </select>
+                                <div id="vr_new_dama_fields" class="p-2 bg-white rounded border">
+                                    <input type="text" name="nueva_dama_nombre" class="form-control form-control-sm" placeholder="Nombre de la nueva dama">
                                 </div>
                             </div>
                         </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="vr_forceCreate">
-                            <label class="form-check-label small" for="vr_forceCreate">
-                                Confirmar que es un producto nuevo
-                            </label>
+
+                        <!-- Hechura / Externo -->
+                        <div id="vr_section_hechura" class="p-3 bg-warning-subtle rounded-3 mb-3 border border-warning-subtle d-none">
+                            <h6 id="vr_hechura_title" class="fw-bold mb-2 small"><i class="bi bi-scissors me-1"></i>Detalles de Seguimiento</h6>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">Tela</label>
+                                    <select name="tela_id" class="form-select form-select-sm">
+                                        <option value="">— Seleccionar tela —</option>
+                                        {% for t in telas %}<option value="{{ t.id }}">{{ t.nombre }}</option>{% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">Fecha Entrega Est.</label>
+                                    <input type="date" name="fecha_entrega_estimada" class="form-control form-control-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Medidas -->
+                        <div id="vr_section_medidas" class="p-3 bg-light rounded-3 mb-3 border d-none">
+                            <h6 class="fw-bold mb-2 small"><i class="bi bi-rulers me-1"></i>Medidas (cm)</h6>
+                            <div class="row g-2">
+                                <div class="col-3"><label class="x-small d-block">Busto</label><input type="number" step="0.1" name="m_busto" class="form-control form-control-sm text-center px-1"></div>
+                                <div class="col-3"><label class="x-small d-block">Cintura</label><input type="number" step="0.1" name="m_cintura" class="form-control form-control-sm text-center px-1"></div>
+                                <div class="col-3"><label class="x-small d-block">Cadera</label><input type="number" step="0.1" name="m_cadera" class="form-control form-control-sm text-center px-1"></div>
+                                <div class="col-3"><label class="x-small d-block">Largo</label><input type="number" step="0.1" name="m_largo" class="form-control form-control-sm text-center px-1"></div>
+                            </div>
+                            <div class="row g-2 mt-1">
+                                <div class="col-3"><label class="x-small d-block">Bajo-B.</label><input type="number" step="0.1" name="m_bajo_busto" class="form-control form-control-sm text-center px-1"></div>
+                                <div class="col-3"><label class="x-small d-block">L.Talle</label><input type="number" step="0.1" name="m_largo_talle" class="form-control form-control-sm text-center px-1"></div>
+                                <div class="col-3"><label class="x-small d-block">H.Pezón</label><input type="number" step="0.1" name="m_hombro_pezon" class="form-control form-control-sm text-center px-1"></div>
+                                <div class="col-3"><label class="x-small d-block">H.B-B.</label><input type="number" step="0.1" name="m_hombro_bajo_busto" class="form-control form-control-sm text-center px-1"></div>
+                            </div>
+                            <textarea name="m_notas" class="form-control form-control-sm mt-2" rows="1" placeholder="Notas de medidas..."></textarea>
+                        </div>
+
+                        <!-- Cliente -->
+                        <div class="p-3 bg-light rounded-3 border">
+                            <h6 class="fw-bold mb-2 small"><i class="bi bi-person me-1"></i>Datos del Cliente <span id="vr_cliente_required_label" class="d-none text-danger small">*Requerido</span></h6>
+                            <div class="row g-2">
+                                <div class="col-12 position-relative">
+                                    <input type="text" id="vr_cliente_telefono" name="cliente_telefono" class="form-control form-control-sm" placeholder="Teléfono (auto-completa nombre)" autocomplete="off">
+                                    <div id="vr_cliente_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1050;max-height:140px;overflow-y:auto;"></div>
+                                </div>
+                                <div class="col-12">
+                                    <input type="text" id="vr_cliente_nombre" name="cliente_nombre" class="form-control form-control-sm" placeholder="Nombre completo">
+                                </div>
+                                <div class="col-12">
+                                    <textarea name="cliente_notas" class="form-control form-control-sm" rows="1" placeholder="Notas opcionales..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Duplicado -->
+                        <div id="vr_duplicateAlert" class="d-none mt-3">
+                            <div class="alert alert-warning mb-2" style="border-radius:12px;">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong id="vr_duplicateAlertTitle">Posible duplicado</strong>
+                                <p class="mb-1 small" id="vr_duplicateAlertMsg"></p>
+                                <div id="vr_aiAnalysisBox" class="ai-analysis small mb-1 d-none"><i class="bi bi-robot me-1"></i><span id="vr_aiAnalysisText"></span></div>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="vr_forceCreate">
+                                <label class="form-check-label small" for="vr_forceCreate">Confirmo que es producto diferente</label>
+                            </div>
                         </div>
                     </div>
+
+                    <!-- ═══ PASO 3: Pago ═══ -->
+                    <div id="vrStep3" class="vr-step d-none">
+                        <div class="text-center mb-4">
+                            <div class="text-muted small fw-bold text-uppercase mb-1">Total a cobrar</div>
+                            <div class="display-6 fw-bold text-primary" id="vrPrecioDisplay">$0</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Método de Pago</label>
+                            <div class="d-flex gap-2">
+                                <input type="radio" class="btn-check" name="metodo" id="vr_met_ef" value="EFECTIVO" checked>
+                                <label class="btn btn-outline-primary flex-fill fw-bold" for="vr_met_ef"><i class="bi bi-cash me-1"></i>Efectivo</label>
+                                <input type="radio" class="btn-check" name="metodo" id="vr_met_tj" value="TARJETA">
+                                <label class="btn btn-outline-primary flex-fill fw-bold" for="vr_met_tj"><i class="bi bi-credit-card me-1"></i>Tarjeta</label>
+                                <input type="radio" class="btn-check" name="metodo" id="vr_met_tr" value="TRANSFERENCIA">
+                                <label class="btn btn-outline-primary flex-fill fw-bold" for="vr_met_tr"><i class="bi bi-phone me-1"></i>Transf.</label>
+                            </div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" name="es_apartado" id="vr_es_apartado" value="true" onchange="toggleAnticipoField(this.checked)">
+                            <label class="form-check-label fw-bold" for="vr_es_apartado">Solo Apartado (pago parcial)</label>
+                        </div>
+
+                        <div id="vr_anticipo_div" class="mb-3 d-none">
+                            <label class="form-label fw-bold">Anticipo a cobrar ahora</label>
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text bg-white">$</span>
+                                <input type="number" name="anticipo" id="vr_anticipo_input" class="form-control border-start-0" placeholder="0.00" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Resumen -->
+                        <div class="p-3 bg-light rounded-3 border mt-3">
+                            <div class="small fw-bold text-muted mb-2 text-uppercase">Resumen</div>
+                            <div id="vrResumen" class="small"></div>
+                        </div>
+                    </div>
+
                 </form>
             </div>
-            <div class="modal-footer border-0 p-4 pt-0">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">Cancelar</button>
-                <button type="button" class="btn btn-warning fw-bold" id="btnSubmitVentaRapida" style="border-radius: 100px;">
+            <div class="modal-footer border-0 px-4 pb-4 pt-2 d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="vrBtnBack" style="display:none!important;">
+                    <i class="bi bi-arrow-left me-1"></i>Atrás
+                </button>
+                <div class="flex-grow-1"></div>
+                <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary fw-bold rounded-pill px-4" id="vrBtnNext">
+                    Siguiente <i class="bi bi-arrow-right ms-1"></i>
+                </button>
+                <button type="button" class="btn btn-warning fw-bold rounded-pill px-4 d-none" id="btnSubmitVentaRapida">
                     <i class="bi bi-lightning-fill me-1"></i>Completar Venta
                 </button>
             </div>
@@ -914,35 +937,110 @@
         }
     });
 
-    // Toggle conditional sections in Venta Rápida
-    const vrOpRadios = document.querySelectorAll('input[name="tipo_operacion"]');
-    const vrSecDama = document.getElementById('vr_section_dama');
-    const vrSecHechura = document.getElementById('vr_section_hechura');
-    const vrSecMedidas = document.getElementById('vr_section_medidas');
-    const vrClienteRequired = document.getElementById('vr_cliente_required_label');
-    const vrHechuraFechaEventoCol = document.getElementById('hechura_fecha_evento_col');
+    // ── Wizard navigation ───────────────────────────────────────────────
+    let vrCurrentStep = 1;
+    const VR_STEPS = 3;
+    const vrTitles = ['¿Qué quieres registrar?', 'Producto y Cliente', 'Forma de Pago'];
 
-    vrOpRadios.forEach(r => {
-        r.addEventListener('change', function() {
-            const val = this.value;
-            const isHechuraOrExterno = (val === 'HECHURA' || val === 'PEDIDO_EXTERNO');
-
-            vrSecDama.classList.toggle('d-none', val !== 'DAMA_HONOR');
-            vrSecHechura.classList.toggle('d-none', !isHechuraOrExterno);
-            vrSecMedidas.classList.toggle('d-none', val === 'VENTA_NORMAL');
-            vrClienteRequired.classList.toggle('d-none', !isHechuraOrExterno);
-            vrHechuraFechaEventoCol.classList.toggle('d-none', !isHechuraOrExterno);
-
-            if (val === 'HECHURA') {
-                document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-scissors me-1"></i>Detalles de Hechura (Taller)';
-            } else if (val === 'PEDIDO_EXTERNO') {
-                document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-box-seam me-1"></i>Detalles de Pedido Externo';
-            }
-
-            // Set required fields dynamically
-            document.getElementById('vr_cliente_telefono').required = isHechuraOrExterno;
-            document.querySelector('#ventaRapidaForm input[name="fecha_entrega_estimada"]').required = isHechuraOrExterno;
+    function vrGoToStep(n) {
+        vrCurrentStep = n;
+        for (let i = 1; i <= VR_STEPS; i++) {
+            const el = document.getElementById('vrStep' + i);
+            if (el) el.classList.toggle('d-none', i !== n);
+        }
+        document.getElementById('vrStepTitle').textContent = vrTitles[n - 1];
+        document.getElementById('vrStepLabel').textContent = `Paso ${n} de ${VR_STEPS}`;
+        document.querySelectorAll('.vr-step-dot').forEach(d => {
+            const s = parseInt(d.dataset.step);
+            d.style.background = s === n ? 'var(--primary)' : s < n ? '#10B981' : '#E2E8F0';
+            d.style.width = d.style.height = s === n ? '12px' : '8px';
         });
+        const btnBack = document.getElementById('vrBtnBack');
+        const btnNext = document.getElementById('vrBtnNext');
+        const btnSubmit = document.getElementById('btnSubmitVentaRapida');
+        btnBack.style.display = n > 1 ? '' : 'none!important';
+        btnBack.classList.toggle('d-none', n === 1);
+        btnNext.classList.toggle('d-none', n === VR_STEPS);
+        btnSubmit.classList.toggle('d-none', n !== VR_STEPS);
+        if (n === 3) vrBuildResumen();
+    }
+
+    function vrBuildResumen() {
+        const form = document.getElementById('ventaRapidaForm');
+        const tipo = form.tipo_operacion.value;
+        const tipoLabel = {'VENTA_NORMAL':'Venta','DAMA_HONOR':'Dama de Honor','HECHURA':'Hechura','PEDIDO_EXTERNO':'Pedido Externo'}[tipo] || tipo;
+        const precio = parseFloat(form.precio.value) || 0;
+        document.getElementById('vrPrecioDisplay').textContent = '$' + precio.toLocaleString('es-MX', {minimumFractionDigits: 2});
+        const nombre = form.cliente_nombre.value || '(sin nombre)';
+        const categoria = form.categoria.value || '-';
+        const color = form.color.value || '-';
+        document.getElementById('vrResumen').innerHTML = `
+            <div class="mb-1"><span class="text-muted">Tipo:</span> <strong>${tipoLabel}</strong></div>
+            <div class="mb-1"><span class="text-muted">Producto:</span> <strong>${categoria} ${color}</strong></div>
+            <div class="mb-1"><span class="text-muted">Cliente:</span> <strong>${nombre}</strong></div>
+            <div><span class="text-muted">Total:</span> <strong class="text-primary">$${precio.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></div>`;
+    }
+
+    function toggleAnticipoField(checked) {
+        document.getElementById('vr_anticipo_div').classList.toggle('d-none', !checked);
+    }
+
+    document.getElementById('vrBtnNext').addEventListener('click', function() {
+        const form = document.getElementById('ventaRapidaForm');
+        if (vrCurrentStep === 1) {
+            vrApplyTypeVisibility();
+            vrGoToStep(2);
+        } else if (vrCurrentStep === 2) {
+            if (!form.checkValidity()) { form.reportValidity(); return; }
+            vrGoToStep(3);
+        }
+    });
+
+    document.getElementById('vrBtnBack').addEventListener('click', function() {
+        if (vrCurrentStep > 1) vrGoToStep(vrCurrentStep - 1);
+    });
+
+    // Auto-advance on type selection (step 1)
+    document.querySelectorAll('input[name="tipo_operacion"]').forEach(r => {
+        r.addEventListener('change', function() {
+            if (vrCurrentStep === 1) {
+                vrApplyTypeVisibility();
+                setTimeout(() => vrGoToStep(2), 150);
+            }
+        });
+    });
+
+    // Reset wizard on modal open
+    document.getElementById('ventaRapidaModal').addEventListener('show.bs.modal', function() {
+        vrGoToStep(1);
+        document.getElementById('ventaRapidaForm').reset();
+        document.getElementById('vr_image_preview').innerHTML = '<i class="bi bi-camera text-muted fs-2"></i>';
+    });
+
+    // ── End wizard navigation ────────────────────────────────────────────
+
+    // Toggle conditional sections in Venta Rápida
+    function vrApplyTypeVisibility() {
+        const form = document.getElementById('ventaRapidaForm');
+        const val = form.tipo_operacion.value;
+        const isHechuraOrExterno = (val === 'HECHURA' || val === 'PEDIDO_EXTERNO');
+        document.getElementById('vr_section_dama').classList.toggle('d-none', val !== 'DAMA_HONOR');
+        document.getElementById('vr_section_hechura').classList.toggle('d-none', !isHechuraOrExterno);
+        document.getElementById('vr_section_medidas').classList.toggle('d-none', val === 'VENTA_NORMAL');
+        document.getElementById('vr_cliente_required_label').classList.toggle('d-none', !isHechuraOrExterno);
+        document.getElementById('hechura_fecha_evento_col').classList.toggle('d-none', !isHechuraOrExterno);
+        if (val === 'HECHURA') {
+            document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-scissors me-1"></i>Detalles de Hechura (Taller)';
+        } else if (val === 'PEDIDO_EXTERNO') {
+            document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-box-seam me-1"></i>Detalles de Pedido Externo';
+        }
+        document.getElementById('vr_cliente_telefono').required = isHechuraOrExterno;
+        const fechaEntregaInput = document.querySelector('#ventaRapidaForm input[name="fecha_entrega_estimada"]');
+        if (fechaEntregaInput) fechaEntregaInput.required = isHechuraOrExterno;
+    }
+
+    document.querySelectorAll('input[name="tipo_operacion"]').forEach(r => {
+        r.addEventListener('change', vrApplyTypeVisibility);
     });
 
     // Novia Autocomplete
