@@ -897,27 +897,60 @@ def api_search_productos(request):
 
 @login_required
 def cliente_detalle(request, pk):
-    """Ficha del cliente con historial estructurado"""
+    """Ficha del cliente con historial unificado completo"""
+    from .models import Servicio
     cliente = get_object_or_404(Cliente, pk=pk)
-    ventas = Venta.objects.filter(cliente=cliente).order_by('-fecha')
-    apartados = Apartado.objects.filter(cliente=cliente).order_by('-fecha_creacion')
-    pedidos = Pedido.objects.filter(cliente=cliente).order_by('-fecha_creacion')
 
-    # Consolidar historial cronológico
+    ventas    = Venta.objects.filter(cliente=cliente).prefetch_related('items', 'pagos').order_by('-fecha')
+    apartados = Apartado.objects.filter(cliente=cliente).prefetch_related('items', 'pagos_apartado', 'tickets_asociados').order_by('-fecha_creacion')
+    pedidos   = Pedido.objects.filter(cliente=cliente).prefetch_related('pagos_pedido', 'tickets_relacionados', 'notas_seguimiento').select_related('novia', 'dama', 'modelo', 'color').order_by('-fecha_creacion')
+    servicios = Servicio.objects.filter(cliente=cliente).prefetch_related('pagos_servicio').order_by('-fecha_creacion')
+    medidas   = cliente.medidas_historicas.order_by('-fecha_actualizacion')
+    tickets   = Ticket.objects.filter(cliente_nombre=cliente.nombre).order_by('-fecha_hora')
+
+    # Saldos pendientes
+    saldo_apartados = sum(a.saldo for a in apartados if a.estado not in ['CANCELADO', 'ENTREGADO'])
+    saldo_pedidos   = sum(p.saldo_pendiente for p in pedidos if p.estado not in ['CANCELADO', 'ENTREGADO'])
+    saldo_servicios = sum(s.saldo_pendiente for s in servicios if s.estado not in ['CANCELADO', 'ENTREGADO'])
+    saldo_total     = saldo_apartados + saldo_pedidos + saldo_servicios
+
+    # Historial cronológico unificado
     historial = []
     for v in ventas:
-        historial.append({'tipo': 'VENTA', 'obj': v, 'fecha': v.fecha})
+        historial.append({'tipo': 'VENTA', 'obj': v, 'fecha': v.fecha,
+                          'total': v.total, 'folio': f'V-{v.id}', 'estado': 'Completada',
+                          'saldo': 0, 'detalle': f"{v.categoria_cache} {v.color_cache}".strip() or 'Venta directa'})
     for a in apartados:
-        historial.append({'tipo': 'APARTADO', 'obj': a, 'fecha': a.fecha_creacion})
+        historial.append({'tipo': 'APARTADO', 'obj': a, 'fecha': a.fecha_creacion,
+                          'total': a.total, 'folio': a.folio, 'estado': a.get_estado_display(),
+                          'saldo': a.saldo, 'detalle': f"{a.categoria_cache} {a.color_cache}".strip() or a.notas[:50]})
     for p in pedidos:
-        historial.append({'tipo': 'PEDIDO', 'obj': p, 'fecha': p.fecha_creacion})
+        desc = ''
+        if p.modelo: desc += p.modelo.nombre
+        if p.color: desc += f' {p.color.nombre}'
+        if p.talla: desc += f' T:{p.talla}'
+        historial.append({'tipo': 'PEDIDO', 'obj': p, 'fecha': p.fecha_creacion,
+                          'total': p.precio, 'folio': p.numero_ticket, 'estado': p.get_estado_display(),
+                          'saldo': p.saldo_pendiente, 'detalle': desc.strip() or p.notas[:50]})
+    for s in servicios:
+        historial.append({'tipo': 'SERVICIO', 'obj': s, 'fecha': s.fecha_creacion,
+                          'total': s.costo, 'folio': f'SRV-{s.id}', 'estado': s.get_estado_display(),
+                          'saldo': s.saldo_pendiente, 'detalle': s.descripcion[:60]})
 
     historial.sort(key=lambda x: x['fecha'], reverse=True)
 
     return render(request, 'boutique/cliente_detalle.html', {
         'cliente': cliente,
         'historial': historial,
-        'apartados_activos': apartados.exclude(estado__in=['CANCELADO', 'ENTREGADO'])
+        'apartados_activos': apartados.exclude(estado__in=['CANCELADO', 'ENTREGADO']),
+        'pedidos': pedidos,
+        'servicios': servicios,
+        'medidas': medidas,
+        'tickets': tickets[:20],
+        'saldo_total': saldo_total,
+        'saldo_apartados': saldo_apartados,
+        'saldo_pedidos': saldo_pedidos,
+        'saldo_servicios': saldo_servicios,
     })
 
 
