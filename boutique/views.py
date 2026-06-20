@@ -622,7 +622,8 @@ def api_venta_rapida(request):
         color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
         precio = safe_decimal(request.POST.get('precio', 0))
-        anticipo = safe_decimal(request.POST.get('anticipo', precio))
+        _anticipo_raw = request.POST.get('anticipo', '').strip()
+        anticipo = safe_decimal(_anticipo_raw, precio)  # si vacío → cobro total
         metodo = request.POST.get('metodo', 'EFECTIVO')
         rasgo1 = request.POST.get('rasgo1', '')
         rasgo2 = request.POST.get('rasgo2', '')
