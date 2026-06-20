@@ -468,7 +468,12 @@
                     <i class="bi bi-box-fill"></i>Inventario
                 </a>
             </li>
-            
+            <li class="nav-item">
+                <a href="{% url 'subida_bloque' %}" class="nav-link {% if request.resolver_match.url_name == 'subida_bloque' %}active{% endif %}" style="padding-left: 2.5rem;">
+                    <i class="bi bi-table"></i>Subida en Bloque
+                </a>
+            </li>
+
             <!-- Catálogos -->
             <li class="nav-item mt-3">
                 <span class="nav-link text-muted small" style="padding-bottom: 0.25rem;"><i class="bi bi-folder me-2"></i>Catálogos</span>
