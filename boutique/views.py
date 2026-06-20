@@ -364,11 +364,16 @@ def pos_dashboard(request):
     if not corte:
         return redirect('apertura_caja')
 
+    from .models import RASGOS_ESTILO, RASGOS_CORTE, RASGOS_ESCOTE, RASGOS_TELA
     context = {
         'corte': corte,
         'telas': Tela.objects.filter(activa=True),
         'colores': Color.objects.filter(activo=True),
         'categorias': Categoria.objects.all(),
+        'rasgos_estilo': RASGOS_ESTILO,
+        'rasgos_corte': RASGOS_CORTE,
+        'rasgos_escote': RASGOS_ESCOTE,
+        'rasgos_tela': RASGOS_TELA,
     }
     return render(request, 'boutique/pos_dashboard.html', context)
 
@@ -607,6 +612,46 @@ def api_liquidar_pedido(request, pk):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
+def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, ticket):
+    """Crea servicios adicionales vinculados a una venta y los añade al snapshot del ticket."""
+    from .models import Servicio
+    try:
+        servicios_data = json.loads(servicios_json_str or '[]')
+    except Exception:
+        return []
+    creados = []
+    for srv in servicios_data:
+        costo = safe_decimal(srv.get('costo', 0))
+        if costo <= 0:
+            continue
+        s = Servicio.objects.create(
+            tipo=srv.get('tipo', 'AJUSTE'),
+            descripcion=srv.get('descripcion') or srv.get('tipo', 'Servicio adicional'),
+            cliente=cliente_obj,
+            costo=costo,
+            anticipo=costo,
+            estado='RECIBIDO',
+            creado_por=perfil.user if hasattr(perfil, 'user') else None,
+            venta=venta,
+        )
+        creados.append(s)
+    if creados and ticket:
+        snapshot = ticket.snapshot_json or {}
+        items = snapshot.get('items', [])
+        for s in creados:
+            items.append({
+                'descripcion': f"{s.get_tipo_display()}: {s.descripcion[:40]}",
+                'color': '', 'talla': '', 'cantidad': 1,
+                'precio_unitario': float(s.costo),
+                'subtotal': float(s.costo),
+            })
+        snapshot['items'] = items
+        snapshot['total'] = float(ticket.total) + sum(float(s.costo) for s in creados)
+        ticket.snapshot_json = snapshot
+        ticket.save(update_fields=['snapshot_json'])
+    return creados
+
+
 @require_POST
 @login_required
 @profile_permission_required('Vendedor')
@@ -754,6 +799,14 @@ def api_venta_rapida(request):
                         origen_tipo='venta', origen_obj=venta,
                         monto=anticipo, metodo=metodo, usuario=request.active_profile
                     )
+                    # Servicios adicionales bundled (bastillas, ajustes, etc.)
+                    _servicios_extra = _parse_servicios_bundled(
+                        request.POST.get('servicios_json', '[]'),
+                        cliente_obj, request.active_profile, venta, ticket
+                    )
+                    if _servicios_extra:
+                        venta.total += sum(s.costo for s in _servicios_extra)
+                        venta.save(update_fields=['total'])
                     res = {'status': 'ok', 'tipo': 'venta', 'id': venta.id, 'sku': producto.sku, 'folio': ticket.folio}
 
             elif tipo_op in ['DAMA_HONOR', 'HECHURA', 'PEDIDO_EXTERNO']:
@@ -825,9 +878,13 @@ def api_venta_rapida(request):
                         cintura=get_d('m_cintura', 'medidas_cintura'),
                         cadera=get_d('m_cadera', 'medidas_cadera'),
                         hombro=get_d('m_hombro', 'medidas_hombro'),
-                        largo=get_d('m_largo', 'medidas_largo'),
+                        largo_aproximado=get_d('m_largo', 'medidas_largo'),
                         brazo=get_d('m_brazo', 'medidas_brazo'),
                         espalda=get_d('m_espalda', 'medidas_espalda'),
+                        bajo_busto=get_d('m_bajo_busto', 'bajo_busto'),
+                        largo_talle=get_d('m_largo_talle', 'largo_talle'),
+                        hombro_pezon=get_d('m_hombro_pezon', 'hombro_pezon'),
+                        hombro_bajo_busto=get_d('m_hombro_bajo_busto', 'hombro_bajo_busto'),
                         talle_delantero=get_d('m_talle_frente', 'medidas_talle_frente'),
                         talle_trasero=get_d('m_talle_espalda', 'medidas_talle_espalda'),
                         observaciones=request.POST.get('m_notas') or request.POST.get('medidas_notas', '')
@@ -2505,4 +2562,78 @@ def api_editar_entrega(request, tipo, pk):
 
         return JsonResponse({'status': 'ok'})
     except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SUBIDA EN BLOQUE
+# ──────────────────────────────────────────────────────────────────────────────
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def subida_bloque(request):
+    """Vista para cargar múltiples vestidos de una vez"""
+    from .models import RASGOS_ESTILO, RASGOS_CORTE, RASGOS_ESCOTE, RASGOS_TELA
+    return render(request, 'boutique/subida_bloque.html', {
+        'categorias': Categoria.objects.all().order_by('nombre'),
+        'colores': Color.objects.filter(activo=True).order_by('nombre'),
+        'rasgos_estilo': RASGOS_ESTILO,
+        'rasgos_corte': RASGOS_CORTE,
+        'rasgos_escote': RASGOS_ESCOTE,
+        'rasgos_tela': RASGOS_TELA,
+    })
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_subida_bloque(request):
+    """Crea múltiples productos en una sola transacción atómica."""
+    try:
+        data = json.loads(request.body)
+        filas = data.get('filas', [])
+        if not filas:
+            return JsonResponse({'status': 'error', 'message': 'No hay filas'}, status=400)
+
+        resultados = []
+        with transaction.atomic():
+            for i, fila in enumerate(filas):
+                precio_raw = fila.get('precio', '')
+                if not precio_raw or not fila.get('categoria') or not fila.get('color'):
+                    resultados.append({'fila': i + 1, 'status': 'skip', 'msg': 'Fila vacía, omitida'})
+                    continue
+                precio = safe_decimal(precio_raw)
+                if precio <= 0:
+                    resultados.append({'fila': i + 1, 'status': 'error', 'msg': 'Precio inválido'})
+                    continue
+                categoria, _ = Categoria.objects.get_or_create(nombre=fila['categoria'].strip())
+                color, _ = Color.objects.get_or_create(
+                    nombre=fila['color'].strip(),
+                    defaults={'codigo_hex': '#CCCCCC', 'activo': True}
+                )
+                producto, created = Producto.objects.get_or_create(
+                    categoria=categoria,
+                    color=color,
+                    talla=fila.get('talla', 'U').strip(),
+                    rasgo1=fila.get('rasgo1', '').strip(),
+                    rasgo2=fila.get('rasgo2', '').strip(),
+                    defaults={'precio_venta': precio, 'cantidad_actual': 0, 'estado': 'TIENDA'}
+                )
+                producto.cantidad_actual += 1
+                if created:
+                    producto.precio_venta = precio
+                producto.save(update_fields=['cantidad_actual', 'precio_venta'])
+                resultados.append({
+                    'fila': i + 1,
+                    'status': 'nuevo' if created else 'existente',
+                    'sku': producto.sku,
+                    'id': producto.id,
+                    'desc': str(producto),
+                    'msg': 'Creado' if created else f'Ya existía — stock +1 (total: {producto.cantidad_actual})',
+                })
+
+        ids_nuevos = [r['id'] for r in resultados if r['status'] in ('nuevo', 'existente')]
+        return JsonResponse({'status': 'ok', 'resultados': resultados, 'ids_nuevos': ids_nuevos})
+    except Exception as e:
+        logger.exception("Error en api_subida_bloque")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

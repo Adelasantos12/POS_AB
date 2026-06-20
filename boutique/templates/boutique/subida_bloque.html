@@ -1,0 +1,225 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Subida en Bloque — Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">Subida en Bloque</h1>
+        <p class="page-subtitle">Ingresa varios vestidos de una vez — solo categoría, color, talla y precio son obligatorios</p>
+    </div>
+    <a href="{% url 'inventario_view' %}" class="btn btn-light rounded-pill px-4">
+        <i class="bi bi-arrow-left me-2"></i>Inventario
+    </a>
+</div>
+
+<div class="card shadow-sm border-0 mb-4" style="border-radius:15px;overflow:hidden;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0 align-middle" id="tablaBloque">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-3" style="width:36px;">#</th>
+                        <th style="min-width:140px;">Categoría *</th>
+                        <th style="min-width:120px;">Color *</th>
+                        <th style="min-width:90px;">Talla</th>
+                        <th style="min-width:100px;">Precio *</th>
+                        <th style="min-width:160px;">Estilo / Corte</th>
+                        <th style="min-width:130px;">Tela / Material</th>
+                        <th style="width:40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="filas">
+                    <!-- filas generadas por JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-white border-0 p-3 d-flex gap-2">
+        <button class="btn btn-outline-secondary rounded-pill" id="btnAgregarFila">
+            <i class="bi bi-plus-lg me-1"></i>Agregar fila
+        </button>
+        <span class="text-muted small align-self-center ms-2" id="lblConteo">5 filas</span>
+        <div class="flex-grow-1"></div>
+        <button class="btn btn-primary fw-bold rounded-pill px-5" id="btnGuardarBloque">
+            <i class="bi bi-check-lg me-2"></i>Guardar todos
+        </button>
+    </div>
+</div>
+
+<!-- Resultados -->
+<div id="resultadosSection" class="d-none">
+    <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;overflow:hidden;">
+        <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold mb-0">Resultado</h5>
+            <button class="btn btn-outline-primary rounded-pill btn-sm" id="btnImprimirEtiquetas">
+                <i class="bi bi-printer me-1"></i>Imprimir etiquetas de los nuevos
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Fila</th>
+                        <th>SKU</th>
+                        <th>Descripción</th>
+                        <th>Resultado</th>
+                    </tr>
+                </thead>
+                <tbody id="resultadosBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Datalists -->
+<datalist id="dlCategorias">{% for c in categorias %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
+<datalist id="dlColores">{% for c in colores %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+const RASGOS_ESTILO = {{ rasgos_estilo|safe }};
+const RASGOS_CORTE = {{ rasgos_corte|safe }};
+const RASGOS_ESCOTE = {{ rasgos_escote|safe }};
+const RASGOS_TELA = {{ rasgos_tela|safe }};
+const TALLAS = ['U','XS','S','M','L','XL','2XL','3XL','6','8','10','12','14','16','18'];
+
+let idNuevos = [];
+
+function crearFila(n) {
+    const tr = document.createElement('tr');
+    tr.dataset.fila = n;
+    tr.innerHTML = `
+        <td class="ps-3 text-muted small">${n}</td>
+        <td><input type="text" class="form-control form-control-sm" name="categoria" list="dlCategorias" placeholder="Quinceañera, Novia..."></td>
+        <td><input type="text" class="form-control form-control-sm" name="color" list="dlColores" placeholder="Rosa, Vino..."></td>
+        <td>
+            <select class="form-select form-select-sm" name="talla">
+                ${TALLAS.map(t => `<option value="${t}">${t === 'U' ? 'Única' : t}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" name="precio" placeholder="0" min="0" step="0.01">
+            </div>
+        </td>
+        <td><input type="text" class="form-control form-control-sm" name="rasgo1" list="dlRasgos1" placeholder="Sin manga, Manga larga..."></td>
+        <td><input type="text" class="form-control form-control-sm" name="rasgo2" list="dlRasgos2" placeholder="Satín, Encaje..."></td>
+        <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove(); actualizarConteo()"><i class="bi bi-x-lg"></i></button></td>
+    `;
+    return tr;
+}
+
+function actualizarConteo() {
+    const n = document.querySelectorAll('#filas tr').length;
+    document.getElementById('lblConteo').textContent = `${n} fila${n !== 1 ? 's' : ''}`;
+}
+
+// Datalists para rasgos
+const dlR1 = document.createElement('datalist');
+dlR1.id = 'dlRasgos1';
+[...RASGOS_ESTILO, ...RASGOS_CORTE, ...RASGOS_ESCOTE].forEach(r => {
+    const o = document.createElement('option'); o.value = r; dlR1.appendChild(o);
+});
+document.body.appendChild(dlR1);
+
+const dlR2 = document.createElement('datalist');
+dlR2.id = 'dlRasgos2';
+RASGOS_TELA.forEach(r => {
+    const o = document.createElement('option'); o.value = r; dlR2.appendChild(o);
+});
+document.body.appendChild(dlR2);
+
+// Inicializar con 5 filas
+const tbody = document.getElementById('filas');
+for (let i = 1; i <= 5; i++) tbody.appendChild(crearFila(i));
+actualizarConteo();
+
+document.getElementById('btnAgregarFila').addEventListener('click', () => {
+    const n = document.querySelectorAll('#filas tr').length + 1;
+    tbody.appendChild(crearFila(n));
+    actualizarConteo();
+    tbody.lastElementChild.querySelector('input').focus();
+});
+
+document.getElementById('btnGuardarBloque').addEventListener('click', async () => {
+    const filas = [];
+    document.querySelectorAll('#filas tr').forEach(tr => {
+        const get = name => tr.querySelector(`[name="${name}"]`)?.value?.trim() || '';
+        const precio = get('precio');
+        if (!get('categoria') && !get('color') && !precio) return; // fila vacía
+        filas.push({
+            categoria: get('categoria'),
+            color: get('color'),
+            talla: get('talla') || 'U',
+            precio,
+            rasgo1: get('rasgo1'),
+            rasgo2: get('rasgo2'),
+        });
+    });
+
+    if (filas.length === 0) { alert('No hay vestidos para guardar.'); return; }
+
+    const btn = document.getElementById('btnGuardarBloque');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+
+    try {
+        const res = await fetch('{% url "api_subida_bloque" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ filas })
+        });
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error(data.message || 'Error desconocido');
+
+        idNuevos = data.ids_nuevos || [];
+        mostrarResultados(data.resultados);
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-2"></i>Guardar todos';
+    }
+});
+
+function mostrarResultados(resultados) {
+    const tbody = document.getElementById('resultadosBody');
+    tbody.innerHTML = '';
+    let nuevos = 0, existentes = 0, errores = 0;
+    resultados.forEach(r => {
+        const badge = r.status === 'nuevo' ? 'bg-success' :
+                      r.status === 'existente' ? 'bg-warning text-dark' :
+                      r.status === 'skip' ? 'bg-light text-muted border' : 'bg-danger';
+        const label = r.status === 'nuevo' ? 'Nuevo' :
+                      r.status === 'existente' ? 'Ya existía' :
+                      r.status === 'skip' ? 'Omitida' : 'Error';
+        tbody.innerHTML += `
+            <tr>
+                <td class="ps-4 text-muted small">${r.fila}</td>
+                <td class="fw-bold small">${r.sku || '—'}</td>
+                <td class="small">${r.desc || ''}</td>
+                <td><span class="badge ${badge} rounded-pill">${label}</span> <span class="small text-muted">${r.msg || ''}</span></td>
+            </tr>`;
+        if (r.status === 'nuevo') nuevos++;
+        else if (r.status === 'existente') existentes++;
+        else if (r.status === 'error') errores++;
+    });
+    document.getElementById('resultadosSection').classList.remove('d-none');
+    document.getElementById('resultadosSection').scrollIntoView({ behavior: 'smooth' });
+
+    const resumen = `✅ ${nuevos} nuevos  ${existentes > 0 ? `• ⚠ ${existentes} ya existían (se sumó stock)` : ''}${errores > 0 ? `  • ❌ ${errores} errores` : ''}`;
+    document.querySelector('#resultadosSection .card-header h5').textContent = resumen;
+
+    if (idNuevos.length > 0) {
+        document.getElementById('btnImprimirEtiquetas').classList.remove('d-none');
+    }
+}
+
+document.getElementById('btnImprimirEtiquetas').addEventListener('click', () => {
+    if (idNuevos.length > 0) {
+        window.open(`{% url 'imprimir_etiquetas' %}?ids=${idNuevos.join(',')}`, '_blank');
+    }
+});
+</script>
+{% endblock %}

@@ -337,6 +337,17 @@
                             </div>
                         </div>
 
+                        <!-- Servicios adicionales (bastillas, ajustes) -->
+                        <div class="p-3 bg-light rounded-3 border mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="fw-bold mb-0 small"><i class="bi bi-scissors me-1"></i>¿Llevan bastilla u otro servicio?</h6>
+                                <button type="button" class="btn btn-xs btn-outline-primary rounded-pill" id="btnAddServicio">
+                                    <i class="bi bi-plus-lg me-1"></i>Agregar
+                                </button>
+                            </div>
+                            <div id="vr_servicios_list"></div>
+                        </div>
+
                         <!-- Resumen -->
                         <div class="p-3 bg-light rounded-3 border mt-3">
                             <div class="small fw-bold text-muted mb-2 text-uppercase">Resumen</div>
@@ -388,12 +399,20 @@
                                 </datalist>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Rasgo 1 (Corte/Estilo)</label>
-                                <input type="text" name="rasgo1" class="form-control check-duplicates" placeholder="Ej: Manga Larga, Corto" style="border-radius: 10px;" data-testid="input-rasgo1">
+                                <label class="form-label small fw-bold">Estilo / Corte <span class="text-muted fw-normal">(toca para seleccionar)</span></label>
+                                <div class="d-flex flex-wrap gap-1 mb-1" id="qp_chips_rasgo1">
+                                    {% for r in rasgos_estilo %}<button type="button" class="btn btn-xs btn-outline-secondary rounded-pill chip-rasgo" data-target="rasgo1" data-value="{{ r }}">{{ r }}</button>{% endfor %}
+                                    {% for r in rasgos_corte %}<button type="button" class="btn btn-xs btn-outline-secondary rounded-pill chip-rasgo" data-target="rasgo1" data-value="{{ r }}">{{ r }}</button>{% endfor %}
+                                    {% for r in rasgos_escote %}<button type="button" class="btn btn-xs btn-outline-secondary rounded-pill chip-rasgo" data-target="rasgo1" data-value="{{ r }}">{{ r }}</button>{% endfor %}
+                                </div>
+                                <input type="text" name="rasgo1" id="qp_rasgo1" class="form-control form-control-sm check-duplicates" placeholder="O escribe aquí..." style="border-radius:10px;" data-testid="input-rasgo1">
                             </div>
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Rasgo 2 (Tela/Material)</label>
-                                <input type="text" name="rasgo2" class="form-control check-duplicates" placeholder="Ej: Satinado, Encaje" style="border-radius: 10px;" data-testid="input-rasgo2">
+                                <label class="form-label small fw-bold">Tela / Material <span class="text-muted fw-normal">(toca para seleccionar)</span></label>
+                                <div class="d-flex flex-wrap gap-1 mb-1" id="qp_chips_rasgo2">
+                                    {% for r in rasgos_tela %}<button type="button" class="btn btn-xs btn-outline-secondary rounded-pill chip-rasgo" data-target="rasgo2" data-value="{{ r }}">{{ r }}</button>{% endfor %}
+                                </div>
+                                <input type="text" name="rasgo2" id="qp_rasgo2" class="form-control form-control-sm check-duplicates" placeholder="O escribe aquí..." style="border-radius:10px;" data-testid="input-rasgo2">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -966,20 +985,91 @@
         if (n === 3) vrBuildResumen();
     }
 
+    // ── Chips de rasgos ─────────────────────────────────────────────────────
+    document.querySelectorAll('.chip-rasgo').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const target = this.dataset.target; // 'rasgo1' o 'rasgo2'
+            const val = this.dataset.value;
+            const input = document.getElementById('qp_' + target) ||
+                          document.querySelector(`[name="${target}"]`);
+            // Toggle: si ya está activo, deseleccionar
+            if (this.classList.contains('btn-secondary')) {
+                this.classList.replace('btn-secondary', 'btn-outline-secondary');
+                if (input && input.value === val) input.value = '';
+            } else {
+                // Desactivar otros chips del mismo grupo
+                document.querySelectorAll(`.chip-rasgo[data-target="${target}"]`)
+                    .forEach(c => c.classList.replace('btn-secondary', 'btn-outline-secondary'));
+                this.classList.replace('btn-outline-secondary', 'btn-secondary');
+                if (input) input.value = val;
+            }
+        });
+    });
+
+    // ── Servicios adicionales ────────────────────────────────────────────────
+    const TIPOS_SERVICIO = [
+        ['AJUSTE', 'Ajuste de vestido'],
+        ['COSTURA', 'Costura / Arreglo'],
+        ['LAVADO', 'Lavado'],
+        ['BORDADO', 'Bordado'],
+        ['OTRO', 'Otro servicio'],
+    ];
+
+    function getSrvTotal() {
+        let t = 0;
+        document.querySelectorAll('#vr_servicios_list .srv-costo').forEach(i => {
+            t += parseFloat(i.value) || 0;
+        });
+        return t;
+    }
+
+    document.getElementById('btnAddServicio').addEventListener('click', function() {
+        const div = document.createElement('div');
+        div.className = 'input-group input-group-sm mb-2 srv-row';
+        div.innerHTML = `
+            <select class="form-select form-select-sm srv-tipo" style="max-width:180px;">
+                ${TIPOS_SERVICIO.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
+            </select>
+            <span class="input-group-text">$</span>
+            <input type="number" class="form-control srv-costo" placeholder="0" min="0" step="0.01" oninput="vrBuildResumen()">
+            <button type="button" class="btn btn-outline-danger" onclick="this.closest('.srv-row').remove(); vrBuildResumen()">
+                <i class="bi bi-x"></i>
+            </button>`;
+        document.getElementById('vr_servicios_list').appendChild(div);
+        div.querySelector('.srv-costo').focus();
+    });
+
+    function vrGetServiciosData() {
+        const servicios = [];
+        document.querySelectorAll('#vr_servicios_list .srv-row').forEach(row => {
+            const costo = parseFloat(row.querySelector('.srv-costo').value) || 0;
+            const tipo = row.querySelector('.srv-tipo').value;
+            if (costo > 0) servicios.push({ tipo, descripcion: tipo, costo });
+        });
+        return servicios;
+    }
+
     function vrBuildResumen() {
         const form = document.getElementById('ventaRapidaForm');
         const tipo = form.tipo_operacion.value;
         const tipoLabel = {'VENTA_NORMAL':'Venta','DAMA_HONOR':'Dama de Honor','HECHURA':'Hechura','PEDIDO_EXTERNO':'Pedido Externo'}[tipo] || tipo;
         const precio = parseFloat(form.precio.value) || 0;
-        document.getElementById('vrPrecioDisplay').textContent = '$' + precio.toLocaleString('es-MX', {minimumFractionDigits: 2});
+        const srvTotal = getSrvTotal();
+        const totalFinal = precio + srvTotal;
+        document.getElementById('vrPrecioDisplay').textContent = '$' + totalFinal.toLocaleString('es-MX', {minimumFractionDigits: 2});
         const nombre = form.cliente_nombre.value || '(sin nombre)';
         const categoria = form.categoria.value || '-';
         const color = form.color.value || '-';
-        document.getElementById('vrResumen').innerHTML = `
+        let html = `
             <div class="mb-1"><span class="text-muted">Tipo:</span> <strong>${tipoLabel}</strong></div>
             <div class="mb-1"><span class="text-muted">Producto:</span> <strong>${categoria} ${color}</strong></div>
             <div class="mb-1"><span class="text-muted">Cliente:</span> <strong>${nombre}</strong></div>
-            <div><span class="text-muted">Total:</span> <strong class="text-primary">$${precio.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></div>`;
+            <div class="mb-1"><span class="text-muted">Vestido:</span> <strong>$${precio.toLocaleString('es-MX', {minimumFractionDigits:2})}</strong></div>`;
+        if (srvTotal > 0) {
+            html += `<div class="mb-1"><span class="text-muted">Servicios:</span> <strong>$${srvTotal.toLocaleString('es-MX', {minimumFractionDigits:2})}</strong></div>`;
+        }
+        html += `<div class="border-top pt-1 mt-1"><span class="text-muted">Total:</span> <strong class="text-primary fs-6">$${totalFinal.toLocaleString('es-MX', {minimumFractionDigits:2})}</strong></div>`;
+        document.getElementById('vrResumen').innerHTML = html;
     }
 
     function toggleAnticipoField(checked) {
@@ -1207,8 +1297,12 @@
         }
 
         const formData = new FormData(form);
-        // Agregar idempotency_key
         formData.append('idempotency_key', generateUUID());
+        // Servicios adicionales bundled
+        const serviciosData = vrGetServiciosData();
+        if (serviciosData.length > 0) {
+            formData.append('servicios_json', JSON.stringify(serviciosData));
+        }
 
         const btn = this;
         btn.disabled = true;

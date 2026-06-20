@@ -41,6 +41,8 @@ urlpatterns = [
     # Inventario
     path('inventario/', views.inventario_view, name='inventario_view'),
     path('inventario/pendientes/', views.pendientes_regularizacion, name='pendientes_regularizacion'),
+    path('inventario/subida-bloque/', views.subida_bloque, name='subida_bloque'),
+    path('api/subida-bloque/', views.api_subida_bloque, name='api_subida_bloque'),
     path('api/producto-editar/<int:pk>/', views.api_editar_producto, name='api_editar_producto'),
     path('api/producto-clonar-variante/<int:pk>/', views.api_clonar_variante, name='api_clonar_variante'),
     path('api/producto-variantes/<int:pk>/', views.api_get_variantes, name='api_get_variantes'),

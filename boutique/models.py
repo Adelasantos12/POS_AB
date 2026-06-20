@@ -175,6 +175,11 @@ class Color(models.Model):
     def __str__(self): 
         return self.nombre
 
+RASGOS_ESTILO = ['Sin manga', 'Manga corta', 'Manga larga', 'Un hombro', 'Hombros descubiertos', 'Tirantes', 'Sin tirantes']
+RASGOS_CORTE = ['Sirena', 'A-line', 'Princesa', 'Recto', 'Corto', 'Con cola', 'Globo', 'Crinolina']
+RASGOS_ESCOTE = ['Escote V', 'Escote corazón', 'Escote cuadrado', 'Escote redondo', 'Sin escote', 'Espalda descubierta']
+RASGOS_TELA = ['Satín', 'Encaje', 'Chiffón', 'Tul', 'Mikado', 'Crepé', 'Organza', 'Bordado']
+
 class Producto(models.Model):
     ESTADOS = [
         ('TIENDA', 'En Tienda'),
@@ -1330,6 +1335,7 @@ class Servicio(models.Model):
     anticipo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     fecha_prometida = models.DateField(null=True, blank=True)
     notas = models.TextField(blank=True)
+    venta = models.ForeignKey('Venta', on_delete=models.SET_NULL, null=True, blank=True, related_name='servicios_incluidos')
     creado_por = models.ForeignKey('auth.User', on_delete=models.SET_NULL, null=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
