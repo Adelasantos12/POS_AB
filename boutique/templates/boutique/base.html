@@ -292,15 +292,122 @@
             }
             .main-content {
                 margin-left: 0;
+                padding-bottom: 5rem; /* room for bottom nav */
             }
         }
-        
+
+        /* Mobile top bar */
+        .mobile-topbar {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-default);
+            z-index: 1040;
+            padding: 0 1rem;
+            align-items: center;
+            justify-content: space-between;
+        }
+        @media (max-width: 768px) {
+            .mobile-topbar { display: flex; }
+            .main-content { padding-top: 4rem; }
+        }
+
+        /* Bottom nav bar (mobile) */
+        .bottom-nav {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border-default);
+            z-index: 1040;
+            padding: 0.5rem 0 env(safe-area-inset-bottom, 0.5rem);
+        }
+        @media (max-width: 768px) { .bottom-nav { display: flex; } }
+
+        .bottom-nav a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.25rem 0;
+            gap: 2px;
+        }
+        .bottom-nav a i { font-size: 1.3rem; }
+        .bottom-nav a.active { color: var(--primary); }
+
+        /* Offcanvas sidebar override */
+        .offcanvas-sidebar { width: 260px !important; }
+
         {% block extra_css %}{% endblock %}
     </style>
 </head>
 <body>
     {% if request.active_profile %}
-    <!-- Sidebar Navigation -->
+    <!-- Mobile Top Bar -->
+    <div class="mobile-topbar">
+        <span class="logo" style="font-size: 1.25rem; margin-bottom: 0;">ByEasy</span>
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar" aria-controls="offcanvasSidebar">
+            <i class="bi bi-list fs-5"></i>
+        </button>
+    </div>
+
+    <!-- Offcanvas Sidebar (mobile) -->
+    <div class="offcanvas offcanvas-start offcanvas-sidebar" tabindex="-1" id="offcanvasSidebar">
+        <div class="offcanvas-header border-bottom">
+            <span class="logo" style="font-size: 1.5rem; margin-bottom: 0;">ByEasy</span>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body p-3 d-flex flex-column">
+            <ul class="nav flex-column flex-grow-1">
+                {% with profile=request.active_profile %}
+                {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" %}
+                <li class="nav-item"><a href="{% url 'admin_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}"><i class="bi bi-grid-1x2-fill"></i>Dashboard</a></li>
+                {% endif %}
+                <li class="nav-item"><a href="{% url 'pos_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}"><i class="bi bi-calculator-fill"></i>Caja</a></li>
+                <li class="nav-item"><a href="{% url 'agenda_view' %}" class="nav-link {% if 'agenda' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-calendar-event-fill"></i>Agenda</a></li>
+                <li class="nav-item"><a href="{% url 'novias_list' %}" class="nav-link {% if 'novia' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-heart-fill"></i>Novias</a></li>
+                <li class="nav-item"><a href="{% url 'pedidos_en_puerta' %}" class="nav-link {% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}"><i class="bi bi-bag-check"></i>Pedidos</a></li>
+                <li class="nav-item"><a href="{% url 'lista_apartados' %}" class="nav-link {% if 'apartado' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-journal-bookmark-fill"></i>Apartados</a></li>
+                <li class="nav-item"><a href="{% url 'servicios_list' %}" class="nav-link {% if 'servicio' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-scissors"></i>Servicios</a></li>
+                <li class="nav-item"><a href="{% url 'inventario_view' %}" class="nav-link {% if request.resolver_match.url_name == 'inventario_view' %}active{% endif %}"><i class="bi bi-box-fill"></i>Inventario</a></li>
+                {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" %}
+                <li class="nav-item"><a href="{% url 'gestion_usuarios' %}" class="nav-link {% if 'usuario' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-people-fill"></i>Usuarios</a></li>
+                {% endif %}
+                {% endwith %}
+            </ul>
+            <div class="mt-2 d-flex gap-2">
+                <a href="{% url 'cambiar_perfil' %}" class="btn btn-sm btn-outline-secondary w-50"><i class="bi bi-arrow-left-right me-1"></i>Cambiar</a>
+                <a href="{% url 'cierre_caja' %}" class="btn btn-sm btn-outline-danger w-50"><i class="bi bi-lock-fill me-1"></i>Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Nav (mobile) -->
+    <nav class="bottom-nav">
+        <a href="{% url 'pos_dashboard' %}" class="{% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}">
+            <i class="bi bi-calculator-fill"></i>Caja
+        </a>
+        <a href="{% url 'agenda_view' %}" class="{% if 'agenda' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="bi bi-calendar-event-fill"></i>Agenda
+        </a>
+        <a href="{% url 'novias_list' %}" class="{% if 'novia' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="bi bi-heart-fill"></i>Novias
+        </a>
+        <a href="{% url 'pedidos_en_puerta' %}" class="{% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}">
+            <i class="bi bi-bag-check"></i>Pedidos
+        </a>
+        <a href="{% url 'lista_apartados' %}" class="{% if 'apartado' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="bi bi-journal-bookmark-fill"></i>Apartados
+        </a>
+    </nav>
+
+    <!-- Sidebar Navigation (desktop) -->
     <nav class="sidebar" data-testid="sidebar-nav">
         <div class="logo">ByEasy</div>
         

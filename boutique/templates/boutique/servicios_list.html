@@ -88,7 +88,7 @@
                     <td class="pe-4 text-end">
                         {% if s.saldo_pendiente > 0 %}
                         <button class="btn btn-sm btn-outline-success rounded-pill px-3"
-                                onclick="abrirCobro({{ s.pk }}, '{{ s.saldo_pendiente }}')">
+                                onclick="abrirCobro({{ s.pk }}, '{{ s.saldo_pendiente|stringformat:".2f" }}')">
                             <i class="bi bi-cash me-1"></i>Cobrar
                         </button>
                         {% endif %}
@@ -180,42 +180,7 @@
     </div>
 </div>
 
-<!-- Modal Cobro -->
-<div class="modal fade" id="modalCobroServicio" tabindex="-1">
-    <div class="modal-dialog modal-sm">
-        <div class="modal-content rounded-4 border-0 shadow">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold">Registrar Pago</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="cobroSrvId">
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Monto a Cobrar ($)</label>
-                    <input type="number" step="0.01" min="0.01" class="form-control" id="cobroMonto">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Método de Pago</label>
-                    <select class="form-select" id="cobroMetodo">
-                        <option value="EFECTIVO">Efectivo</option>
-                        <option value="TARJETA">Tarjeta</option>
-                        <option value="TRANSFERENCIA">Transferencia</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Referencia (opcional)</label>
-                    <input type="text" class="form-control" id="cobroReferencia" placeholder="N° de transacción...">
-                </div>
-            </div>
-            <div class="modal-footer border-0 pt-0">
-                <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success rounded-pill px-4" onclick="confirmarCobro()">
-                    <i class="bi bi-cash me-1"></i>Cobrar
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
 
 <script>
 const csrfToken = '{{ csrf_token }}';
@@ -250,32 +215,7 @@ async function guardarServicio() {
 }
 
 function abrirCobro(id, saldo) {
-    document.getElementById('cobroSrvId').value = id;
-    document.getElementById('cobroMonto').value = saldo;
-    new bootstrap.Modal(document.getElementById('modalCobroServicio')).show();
-}
-
-async function confirmarCobro() {
-    const id = document.getElementById('cobroSrvId').value;
-    const data = {
-        monto: document.getElementById('cobroMonto').value,
-        metodo: document.getElementById('cobroMetodo').value,
-        referencia: document.getElementById('cobroReferencia').value,
-    };
-    try {
-        const res = await fetch(`/api/servicio/${id}/cobrar/`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-            body: JSON.stringify(data)
-        });
-        const d = await res.json();
-        if (d.status === 'ok') {
-            bootstrap.Modal.getInstance(document.getElementById('modalCobroServicio')).hide();
-            location.reload();
-        } else {
-            alert('Error: ' + d.message);
-        }
-    } catch (e) { alert('Error de red: ' + e); }
+    abrirModalCobro('servicio', id, saldo, 'SRV-' + id);
 }
 
 async function cambiarEstado(id, estado) {
