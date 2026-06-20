@@ -1,10 +1,38 @@
 from django.core.management.base import BaseCommand
-from boutique.models import Color, Tela, Categoria
+from boutique.models import Color, Tela, Categoria, ConfiguracionTienda
 
 class Command(BaseCommand):
     help = 'Puebla los catálogos base de colores y telas'
 
     def handle(self, *args, **options):
+        # ── Configuración de la Tienda (solo rellena campos vacíos) ──────────
+        config = ConfiguracionTienda.get_solo()
+        updated = False
+        defaults = {
+            'nombre_comercial': 'Adelé Boutique Matriz',
+            'direccion': 'Juan Álvarez 1596, Guadalajara',
+            'telefono_whatsapp': '3315319121',
+            'telefono2': '3316812938',
+            'horarios': 'Lun-Vie 12:00–19:00  |  Sáb 11:00–16:00',
+            'prefijo_sucursal': 'ADELE',
+            'politica_cambios': (
+                'No se aceptan cambios ni devoluciones.\n'
+                'Presenta este ticket al recoger tu pedido.\n'
+                'El plazo de entrega es estimado y puede variar.'
+            ),
+            'politica_apartados': (
+                'El apartado no es reembolsable.\n'
+                'El producto se reserva por 30 días naturales.\n'
+                'Presenta este ticket al recoger tu pedido.'
+            ),
+        }
+        for field, value in defaults.items():
+            if not getattr(config, field, ''):
+                setattr(config, field, value)
+                updated = True
+        if updated:
+            config.save()
+
         # Colores
         colores_base = [
             ('Sin definir', '#CCCCCC', 'N/A'),

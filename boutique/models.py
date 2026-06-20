@@ -48,6 +48,7 @@ class ConfiguracionTienda(models.Model):
     rfc = models.CharField(max_length=20, blank=True, verbose_name="RFC")
     direccion = models.TextField(blank=True)
     telefono_whatsapp = models.CharField(max_length=20, blank=True, verbose_name="Teléfono/WhatsApp")
+    telefono2 = models.CharField(max_length=20, blank=True, verbose_name="Teléfono 2")
     email = models.EmailField(blank=True)
     logo = models.ImageField(upload_to='logos/', blank=True, null=True)
 
