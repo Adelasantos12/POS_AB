@@ -2443,6 +2443,7 @@ def api_llego_a_tienda(request, tipo, pk):
 
 @require_POST
 @login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
 def api_editar_entrega(request, tipo, pk):
     """
     Actualiza la fecha de entrega y notas de un Pedido, Apartado o Novia.
