@@ -2316,9 +2316,17 @@ def historial_usuario(request, pk):
 @login_required
 def print_ticket_pdf(request, folio):
     """Retorna el PDF del ticket para impresión"""
-    from .models import Ticket
+    from .models import Ticket, Apartado
     from .services.ticket_service import generate_pdf_ticket
-    ticket = get_object_or_404(Ticket, folio=folio)
+
+    ticket = Ticket.objects.filter(folio=folio).first()
+    if ticket is None:
+        # Folio de Apartado (AP-YYYYMMDD-XXXX) — buscar ticket asociado
+        apartado = get_object_or_404(Apartado, folio=folio)
+        ticket = apartado.tickets_asociados.order_by('-fecha_hora').first()
+        if ticket is None:
+            from django.http import Http404
+            raise Http404("No hay ticket asociado a este apartado")
 
     pdf_buffer = generate_pdf_ticket(ticket.id)
     response = HttpResponse(pdf_buffer, content_type='application/pdf')

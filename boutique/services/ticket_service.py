@@ -230,30 +230,43 @@ def generate_pdf_ticket(ticket_id):
     es_novia = bool(ticket.novia or novia_nombre)
     es_dama  = bool(dama_nombre)
 
+    # Detectar por descripción de ítems si aún no hay señal
+    if not es_novia and not es_dama:
+        for item in snapshot.get('items', []):
+            desc_lower = (
+                item.get('descripcion', '') + ' ' + item.get('modelo', '')
+            ).lower()
+            if 'novia' in desc_lower:
+                es_novia = True
+                break
+            if 'dama' in desc_lower:
+                es_dama = True
+
     if es_novia:
+        titulo = "Hermosa, esto te ayudara para tu prueba:"
         recordatorios = [
-            "✔  Trae los zapatos con el tacón del día —",
-            "    el largo se mide con esa altura",
-            "✔  Ropa interior sin tirantes si el vestido",
-            "    es strapless o muy escotado",
-            "✔  Faja o corsé si usarás uno — ponlo en",
-            "    cada prueba para que el ajuste sea exacto",
-            "✔  Corona o tocado — necesario para ajustar",
-            "    el velo en la prueba final",
-            "✔  Tu madrina de vestido puede acompañarte,",
-            "    solo avísanos antes para no hacer esperar",
+            "✔  Trae los zapatos con el tacon del dia —",
+            "    el largo se mide con esa altura exacta",
+            "✔  Tu ropa interior — sin tirantes si el",
+            "    vestido es strapless o tiene escote",
+            "✔  Si usaras faja o corse, traelo a cada",
+            "    prueba para que el ajuste sea perfecto",
+            "✔  Corona o tocado para el velo — necesario",
+            "    en tu prueba final",
+            "✔  Tu madrina puede acompañarte, solo",
+            "    avisanos con tiempo  ✿",
         ]
-        titulo = "Para tu prueba y entrega:"
     elif es_dama:
+        titulo = "Hermosa, un par de recordatorios:"
         recordatorios = [
-            "✔  Trae los zapatos con el tacón del día —",
+            "✔  Trae los zapatos con el tacon del dia —",
             "    el largo se ajusta a esa altura",
-            "✔  Si hubo cambio de talla o peso, avísanos",
-            "    con tiempo para hacer el ajuste correcto",
-            "✔  Llega puntual a tu cita — las demás damas",
-            "    también dependen de los tiempos",
+            "✔  Si cambiaste de talla o peso, avisanos",
+            "    a tiempo para hacer el ajuste correcto",
+            "✔  Por favor llega puntual a tu cita —",
+            "    las demas damas tambien dependen",
+            "    de los tiempos  ✿",
         ]
-        titulo = "Recordatorio para damas:"
     else:
         recordatorios = []
         titulo = ''

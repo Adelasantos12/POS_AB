@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 if hasattr(settings, 'GEMINI_API_KEY') and settings.GEMINI_API_KEY:
     genai.configure(api_key=settings.GEMINI_API_KEY)
 
-def get_gemini_model(model_name="gemini-2.0-flash"):
+def get_gemini_model(model_name="gemini-2.5-flash"):
     """Configura y devuelve el modelo de Gemini"""
     if not hasattr(settings, 'GEMINI_API_KEY') or not settings.GEMINI_API_KEY:
         return None
