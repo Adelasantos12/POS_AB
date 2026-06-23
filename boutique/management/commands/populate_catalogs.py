@@ -74,11 +74,23 @@ class Command(BaseCommand):
             )
 
         # Categorías
-        categorias = [
-            'Sin definir', 'Novias', 'Damas', 'Accesorios', 'Servicios',
-            'Vestido Novia', 'Vestido Dama', 'Velo', 'Tocado', 'Ajuste'
+        categorias_correctas = [
+            'Sin definir', 'Novias', 'Damas', 'Meninas', 'Quinceañera',
+            'Fiesta', 'Importado', 'Accesorios', 'Velo', 'Tocado',
+            'Servicios', 'Ajuste',
         ]
-        for cat in categorias:
+        for cat in categorias_correctas:
             Categoria.objects.get_or_create(nombre=cat)
+
+        # Eliminar duplicados históricos reasignando sus productos
+        for nombre_viejo, nombre_nuevo in [('Vestido Novia', 'Novias'), ('Vestido Dama', 'Damas'), ('Vestido Damas', 'Damas')]:
+            try:
+                vieja = Categoria.objects.get(nombre=nombre_viejo)
+                nueva, _ = Categoria.objects.get_or_create(nombre=nombre_nuevo)
+                from boutique.models import Producto
+                Producto.objects.filter(categoria=vieja).update(categoria=nueva)
+                vieja.delete()
+            except Categoria.DoesNotExist:
+                pass
 
         self.stdout.write(self.style.SUCCESS('Catálogos base poblados correctamente'))
