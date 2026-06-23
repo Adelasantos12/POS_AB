@@ -1,19 +1,21 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from django.conf import settings
 import json
 import logging
+import time
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
-if hasattr(settings, 'GEMINI_API_KEY') and settings.GEMINI_API_KEY:
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+GEMINI_MODEL = "gemini-2.5-flash"
 
-def get_gemini_model(model_name="gemini-2.5-flash"):
-    """Configura y devuelve el modelo de Gemini"""
-    if not hasattr(settings, 'GEMINI_API_KEY') or not settings.GEMINI_API_KEY:
+
+def get_gemini_client():
+    if not getattr(settings, 'GEMINI_API_KEY', ''):
         return None
-    return genai.GenerativeModel(model_name)
+    return genai.Client(api_key=settings.GEMINI_API_KEY)
+
 
 def extract_product_attributes(description):
     """
@@ -21,14 +23,13 @@ def extract_product_attributes(description):
     """
     from .models import Categoria, Color, Tela
 
-    # Obtener valores del catálogo para normalización
     categorias = list(Categoria.objects.exclude(nombre="Sin definir").values_list('nombre', flat=True))
     colores = list(Color.objects.exclude(nombre="Sin definir").values_list('nombre', flat=True))
     telas = list(Tela.objects.all().values_list('nombre', flat=True))
     tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
 
-    model = get_gemini_model()
-    if not model:
+    client = get_gemini_client()
+    if not client:
         return None
 
     prompt = f"""Analiza la siguiente descripción de un producto de boutique y extrae sus atributos en formato JSON.
@@ -56,40 +57,35 @@ FORMATO JSON ESPERADO:
 Si no estás seguro de un campo según el catálogo, devuelve null. Responde ÚNICAMENTE el JSON."""
 
     try:
-        response = model.generate_content(prompt)
-        # Limpiar respuesta por si trae markdown
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         text = response.text.strip()
         if text.startswith('```json'):
             text = text[7:-3].strip()
         elif text.startswith('```'):
             text = text[3:-3].strip()
-
         return json.loads(text)
     except Exception as e:
         logger.error(f"Error extraendo atributos con Gemini: {e}")
         return None
 
-import time
 
 def analyze_product_image(image_data, mime_type='image/jpeg'):
     """
     Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos normalizados al catálogo.
     """
     start_time = time.time()
-    # Normalizar mime_type — Gemini acepta jpeg, png, webp, heic, heif
     if not mime_type or mime_type == 'application/octet-stream':
         mime_type = 'image/jpeg'
     logger.info("AI Analysis: Starting image analysis with Gemini Vision")
     from .models import Categoria, Color, Tela
 
-    # Obtener valores del catálogo para normalización
     categorias = list(Categoria.objects.exclude(nombre__icontains='sin definir').values_list('nombre', flat=True))
     colores = list(Color.objects.exclude(nombre__icontains='sin definir').values_list('nombre', flat=True))
     telas = list(Tela.objects.all().values_list('nombre', flat=True))
     tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
 
-    model = get_gemini_model()
-    if not model:
+    client = get_gemini_client()
+    if not client:
         return None
 
     prompt = f"""Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario de boutique de vestidos de novia y quinceañera en México.
@@ -119,10 +115,13 @@ FORMATO JSON (responde SOLO el JSON, sin explicaciones):
 }}"""
 
     try:
-        response = model.generate_content([
-            prompt,
-            {'mime_type': mime_type, 'data': image_data}
-        ])
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=image_data, mime_type=mime_type),
+                prompt,
+            ]
+        )
         duration = time.time() - start_time
         logger.info(f"AI Analysis: Gemini Vision response received in {duration:.2f}s")
 
@@ -131,19 +130,19 @@ FORMATO JSON (responde SOLO el JSON, sin explicaciones):
             text = text[7:-3].strip()
         elif text.startswith('```'):
             text = text[3:-3].strip()
-
         return json.loads(text)
     except Exception as e:
         duration = time.time() - start_time
         logger.error(f"AI Analysis: Error after {duration:.2f}s: {e}")
         return None
 
+
 def analyze_duplicate_ai(new_product, existing_products):
     """
     Analiza si un producto nuevo es duplicado de los existentes con consejos accionables.
     """
-    model = get_gemini_model()
-    if not model:
+    client = get_gemini_client()
+    if not client:
         return "Error: API Key no configurada"
 
     prompt = f"""Analiza si este producto NUEVO podría ser duplicado de alguno existente en Adelé Boutique.
@@ -165,18 +164,19 @@ RESPONDE DE FORMA DIRECTA Y ACCIONABLE (Máximo 3 oraciones):
 3. Nota sobre qué lo hace diferente si aplica (ej: "Es la misma tela pero en talla XL")."""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         return response.text.strip()
     except Exception as e:
         logger.error(f"Error analizando duplicados con Gemini: {e}")
         return "Error en el análisis de IA"
 
+
 def generate_sales_strategy(context_data):
     """
     Genera recomendaciones de venta basadas en datos de la boutique.
     """
-    model = get_gemini_model()
-    if not model:
+    client = get_gemini_client()
+    if not client:
         return "API Key no disponible para generar estrategia."
 
     prompt = f"""Eres un consultor de retail experto. Analiza estos datos de Adelé Boutique y da 3-4 recomendaciones concretas.
@@ -187,7 +187,7 @@ DATOS:
 Responde en español, práctico y breve (máximo 200 palabras). Usa emojis."""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         return response.text.strip()
     except Exception as e:
         logger.error(f"Error generando estrategia con Gemini: {e}")

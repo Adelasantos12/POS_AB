@@ -19,6 +19,29 @@ def generate_pdf_ticket(ticket_id):
     p = canvas.Canvas(buffer, pagesize=(width, height))
     y = height - 0.5 * inch
 
+    # ── Logo ─────────────────────────────────────────────────
+    if config.logo:
+        try:
+            from reportlab.lib.utils import ImageReader
+            from PIL import Image as PILImage
+            try:
+                logo_reader = ImageReader(config.logo.path)
+                pil_img = PILImage.open(config.logo.path)
+            except (NotImplementedError, FileNotFoundError):
+                import urllib.request
+                raw = urllib.request.urlopen(config.logo.url, timeout=5).read()
+                img_buf = BytesIO(raw)
+                logo_reader = ImageReader(img_buf)
+                img_buf.seek(0)
+                pil_img = PILImage.open(img_buf)
+            logo_w = 1.4 * inch
+            logo_h = logo_w * (pil_img.size[1] / pil_img.size[0])
+            p.drawImage(logo_reader, (width - logo_w) / 2, y - logo_h,
+                        width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+            y -= logo_h + 0.08 * inch
+        except Exception as _logo_err:
+            pass  # Si falla, continuar sin logo
+
     # ── Encabezado ──────────────────────────────────────────
     p.setFont("Helvetica-Bold", 11)
     p.drawCentredString(width / 2, y, config.nombre_comercial)
