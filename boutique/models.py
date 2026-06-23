@@ -1312,11 +1312,17 @@ class NotaPedido(models.Model):
 class Servicio(models.Model):
     """Servicio de ajuste, costura u otro trabajo sin pedido de vestido"""
     TIPOS = [
-        ('AJUSTE', 'Ajuste de vestido'),
-        ('COSTURA', 'Costura / Arreglo'),
-        ('LAVADO', 'Lavado'),
-        ('BORDADO', 'Bordado'),
-        ('OTRO', 'Otro servicio'),
+        ('BASTILLA',    'Bastilla'),
+        ('TALLE',       'Ajuste de talle'),
+        ('TIRANTE',     'Tirante'),
+        ('CREMALLERA',  'Cremallera'),
+        ('PECHO',       'Ajuste de pecho'),
+        ('CADERA',      'Ajuste de cadera'),
+        ('MANGA',       'Manga'),
+        ('APLIQUE',     'Aplique / Adorno'),
+        ('BORDADO',     'Bordado'),
+        ('AJUSTE',      'Ajuste general'),
+        ('OTRO',        'Otro servicio'),
     ]
     ESTADOS = [
         ('RECIBIDO', 'Recibido'),
