@@ -68,8 +68,15 @@
                     <td style="padding-left: 20px;"><input type="checkbox" class="product-check form-check-input" value="{{ p.id }}"></td>
                     <td>
                         {% if p.foto %}
-                        <img src="{{ p.foto.url }}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;"
-                             onclick="window.open('{{ p.foto.url }}','_blank')" title="Ver foto">
+                        <img src="{{ p.foto.url }}"
+                             style="width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;"
+                             onclick="window.open('{{ p.foto.url }}','_blank')"
+                             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"
+                             title="Ver foto">
+                        <div style="display:none;width:48px;height:48px;border-radius:8px;border:2px dashed #dee2e6;align-items:center;justify-content:center;color:#ccc;cursor:pointer;"
+                             onclick="subirFotoProducto({{ p.id }}, this)" title="Agregar foto">
+                            <i class="bi bi-camera" style="font-size:1.1rem;"></i>
+                        </div>
                         {% else %}
                         <div style="width:48px;height:48px;border-radius:8px;border:2px dashed #dee2e6;display:flex;align-items:center;justify-content:center;color:#ccc;cursor:pointer;"
                              onclick="subirFotoProducto({{ p.id }}, this)" title="Agregar foto">
@@ -104,14 +111,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if p.barcode_image %}
                         <div class="d-flex flex-column align-items-center">
-                            <img src="{{ p.barcode_image.url }}" alt="barcode" style="max-height: 50px;">
-                            <code class="small text-dark fw-bold">{{ p.sku }}</code>
+                            <svg class="inv-barcode" data-value="{{ p.sku }}"></svg>
+                            <code class="small text-dark fw-bold mt-1">{{ p.sku }}</code>
                         </div>
-                        {% else %}
-                        <code class="small">{{ p.sku }}</code>
-                        {% endif %}
                     </td>
                     {% if es_admin %}
                     <td>
@@ -320,8 +323,19 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
     const csrfToken = '{{ csrf_token }}';
+
+    // Generar códigos de barras en el navegador (sin archivos en el servidor)
+    document.querySelectorAll('.inv-barcode').forEach(el => {
+        try {
+            JsBarcode(el, el.dataset.value, {
+                format: 'CODE128', height: 36, width: 1.2,
+                displayValue: false, margin: 2, background: 'transparent'
+            });
+        } catch(_) {}
+    });
 
     document.getElementById('selectAll').addEventListener('change', function(e) {
         document.querySelectorAll('.product-check').forEach(cb => cb.checked = e.target.checked);
