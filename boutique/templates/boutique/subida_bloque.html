@@ -320,7 +320,9 @@ document.getElementById('btnGuardarBloque').addEventListener('click', async () =
         if (data.status !== 'ok') throw new Error(data.message || 'Error desconocido');
 
         idNuevos = data.ids_nuevos || [];
-        mostrarResultados(data.resultados);
+        // Crear object URLs locales para los resultados (no depende de Cloudinary)
+        const localUrls = fotoMap.map(f => f ? URL.createObjectURL(f) : null);
+        mostrarResultados(data.resultados, localUrls);
     } catch (e) {
         alert('Error: ' + e.message);
     } finally {
@@ -330,20 +332,22 @@ document.getElementById('btnGuardarBloque').addEventListener('click', async () =
 });
 
 // ── Resultados ─────────────────────────────────────────────────────────────
-function mostrarResultados(resultados) {
+function mostrarResultados(resultados, localUrls = []) {
     const tb = document.getElementById('resultadosBody');
     tb.innerHTML = '';
     let nuevos = 0, existentes = 0, errores = 0;
-    resultados.forEach(r => {
+    resultados.forEach((r, idx) => {
         const badge = r.status === 'nuevo'     ? 'bg-success' :
                       r.status === 'existente' ? 'bg-warning text-dark' :
                       r.status === 'skip'      ? 'bg-light text-muted border' : 'bg-danger';
         const label = r.status === 'nuevo'     ? 'Nuevo' :
                       r.status === 'existente' ? 'Ya existía' :
                       r.status === 'skip'      ? 'Omitida' : 'Error';
-        const thumb = r.foto_url
-            ? `<img src="${r.foto_url}" style="height:44px;width:44px;object-fit:cover;border-radius:8px;">`
-            : '<span class="text-muted small">Sin foto</span>';
+        // Prefer local object URL (works without Cloudinary); fall back to server URL
+        const imgSrc = localUrls[idx] || r.foto_url || null;
+        const thumb = imgSrc
+            ? `<img src="${imgSrc}" style="height:44px;width:44px;object-fit:cover;border-radius:8px;">`
+            : '<span class="text-muted small">—</span>';
         tb.innerHTML += `
             <tr>
                 <td class="ps-4">${thumb}</td>

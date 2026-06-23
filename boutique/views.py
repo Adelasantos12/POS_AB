@@ -160,8 +160,9 @@ def api_ai_analyze_image(request):
         try:
             image_file = request.FILES['image']
             image_data = image_file.read()
+            mime_type = image_file.content_type or 'image/jpeg'
 
-            atributos = analyze_product_image(image_data)
+            atributos = analyze_product_image(image_data, mime_type=mime_type)
             if atributos:
                 # Validar contra catálogo
                 cat_exists = Categoria.objects.filter(nombre=atributos.get('categoria')).exists()

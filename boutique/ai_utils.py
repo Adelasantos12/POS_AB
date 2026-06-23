@@ -71,17 +71,20 @@ Si no estás seguro de un campo según el catálogo, devuelve null. Responde ÚN
 
 import time
 
-def analyze_product_image(image_data):
+def analyze_product_image(image_data, mime_type='image/jpeg'):
     """
     Usa Gemini Vision para analizar una imagen de una prenda y extraer atributos normalizados al catálogo.
     """
     start_time = time.time()
+    # Normalizar mime_type — Gemini acepta jpeg, png, webp, heic, heif
+    if not mime_type or mime_type == 'application/octet-stream':
+        mime_type = 'image/jpeg'
     logger.info("AI Analysis: Starting image analysis with Gemini Vision")
     from .models import Categoria, Color, Tela
 
     # Obtener valores del catálogo para normalización
-    categorias = list(Categoria.objects.values_list('nombre', flat=True))
-    colores = list(Color.objects.values_list('nombre', flat=True))
+    categorias = list(Categoria.objects.exclude(nombre__icontains='sin definir').values_list('nombre', flat=True))
+    colores = list(Color.objects.exclude(nombre__icontains='sin definir').values_list('nombre', flat=True))
     telas = list(Tela.objects.all().values_list('nombre', flat=True))
     tallas = ["U", "XS", "S", "M", "L", "XL", "2", "4", "6", "8", "10", "12", "14", "16"]
 
@@ -89,38 +92,36 @@ def analyze_product_image(image_data):
     if not model:
         return None
 
-    prompt = f"""Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario.
+    prompt = f"""Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario de boutique de vestidos de novia y quinceañera en México.
 Debes normalizar los valores basándote ÚNICAMENTE en las opciones del catálogo proporcionadas.
 
 CATÁLOGO:
-- Categorías: {', '.join(categorias)} (Prioriza Novias, Damas, Accesorios si aplica)
-- Colores: {', '.join(colores)}
-- Telas: {', '.join(telas)}
+- Categorías disponibles: {', '.join(categorias) if categorias else 'Novias, Quinceañera, Damas, Accesorios'}
+- Colores disponibles: {', '.join(colores) if colores else 'Blanco, Rosa, Aqua, Vino, Champagne'}
+- Telas disponibles: {', '.join(telas) if telas else 'Satín, Encaje, Chiffón, Tul, Mikado'}
 - Tallas: {', '.join(tallas)}
 
-REGLAS:
-1. Si el valor no se parece razonablemente a una opción del catálogo, devuelve null para ese campo.
-2. 'rasgo1' debe ser el modelo/corte (ej: Sirena, Escote V).
-3. 'rasgo2' debe ser el valor del catálogo de telas o null.
-4. El precio debe ser un número sugerido basado en la calidad percibida.
+INSTRUCCIONES:
+1. Devuelve null si no puedes identificar un valor con seguridad razonable — NO inventes ni uses "Sin definir".
+2. rasgo1 = modelo/corte del vestido (ej: Sirena, A-line, Princesa, Con cola, Sin manga).
+3. rasgo2 = material/tela del catálogo o null.
+4. precio_sugerido = estimado en pesos MXN según calidad visible (entre 800 y 8000).
 
-FORMATO JSON ESPERADO:
+FORMATO JSON (responde SOLO el JSON, sin explicaciones):
 {{
-  "categoria": "Valor del catálogo o null",
-  "rasgo1": "Texto libre corto",
-  "rasgo2": "Valor del catálogo de telas o null",
-  "color": "Valor del catálogo o null",
-  "talla": "Valor del catálogo o null (Default: U)",
+  "categoria": "opción exacta del catálogo o null",
+  "rasgo1": "descripción corta del modelo/corte o null",
+  "rasgo2": "opción exacta de telas del catálogo o null",
+  "color": "opción exacta del catálogo o null",
+  "talla": "U",
   "precio_sugerido": 0,
-  "confianza": 0.0 a 1.0
-}}
-
-Responde ÚNICAMENTE el JSON."""
+  "confianza": 0.0
+}}"""
 
     try:
         response = model.generate_content([
             prompt,
-            {'mime_type': 'image/jpeg', 'data': image_data}
+            {'mime_type': mime_type, 'data': image_data}
         ])
         duration = time.time() - start_time
         logger.info(f"AI Analysis: Gemini Vision response received in {duration:.2f}s")
