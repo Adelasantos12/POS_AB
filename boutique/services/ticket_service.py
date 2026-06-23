@@ -90,12 +90,25 @@ def generate_pdf_ticket(ticket_id):
         y -= 0.15 * inch
     novia_nombre = snapshot.get('novia_nombre', '')
     dama_nombre = snapshot.get('dama_nombre', '')
-    if ticket.novia or novia_nombre:
-        nombre_grupo = ticket.novia.nombre if ticket.novia else novia_nombre
-        p.drawString(0.2 * inch, y, f"Grupo: {nombre_grupo}")
+    novia_obj = ticket.novia  # puede ser None si se desvinculó
+    if novia_obj or novia_nombre:
+        nombre_grupo = novia_obj.nombre if novia_obj else novia_nombre
+        p.setFont("Helvetica-Bold", 8)
+        p.drawString(0.2 * inch, y, f"Grupo novia: {nombre_grupo}")
+        p.setFont("Helvetica", 8)
         y -= 0.15 * inch
+        if novia_obj:
+            if novia_obj.fecha_boda:
+                p.drawString(0.2 * inch, y, f"Boda: {novia_obj.fecha_boda.strftime('%d/%m/%Y')}")
+                y -= 0.14 * inch
+            if novia_obj.fecha_prueba:
+                p.drawString(0.2 * inch, y, f"Prueba: {novia_obj.fecha_prueba.strftime('%d/%m/%Y')}")
+                y -= 0.14 * inch
+            if novia_obj.fecha_entrega:
+                p.drawString(0.2 * inch, y, f"Entrega: {novia_obj.fecha_entrega.strftime('%d/%m/%Y')}")
+                y -= 0.14 * inch
     if dama_nombre:
-        p.drawString(0.2 * inch, y, f"Dama: {dama_nombre}")
+        p.drawString(0.2 * inch, y, f"Para: {dama_nombre}")
         y -= 0.15 * inch
 
     metodo = snapshot.get('metodo_pago', '')
