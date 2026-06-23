@@ -247,25 +247,25 @@ def generate_pdf_ticket(ticket_id):
     p.drawCentredString(width / 2, y, "Sin ticket no se entrega el pedido.")
     y -= 0.18 * inch
 
-    # ── Checklist útil (solo Novias y Damas) ─────────────────
+    # ── Checklist útil (solo grupos de novia con FK explícita) ──
+    # Solo aparece cuando el ticket está vinculado a una Novia real,
+    # nunca en ventas normales aunque el vestido sea de "Damas".
     novia_nombre = snapshot.get('novia_nombre', '')
     dama_nombre  = snapshot.get('dama_nombre', '')
-    es_novia = bool(ticket.novia or novia_nombre)
-    es_dama  = bool(dama_nombre)
+    es_grupo_novia = bool(ticket.novia or novia_nombre)
 
-    # Detectar por descripción de ítems si aún no hay señal
-    if not es_novia and not es_dama:
-        for item in snapshot.get('items', []):
-            desc_lower = (
-                item.get('descripcion', '') + ' ' + item.get('modelo', '')
-            ).lower()
-            if 'novia' in desc_lower:
-                es_novia = True
-                break
-            if 'dama' in desc_lower:
-                es_dama = True
-
-    if es_novia:
+    if es_grupo_novia and dama_nombre:
+        titulo = "Hermosa, un par de recordatorios:"
+        recordatorios = [
+            "✔  Trae los zapatos con el tacon del dia —",
+            "    el largo se ajusta a esa altura exacta",
+            "✔  Si cambiaste de talla o peso, avisanos",
+            "    a tiempo para hacer el ajuste correcto",
+            "✔  Por favor llega puntual a tu cita —",
+            "    las demas damas tambien dependen",
+            "    de los tiempos  ✿",
+        ]
+    elif es_grupo_novia:
         titulo = "Hermosa, esto te ayudara para tu prueba:"
         recordatorios = [
             "✔  Trae los zapatos con el tacon del dia —",
@@ -278,17 +278,6 @@ def generate_pdf_ticket(ticket_id):
             "    en tu prueba final",
             "✔  Tu madrina puede acompañarte, solo",
             "    avisanos con tiempo  ✿",
-        ]
-    elif es_dama:
-        titulo = "Hermosa, un par de recordatorios:"
-        recordatorios = [
-            "✔  Trae los zapatos con el tacon del dia —",
-            "    el largo se ajusta a esa altura",
-            "✔  Si cambiaste de talla o peso, avisanos",
-            "    a tiempo para hacer el ajuste correcto",
-            "✔  Por favor llega puntual a tu cita —",
-            "    las demas damas tambien dependen",
-            "    de los tiempos  ✿",
         ]
     else:
         recordatorios = []
