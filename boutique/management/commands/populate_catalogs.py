@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from boutique.models import Color, Tela, Categoria, ConfiguracionTienda
+from boutique.models import Color, Tela, Categoria, ConfiguracionTienda, Modelo
 
 
 class Command(BaseCommand):
@@ -164,5 +164,25 @@ class Command(BaseCommand):
                 vieja.delete()
             except Categoria.DoesNotExist:
                 pass
+
+        # ── Modelos de vestido ─────────────────────────────────────────────────
+        # Siluetas y cortes usados en boutiques de Guadalajara
+        modelos_base = [
+            ('Sirena',      'Se ajusta al cuerpo hasta la rodilla y se abre hacia abajo — resalta curvas'),
+            ('Evasé',       'Corte A desde la cintura — favorece casi todas las figuras'),
+            ('Princesa',    'Falda amplia con mucho volumen desde la cintura — estilo clásico'),
+            ('Crinolina',   'Falda muy esponjada con armazón interior — muy solicitada en XV'),
+            ('Corte Recto', 'Cae recto desde los hombros — moderno y minimalista'),
+            ('Con Cola',    'Vestido con extensión en la parte trasera — catedral, capilla o barrida'),
+            ('Globo',       'Falda inflada en la parte baja — tendencia para quinceañeras'),
+            ('Corto',       'Vestido por encima de la rodilla — para damas, fiesta o cóctel'),
+            ('Dos Piezas',  'Top y falda separados — muy versátil para arreglos posteriores'),
+            ('Asimétrico',  'Ruedo irregular o un hombro — diseños modernos y originales'),
+        ]
+        for nombre, desc in modelos_base:
+            Modelo.objects.get_or_create(
+                nombre=nombre,
+                defaults={'descripcion': desc}
+            )
 
         self.stdout.write(self.style.SUCCESS('Catálogos base poblados correctamente'))

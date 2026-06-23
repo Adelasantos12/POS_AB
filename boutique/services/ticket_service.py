@@ -224,6 +224,53 @@ def generate_pdf_ticket(ticket_id):
     p.drawCentredString(width / 2, y, "Sin ticket no se entrega el pedido.")
     y -= 0.18 * inch
 
+    # ── Checklist útil (solo Novias y Damas) ─────────────────
+    novia_nombre = snapshot.get('novia_nombre', '')
+    dama_nombre  = snapshot.get('dama_nombre', '')
+    es_novia = bool(ticket.novia or novia_nombre)
+    es_dama  = bool(dama_nombre)
+
+    if es_novia:
+        recordatorios = [
+            "✔  Trae los zapatos con el tacón del día —",
+            "    el largo se mide con esa altura",
+            "✔  Ropa interior sin tirantes si el vestido",
+            "    es strapless o muy escotado",
+            "✔  Faja o corsé si usarás uno — ponlo en",
+            "    cada prueba para que el ajuste sea exacto",
+            "✔  Corona o tocado — necesario para ajustar",
+            "    el velo en la prueba final",
+            "✔  Tu madrina de vestido puede acompañarte,",
+            "    solo avísanos antes para no hacer esperar",
+        ]
+        titulo = "Para tu prueba y entrega:"
+    elif es_dama:
+        recordatorios = [
+            "✔  Trae los zapatos con el tacón del día —",
+            "    el largo se ajusta a esa altura",
+            "✔  Si hubo cambio de talla o peso, avísanos",
+            "    con tiempo para hacer el ajuste correcto",
+            "✔  Llega puntual a tu cita — las demás damas",
+            "    también dependen de los tiempos",
+        ]
+        titulo = "Recordatorio para damas:"
+    else:
+        recordatorios = []
+        titulo = ''
+
+    if recordatorios:
+        y -= 0.08 * inch
+        p.line(0.2 * inch, y, width - 0.2 * inch, y)
+        y -= 0.14 * inch
+        p.setFont("Helvetica-Bold", 7.5)
+        p.drawString(0.2 * inch, y, titulo)
+        y -= 0.13 * inch
+        p.setFont("Helvetica", 7)
+        for line in recordatorios:
+            p.drawString(0.2 * inch, y, line)
+            y -= 0.115 * inch
+        y -= 0.05 * inch
+
     # ── QR ───────────────────────────────────────────────────
     try:
         qr = qrcode.QRCode(version=1, box_size=2, border=1)
