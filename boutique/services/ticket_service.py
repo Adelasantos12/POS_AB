@@ -138,6 +138,7 @@ def generate_pdf_ticket(ticket_id):
         p.setFont("Helvetica", 8)
 
     # ── Medidas ──────────────────────────────────────────────
+    largo_aprox = ''
     if ticket.pedido:
         try:
             m = ticket.pedido.medidas
@@ -145,7 +146,8 @@ def generate_pdf_ticket(ticket_id):
             p.drawString(0.2 * inch, y, "Medidas:")
             y -= 0.14 * inch
             p.setFont("Helvetica", 7)
-            med1 = f"B:{m.busto or '-'} Cin:{m.cintura or '-'} Cad:{m.cadera or '-'} Largo:{m.largo_aproximado or '-'}"
+            largo_aprox = str(m.largo_aproximado or '')
+            med1 = f"B:{m.busto or '-'} Cin:{m.cintura or '-'} Cad:{m.cadera or '-'} Largo:{largo_aprox or '-'}"
             p.drawString(0.2 * inch, y, med1[:55])
             y -= 0.12 * inch
             extras = []
@@ -166,6 +168,24 @@ def generate_pdf_ticket(ticket_id):
             p.setFont("Helvetica", 8)
         except Exception:
             pass
+
+    # ── Largo aprox + aviso de bastilla ──────────────────────
+    items = snapshot.get('items', [])
+    tiene_bastilla = any(
+        'bastilla' in (item.get('descripcion', '') + item.get('modelo', '')).lower()
+        for item in items
+    )
+    if largo_aprox or not tiene_bastilla:
+        y -= 0.03 * inch
+        p.setFont("Helvetica-Bold", 7.5)
+        if largo_aprox:
+            p.drawString(0.2 * inch, y, f"Largo aprox: {largo_aprox} cm")
+            y -= 0.13 * inch
+        if not tiene_bastilla:
+            p.setFont("Helvetica-Oblique", 7)
+            p.drawString(0.2 * inch, y, "* Sin bastilla — se cotiza por separado")
+            y -= 0.12 * inch
+        p.setFont("Helvetica", 8)
 
     y -= 0.05 * inch
     p.line(0.2 * inch, y, width - 0.2 * inch, y)
