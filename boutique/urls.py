@@ -48,6 +48,7 @@ urlpatterns = [
     path('api/producto-variantes/<int:pk>/', views.api_get_variantes, name='api_get_variantes'),
     path('api/producto-regularizar/<int:pk>/', views.api_producto_regularizar, name='api_producto_regularizar'),
     path('api/producto-eliminar/<int:pk>/', views.api_eliminar_producto, name='api_eliminar_producto'),
+    path('api/producto-foto/<int:pk>/', views.api_foto_producto, name='api_foto_producto'),
     path('imprimir-etiquetas/', views.imprimir_etiquetas, name='imprimir_etiquetas'),
     
     # Impresión Brother QL-800

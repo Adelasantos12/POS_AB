@@ -5,13 +5,32 @@
 <div class="page-header d-flex justify-content-between align-items-center">
     <div>
         <h1 class="page-title">Subida en Bloque</h1>
-        <p class="page-subtitle">Ingresa varios vestidos de una vez — solo categoría, color, talla y precio son obligatorios</p>
+        <p class="page-subtitle">Arrastra fotos y la IA las clasifica sola — o llena la tabla a mano</p>
     </div>
     <a href="{% url 'inventario_view' %}" class="btn btn-light rounded-pill px-4">
         <i class="bi bi-arrow-left me-2"></i>Inventario
     </a>
 </div>
 
+<!-- ── Drop Zone ── -->
+<div id="dropZone" class="card border-2 mb-4 text-center py-5" style="border-radius:18px;border:2px dashed #c084fc;cursor:pointer;transition:background .2s;">
+    <input type="file" id="inputFotos" accept="image/*" multiple class="d-none">
+    <div id="dropContent">
+        <div style="font-size:3rem;">📸</div>
+        <h5 class="fw-bold mt-2 mb-1">Arrastra las fotos aquí</h5>
+        <p class="text-muted mb-3">O haz clic para seleccionar — puedes soltar muchas a la vez</p>
+        <button type="button" class="btn btn-primary rounded-pill px-5" onclick="document.getElementById('inputFotos').click()">
+            <i class="bi bi-image me-2"></i>Seleccionar fotos
+        </button>
+    </div>
+    <div id="dropProgress" class="d-none">
+        <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;"></div>
+        <h5 class="fw-bold" id="dropProgressLabel">Analizando fotos con IA…</h5>
+        <p class="text-muted small" id="dropProgressSub"></p>
+    </div>
+</div>
+
+<!-- ── Tabla de Vestidos ── -->
 <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;overflow:hidden;">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -19,6 +38,7 @@
                 <thead class="bg-light">
                     <tr>
                         <th class="ps-3" style="width:36px;">#</th>
+                        <th style="width:70px;">Foto</th>
                         <th style="min-width:140px;">Categoría *</th>
                         <th style="min-width:120px;">Color *</th>
                         <th style="min-width:90px;">Talla</th>
@@ -34,11 +54,11 @@
             </table>
         </div>
     </div>
-    <div class="card-footer bg-white border-0 p-3 d-flex gap-2">
+    <div class="card-footer bg-white border-0 p-3 d-flex gap-2 align-items-center">
         <button class="btn btn-outline-secondary rounded-pill" id="btnAgregarFila">
-            <i class="bi bi-plus-lg me-1"></i>Agregar fila
+            <i class="bi bi-plus-lg me-1"></i>Fila manual
         </button>
-        <span class="text-muted small align-self-center ms-2" id="lblConteo">5 filas</span>
+        <span class="text-muted small ms-2" id="lblConteo">0 filas</span>
         <div class="flex-grow-1"></div>
         <button class="btn btn-primary fw-bold rounded-pill px-5" id="btnGuardarBloque">
             <i class="bi bi-check-lg me-2"></i>Guardar todos
@@ -46,20 +66,20 @@
     </div>
 </div>
 
-<!-- Resultados -->
+<!-- ── Resultados ── -->
 <div id="resultadosSection" class="d-none">
     <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;overflow:hidden;">
         <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between align-items-center">
-            <h5 class="fw-bold mb-0">Resultado</h5>
-            <button class="btn btn-outline-primary rounded-pill btn-sm" id="btnImprimirEtiquetas">
-                <i class="bi bi-printer me-1"></i>Imprimir etiquetas de los nuevos
+            <h5 class="fw-bold mb-0" id="resultadosTitulo">Resultado</h5>
+            <button class="btn btn-outline-primary rounded-pill btn-sm d-none" id="btnImprimirEtiquetas">
+                <i class="bi bi-printer me-1"></i>Imprimir etiquetas
             </button>
         </div>
         <div class="table-responsive">
             <table class="table mb-0 align-middle">
                 <thead class="bg-light">
                     <tr>
-                        <th class="ps-4">Fila</th>
+                        <th class="ps-4">Foto</th>
                         <th>SKU</th>
                         <th>Descripción</th>
                         <th>Resultado</th>
@@ -75,23 +95,62 @@
 <datalist id="dlCategorias">{% for c in categorias %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
 <datalist id="dlColores">{% for c in colores %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
 
+<style>
+#dropZone.drag-over { background: #f5f0ff !important; }
+.thumb-preview { width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid #e9ecef; }
+.thumb-placeholder { width:56px;height:56px;border-radius:8px;border:2px dashed #dee2e6;display:flex;align-items:center;justify-content:center;color:#adb5bd;cursor:pointer;font-size:1.3rem;transition:border-color .2s; }
+.thumb-placeholder:hover { border-color:#c084fc; }
+.ai-loading { opacity:.5; }
+.ai-loading td:first-child::after { content:'⏳'; margin-left:4px; }
+</style>
+
 <script>
 const CSRF = '{{ csrf_token }}';
 const RASGOS_ESTILO = {{ rasgos_estilo|safe }};
-const RASGOS_CORTE = {{ rasgos_corte|safe }};
+const RASGOS_CORTE  = {{ rasgos_corte|safe }};
 const RASGOS_ESCOTE = {{ rasgos_escote|safe }};
-const RASGOS_TELA = {{ rasgos_tela|safe }};
+const RASGOS_TELA   = {{ rasgos_tela|safe }};
 const TALLAS = ['U','XS','S','M','L','XL','2XL','3XL','6','8','10','12','14','16','18'];
 
+// Map: rowId → File
+const fotosPorFila = new Map();
+let rowCounter = 0;
 let idNuevos = [];
 
-function crearFila(n) {
+// ── Datalists para rasgos ──────────────────────────────────────────────────
+const dlR1 = document.createElement('datalist'); dlR1.id = 'dlRasgos1';
+[...RASGOS_ESTILO, ...RASGOS_CORTE, ...RASGOS_ESCOTE].forEach(r => {
+    const o = document.createElement('option'); o.value = r; dlR1.appendChild(o);
+});
+document.body.appendChild(dlR1);
+const dlR2 = document.createElement('datalist'); dlR2.id = 'dlRasgos2';
+RASGOS_TELA.forEach(r => {
+    const o = document.createElement('option'); o.value = r; dlR2.appendChild(o);
+});
+document.body.appendChild(dlR2);
+
+// ── Crear fila ─────────────────────────────────────────────────────────────
+function crearFila(n, foto = null) {
+    const id = ++rowCounter;
     const tr = document.createElement('tr');
-    tr.dataset.fila = n;
+    tr.dataset.rowId = id;
+    tr.dataset.filaNum = n;
+
+    const url = foto ? URL.createObjectURL(foto) : null;
+    const thumbHtml = url
+        ? `<img src="${url}" class="thumb-preview" title="Clic para cambiar foto">`
+        : `<div class="thumb-placeholder" title="Agregar foto"><i class="bi bi-camera"></i></div>`;
+
     tr.innerHTML = `
         <td class="ps-3 text-muted small">${n}</td>
-        <td><input type="text" class="form-control form-control-sm" name="categoria" list="dlCategorias" placeholder="Quinceañera, Novia..."></td>
-        <td><input type="text" class="form-control form-control-sm" name="color" list="dlColores" placeholder="Rosa, Vino..."></td>
+        <td>
+            <label style="cursor:pointer;display:block;">
+                <input type="file" accept="image/*" class="d-none foto-input" data-row="${id}">
+                ${thumbHtml}
+            </label>
+        </td>
+        <td><input type="text" class="form-control form-control-sm" name="categoria" list="dlCategorias" placeholder="Quinceañera, Novia…"></td>
+        <td><input type="text" class="form-control form-control-sm" name="color" list="dlColores" placeholder="Rosa, Vino…"></td>
         <td>
             <select class="form-select form-select-sm" name="talla">
                 ${TALLAS.map(t => `<option value="${t}">${t === 'U' ? 'Única' : t}</option>`).join('')}
@@ -103,10 +162,29 @@ function crearFila(n) {
                 <input type="number" class="form-control" name="precio" placeholder="0" min="0" step="0.01">
             </div>
         </td>
-        <td><input type="text" class="form-control form-control-sm" name="rasgo1" list="dlRasgos1" placeholder="Sin manga, Manga larga..."></td>
-        <td><input type="text" class="form-control form-control-sm" name="rasgo2" list="dlRasgos2" placeholder="Satín, Encaje..."></td>
-        <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove(); actualizarConteo()"><i class="bi bi-x-lg"></i></button></td>
-    `;
+        <td><input type="text" class="form-control form-control-sm" name="rasgo1" list="dlRasgos1" placeholder="Sin manga, Sirena…"></td>
+        <td><input type="text" class="form-control form-control-sm" name="rasgo2" list="dlRasgos2" placeholder="Satín, Encaje…"></td>
+        <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove();actualizarConteo()"><i class="bi bi-x-lg"></i></button></td>`;
+
+    if (foto) fotosPorFila.set(id, foto);
+
+    tr.querySelector('.foto-input').addEventListener('change', e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        fotosPorFila.set(id, f);
+        const lbl = tr.querySelector('label');
+        let img = lbl.querySelector('.thumb-preview');
+        if (!img) {
+            lbl.querySelector('.thumb-placeholder')?.remove();
+            img = document.createElement('img');
+            img.className = 'thumb-preview';
+            img.title = 'Clic para cambiar foto';
+            lbl.appendChild(img);
+        }
+        img.src = URL.createObjectURL(f);
+        analizarYRellenar(tr, f);
+    });
+
     return tr;
 }
 
@@ -115,60 +193,128 @@ function actualizarConteo() {
     document.getElementById('lblConteo').textContent = `${n} fila${n !== 1 ? 's' : ''}`;
 }
 
-// Datalists para rasgos
-const dlR1 = document.createElement('datalist');
-dlR1.id = 'dlRasgos1';
-[...RASGOS_ESTILO, ...RASGOS_CORTE, ...RASGOS_ESCOTE].forEach(r => {
-    const o = document.createElement('option'); o.value = r; dlR1.appendChild(o);
+// ── Analizar foto con IA y rellenar fila ───────────────────────────────────
+async function analizarYRellenar(tr, foto) {
+    tr.classList.add('ai-loading');
+    const fd = new FormData();
+    fd.append('image', foto);
+    try {
+        const res = await fetch('{% url "api_ai_analyze_image" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+            body: fd
+        });
+        const data = await res.json();
+        if (data.status === 'ok' && data.atributos) {
+            const a = data.atributos;
+            const set = (name, val) => { if (val) tr.querySelector(`[name="${name}"]`).value = val; };
+            set('categoria', a.categoria);
+            set('color', a.color);
+            set('rasgo1', a.rasgo1);
+            set('rasgo2', a.rasgo2);
+            if (a.talla) tr.querySelector('[name="talla"]').value = a.talla;
+            if (a.precio_sugerido && a.precio_sugerido > 0)
+                tr.querySelector('[name="precio"]').value = a.precio_sugerido;
+        }
+    } catch (_) { /* el usuario puede llenar a mano */ }
+    finally { tr.classList.remove('ai-loading'); }
+}
+
+// ── Drop Zone ──────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const tbody    = document.getElementById('filas');
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const archivos = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+    if (archivos.length) procesarFotos(archivos);
 });
-document.body.appendChild(dlR1);
-
-const dlR2 = document.createElement('datalist');
-dlR2.id = 'dlRasgos2';
-RASGOS_TELA.forEach(r => {
-    const o = document.createElement('option'); o.value = r; dlR2.appendChild(o);
+document.getElementById('inputFotos').addEventListener('change', e => {
+    procesarFotos([...e.target.files]);
+    e.target.value = '';
 });
-document.body.appendChild(dlR2);
 
-// Inicializar con 5 filas
-const tbody = document.getElementById('filas');
-for (let i = 1; i <= 5; i++) tbody.appendChild(crearFila(i));
-actualizarConteo();
+async function procesarFotos(files) {
+    if (!files.length) return;
 
-document.getElementById('btnAgregarFila').addEventListener('click', () => {
-    const n = document.querySelectorAll('#filas tr').length + 1;
-    tbody.appendChild(crearFila(n));
+    document.getElementById('dropContent').classList.add('d-none');
+    document.getElementById('dropProgress').classList.remove('d-none');
+
+    let done = 0;
+    const sub = document.getElementById('dropProgressSub');
+    const lbl = document.getElementById('dropProgressLabel');
+
+    // Crear filas inmediatamente con thumbnails, luego analizar en lotes de 3
+    const filasPorFoto = files.map(foto => {
+        const n = tbody.querySelectorAll('tr').length + 1;
+        const tr = crearFila(n, foto);
+        tbody.appendChild(tr);
+        return { tr, foto };
+    });
     actualizarConteo();
-    tbody.lastElementChild.querySelector('input').focus();
+
+    const lotes = [];
+    for (let i = 0; i < filasPorFoto.length; i += 3) lotes.push(filasPorFoto.slice(i, i + 3));
+
+    for (const lote of lotes) {
+        lbl.textContent = `Analizando foto ${done + 1} de ${files.length}…`;
+        await Promise.all(lote.map(async ({ tr, foto }) => {
+            await analizarYRellenar(tr, foto);
+            done++;
+            sub.textContent = `${done} de ${files.length} listas`;
+        }));
+    }
+
+    document.getElementById('dropContent').classList.remove('d-none');
+    document.getElementById('dropProgress').classList.add('d-none');
+}
+
+// ── Fila manual ────────────────────────────────────────────────────────────
+document.getElementById('btnAgregarFila').addEventListener('click', () => {
+    const n = tbody.querySelectorAll('tr').length + 1;
+    const tr = crearFila(n);
+    tbody.appendChild(tr);
+    actualizarConteo();
+    tr.querySelector('input[name="categoria"]').focus();
 });
 
+// ── Guardar ────────────────────────────────────────────────────────────────
 document.getElementById('btnGuardarBloque').addEventListener('click', async () => {
     const filas = [];
-    document.querySelectorAll('#filas tr').forEach(tr => {
+    const fotoMap = [];
+
+    [...tbody.querySelectorAll('tr')].forEach(tr => {
         const get = name => tr.querySelector(`[name="${name}"]`)?.value?.trim() || '';
-        const precio = get('precio');
-        if (!get('categoria') && !get('color') && !precio) return; // fila vacía
+        if (!get('categoria') && !get('color') && !get('precio')) return;
         filas.push({
             categoria: get('categoria'),
-            color: get('color'),
-            talla: get('talla') || 'U',
-            precio,
-            rasgo1: get('rasgo1'),
-            rasgo2: get('rasgo2'),
+            color:     get('color'),
+            talla:     get('talla') || 'U',
+            precio:    get('precio'),
+            rasgo1:    get('rasgo1'),
+            rasgo2:    get('rasgo2'),
         });
+        fotoMap.push(fotosPorFila.get(parseInt(tr.dataset.rowId)) || null);
     });
 
-    if (filas.length === 0) { alert('No hay vestidos para guardar.'); return; }
+    if (!filas.length) { alert('No hay vestidos para guardar.'); return; }
 
     const btn = document.getElementById('btnGuardarBloque');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando…';
 
     try {
+        const fd = new FormData();
+        fd.append('filas', JSON.stringify(filas));
+        fotoMap.forEach((foto, idx) => { if (foto) fd.append(`foto_${idx}`, foto); });
+
         const res = await fetch('{% url "api_subida_bloque" %}', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-            body: JSON.stringify({ filas })
+            headers: { 'X-CSRFToken': CSRF },
+            body: fd
         });
         const data = await res.json();
         if (data.status !== 'ok') throw new Error(data.message || 'Error desconocido');
@@ -183,43 +329,43 @@ document.getElementById('btnGuardarBloque').addEventListener('click', async () =
     }
 });
 
+// ── Resultados ─────────────────────────────────────────────────────────────
 function mostrarResultados(resultados) {
-    const tbody = document.getElementById('resultadosBody');
-    tbody.innerHTML = '';
+    const tb = document.getElementById('resultadosBody');
+    tb.innerHTML = '';
     let nuevos = 0, existentes = 0, errores = 0;
     resultados.forEach(r => {
-        const badge = r.status === 'nuevo' ? 'bg-success' :
+        const badge = r.status === 'nuevo'     ? 'bg-success' :
                       r.status === 'existente' ? 'bg-warning text-dark' :
-                      r.status === 'skip' ? 'bg-light text-muted border' : 'bg-danger';
-        const label = r.status === 'nuevo' ? 'Nuevo' :
+                      r.status === 'skip'      ? 'bg-light text-muted border' : 'bg-danger';
+        const label = r.status === 'nuevo'     ? 'Nuevo' :
                       r.status === 'existente' ? 'Ya existía' :
-                      r.status === 'skip' ? 'Omitida' : 'Error';
-        tbody.innerHTML += `
+                      r.status === 'skip'      ? 'Omitida' : 'Error';
+        const thumb = r.foto_url
+            ? `<img src="${r.foto_url}" style="height:44px;width:44px;object-fit:cover;border-radius:8px;">`
+            : '<span class="text-muted small">Sin foto</span>';
+        tb.innerHTML += `
             <tr>
-                <td class="ps-4 text-muted small">${r.fila}</td>
+                <td class="ps-4">${thumb}</td>
                 <td class="fw-bold small">${r.sku || '—'}</td>
                 <td class="small">${r.desc || ''}</td>
                 <td><span class="badge ${badge} rounded-pill">${label}</span> <span class="small text-muted">${r.msg || ''}</span></td>
             </tr>`;
-        if (r.status === 'nuevo') nuevos++;
+        if (r.status === 'nuevo')          nuevos++;
         else if (r.status === 'existente') existentes++;
-        else if (r.status === 'error') errores++;
+        else if (r.status === 'error')     errores++;
     });
     document.getElementById('resultadosSection').classList.remove('d-none');
     document.getElementById('resultadosSection').scrollIntoView({ behavior: 'smooth' });
 
-    const resumen = `✅ ${nuevos} nuevos  ${existentes > 0 ? `• ⚠ ${existentes} ya existían (se sumó stock)` : ''}${errores > 0 ? `  • ❌ ${errores} errores` : ''}`;
-    document.querySelector('#resultadosSection .card-header h5').textContent = resumen;
+    document.getElementById('resultadosTitulo').textContent =
+        `✅ ${nuevos} nuevos${existentes > 0 ? `  •  ⚠ ${existentes} ya existían` : ''}${errores > 0 ? `  •  ❌ ${errores} errores` : ''}`;
 
-    if (idNuevos.length > 0) {
-        document.getElementById('btnImprimirEtiquetas').classList.remove('d-none');
-    }
+    if (idNuevos.length) document.getElementById('btnImprimirEtiquetas').classList.remove('d-none');
 }
 
 document.getElementById('btnImprimirEtiquetas').addEventListener('click', () => {
-    if (idNuevos.length > 0) {
-        window.open(`{% url 'imprimir_etiquetas' %}?ids=${idNuevos.join(',')}`, '_blank');
-    }
+    if (idNuevos.length) window.open(`{% url 'imprimir_etiquetas' %}?ids=${idNuevos.join(',')}`, '_blank');
 });
 </script>
 {% endblock %}

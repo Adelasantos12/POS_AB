@@ -583,15 +583,19 @@
                         const stockBadge = item.stock > 0
                             ? `<span class="badge bg-success rounded-pill">${item.stock}</span>`
                             : `<span class="badge bg-danger rounded-pill">Agotado</span>`;
+                        const thumbHtml = item.foto_url
+                            ? `<img src="${item.foto_url}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;flex-shrink:0;" class="me-3">`
+                            : `<div style="width:48px;height:48px;border-radius:8px;background:#f8f9fa;display:flex;align-items:center;justify-content:center;color:#adb5bd;flex-shrink:0;" class="me-3"><i class="bi bi-image"></i></div>`;
                         html += `
-                            <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                            <a href="#" class="list-group-item list-group-item-action d-flex align-items-center"
                                onclick="addToCart(${item.id}, '${item.text.replace(/'/g, "\\'")}', ${item.precio}); return false;">
-                                <div>
+                                ${thumbHtml}
+                                <div class="flex-grow-1">
                                     <span class="badge bg-secondary me-2" style="font-size: 0.6rem;">PROD</span>
                                     <strong>${item.text}</strong>
                                     <br><small class="text-muted">SKU: ${item.sku}</small>
                                 </div>
-                                <div class="text-end">
+                                <div class="text-end ms-2">
                                     <span class="fw-bold text-primary">$${item.precio.toLocaleString()}</span>
                                     <br>${stockBadge}
                                 </div>

@@ -13,3 +13,5 @@ python-escpos==3.1
 brother-ql==0.9.4
 google-generativeai
 psycopg[binary]>=3.1
+cloudinary>=1.36.0
+django-cloudinary-storage>=0.3.0

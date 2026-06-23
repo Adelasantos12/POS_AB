@@ -56,7 +56,8 @@ def api_search_global(request):
             'text': str(p),
             'precio': float(p.precio_venta),
             'stock': p.cantidad_actual,
-            'folio': p.sku
+            'folio': p.sku,
+            'foto_url': p.foto.url if p.foto else None,
         })
 
     # 2. Apartados (Folio, Cliente, Teléfono)
@@ -971,7 +972,7 @@ def api_search_productos(request):
         Q(rasgo2__icontains=q) |
         Q(categoria__nombre__icontains=q)
     )[:15]
-    results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual} for p in productos]
+    results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual, 'foto_url': p.foto.url if p.foto else None} for p in productos]
     return JsonResponse({'results': results})
 
 
@@ -2590,8 +2591,13 @@ def subida_bloque(request):
 def api_subida_bloque(request):
     """Crea múltiples productos en una sola transacción atómica."""
     try:
-        data = json.loads(request.body)
-        filas = data.get('filas', [])
+        if request.content_type and 'multipart' in request.content_type:
+            filas = json.loads(request.POST.get('filas', '[]'))
+            fotos = {k: v for k, v in request.FILES.items() if k.startswith('foto_')}
+        else:
+            data = json.loads(request.body)
+            filas = data.get('filas', [])
+            fotos = {}
         if not filas:
             return JsonResponse({'status': 'error', 'message': 'No hay filas'}, status=400)
 
@@ -2622,7 +2628,10 @@ def api_subida_bloque(request):
                 producto.cantidad_actual += 1
                 if created:
                     producto.precio_venta = precio
-                producto.save(update_fields=['cantidad_actual', 'precio_venta'])
+                foto_file = fotos.get(f'foto_{i}')
+                if foto_file and not producto.foto:
+                    producto.foto = foto_file
+                producto.save(update_fields=['cantidad_actual', 'precio_venta', 'foto'])
                 resultados.append({
                     'fila': i + 1,
                     'status': 'nuevo' if created else 'existente',
@@ -2630,10 +2639,32 @@ def api_subida_bloque(request):
                     'id': producto.id,
                     'desc': str(producto),
                     'msg': 'Creado' if created else f'Ya existía — stock +1 (total: {producto.cantidad_actual})',
+                    'tiene_foto': bool(foto_file),
+                    'foto_url': producto.foto.url if producto.foto else None,
                 })
 
         ids_nuevos = [r['id'] for r in resultados if r['status'] in ('nuevo', 'existente')]
+        fotos_guardadas = [r['id'] for r in resultados if r.get('tiene_foto')]
         return JsonResponse({'status': 'ok', 'resultados': resultados, 'ids_nuevos': ids_nuevos})
     except Exception as e:
         logger.exception("Error en api_subida_bloque")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_foto_producto(request, pk):
+    """Sube o reemplaza la foto de un producto existente."""
+    producto = get_object_or_404(Producto, pk=pk)
+    foto = request.FILES.get('foto')
+    if not foto:
+        return JsonResponse({'status': 'error', 'message': 'No se recibió foto'}, status=400)
+    if producto.foto:
+        try:
+            producto.foto.delete(save=False)
+        except Exception:
+            pass
+    producto.foto = foto
+    producto.save(update_fields=['foto'])
+    return JsonResponse({'status': 'ok', 'foto_url': producto.foto.url})

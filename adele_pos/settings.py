@@ -105,6 +105,15 @@ if not DEBUG:
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# --- Almacenamiento de Fotos (Cloudinary en producción, local en dev) ---
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
+if CLOUDINARY_URL:
+    import cloudinary
+    import cloudinary.uploader
+    import cloudinary.api
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = 'index'

@@ -52,6 +52,7 @@
             <thead class="bg-light">
                 <tr>
                     <th style="width: 40px; padding-left: 20px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    <th style="width:56px;"></th>
                     <th>Producto</th>
                     <th>Rasgos</th>
                     <th>Talla/Color</th>
@@ -65,6 +66,17 @@
                 {% for p in productos %}
                 <tr id="row-{{ p.id }}">
                     <td style="padding-left: 20px;"><input type="checkbox" class="product-check form-check-input" value="{{ p.id }}"></td>
+                    <td>
+                        {% if p.foto %}
+                        <img src="{{ p.foto.url }}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;"
+                             onclick="window.open('{{ p.foto.url }}','_blank')" title="Ver foto">
+                        {% else %}
+                        <div style="width:48px;height:48px;border-radius:8px;border:2px dashed #dee2e6;display:flex;align-items:center;justify-content:center;color:#ccc;cursor:pointer;"
+                             onclick="subirFotoProducto({{ p.id }}, this)" title="Agregar foto">
+                            <i class="bi bi-camera" style="font-size:1.1rem;"></i>
+                        </div>
+                        {% endif %}
+                    </td>
                     <td>
                         <div class="fw-bold">{{ p.categoria.nombre }}</div>
                         <small class="text-muted">{{ p.sku }}</small>
@@ -539,6 +551,30 @@
             btn.innerHTML = originalText;
         });
     });
+
+    // ── Subir foto a producto existente ──────────────────────────────────────
+    function subirFotoProducto(pk, iconCell) {
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/*';
+        input.onchange = async () => {
+            const foto = input.files[0]; if (!foto) return;
+            const fd = new FormData(); fd.append('foto', foto);
+            try {
+                const res = await fetch(`/api/producto-foto/${pk}/`, {
+                    method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: fd
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    const img = document.createElement('img');
+                    img.src = data.foto_url;
+                    img.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                    img.onclick = () => window.open(data.foto_url, '_blank');
+                    iconCell.replaceWith(img);
+                }
+            } catch (_) { alert('Error al subir la foto'); }
+        };
+        input.click();
+    }
 
     function imprimirEtiqueta(id, sku) {
         const cantidad = prompt(`¿Cuántas etiquetas de ${sku} deseas imprimir?`, '1');
