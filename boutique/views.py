@@ -801,6 +801,13 @@ def api_venta_rapida(request):
                         origen_tipo='venta', origen_obj=venta,
                         monto=anticipo, metodo=metodo, usuario=request.active_profile
                     )
+                    # Guardar largo_aprox en snapshot si se proporcionó en el formulario
+                    _m_largo = request.POST.get('m_largo', '').strip()
+                    if _m_largo:
+                        _snap = ticket.snapshot_json or {}
+                        _snap['largo_aprox'] = _m_largo
+                        ticket.snapshot_json = _snap
+                        ticket.save(update_fields=['snapshot_json'])
                     # Servicios adicionales bundled (bastillas, ajustes, etc.)
                     _servicios_extra = _parse_servicios_bundled(
                         request.POST.get('servicios_json', '[]'),

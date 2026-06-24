@@ -169,18 +169,22 @@ def generate_pdf_ticket(ticket_id):
         except Exception:
             pass
 
+    # Fallback: largo_aprox desde snapshot (ventas directas sin pedido)
+    if not largo_aprox:
+        largo_aprox = str(snapshot.get('largo_aprox', ''))
+
     # ── Largo aprox + aviso de bastilla ──────────────────────
-    items = snapshot.get('items', [])
-    tiene_bastilla = any(
-        'bastilla' in (item.get('descripcion', '') + item.get('modelo', '')).lower()
-        for item in items
-    )
-    if largo_aprox or not tiene_bastilla:
+    # Solo mostramos si se capturó el largo (implica venta de vestido)
+    if largo_aprox:
+        items = snapshot.get('items', [])
+        tiene_bastilla = any(
+            'bastilla' in (item.get('descripcion', '') + item.get('modelo', '')).lower()
+            for item in items
+        )
         y -= 0.03 * inch
         p.setFont("Helvetica-Bold", 7.5)
-        if largo_aprox:
-            p.drawString(0.2 * inch, y, f"Largo aprox: {largo_aprox} cm")
-            y -= 0.13 * inch
+        p.drawString(0.2 * inch, y, f"Largo aprox: {largo_aprox} cm")
+        y -= 0.13 * inch
         if not tiene_bastilla:
             p.setFont("Helvetica-Oblique", 7)
             p.drawString(0.2 * inch, y, "* Sin bastilla — se cotiza por separado")
