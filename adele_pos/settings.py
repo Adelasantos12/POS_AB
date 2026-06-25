@@ -95,24 +95,34 @@ USE_TZ = True
 
 # --- Configuración de Archivos Estáticos ---
 STATIC_URL = 'static/'
-# Directorio donde `collectstatic` recogerá los archivos estáticos para producción.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# Motor de almacenamiento para WhiteNoise.
-if not DEBUG:
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # --- Configuración de Archivos Media ---
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# --- Almacenamiento de Fotos (Cloudinary en producción, local en dev) ---
+# --- Backends de almacenamiento (Django 5.x) ---
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if not DEBUG
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        ),
+    },
+}
+
+# --- Cloudinary para fotos persistentes en producción ---
+# cloudinary_storage debe ir ANTES de django.contrib.staticfiles en INSTALLED_APPS
 CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
 if CLOUDINARY_URL:
-    import cloudinary
-    import cloudinary.uploader
-    import cloudinary.api
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
+    _sf_idx = INSTALLED_APPS.index('django.contrib.staticfiles')
+    INSTALLED_APPS.insert(_sf_idx, 'cloudinary_storage')
+    INSTALLED_APPS.append('cloudinary')
+    STORAGES["default"]["BACKEND"] = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
