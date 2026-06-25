@@ -3,6 +3,7 @@ from google.genai import types
 from django.conf import settings
 import json
 import logging
+import re
 import time
 from decimal import Decimal
 
@@ -50,7 +51,7 @@ FORMATO JSON ESPERADO:
   "rasgo2": "Valor del catálogo de telas o null",
   "color": "Valor del catálogo o null",
   "talla": "Valor del catálogo o null (Default: U)",
-  "precio": 0,
+  "precio_sugerido": 0,
   "confianza": 0.0 a 1.0
 }}
 
@@ -59,10 +60,8 @@ Si no estás seguro de un campo según el catálogo, devuelve null. Responde ÚN
     try:
         response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         text = response.text.strip()
-        if text.startswith('```json'):
-            text = text[7:-3].strip()
-        elif text.startswith('```'):
-            text = text[3:-3].strip()
+        text = re.sub(r'^```(?:json)?\n?', '', text)
+        text = re.sub(r'\n?```$', '', text)
         return json.loads(text)
     except Exception as e:
         logger.error(f"Error extraendo atributos con Gemini: {e}")
@@ -126,10 +125,8 @@ FORMATO JSON (responde SOLO el JSON, sin explicaciones):
         logger.info(f"AI Analysis: Gemini Vision response received in {duration:.2f}s")
 
         text = response.text.strip()
-        if text.startswith('```json'):
-            text = text[7:-3].strip()
-        elif text.startswith('```'):
-            text = text[3:-3].strip()
+        text = re.sub(r'^```(?:json)?\n?', '', text)
+        text = re.sub(r'\n?```$', '', text)
         return json.loads(text)
     except Exception as e:
         duration = time.time() - start_time

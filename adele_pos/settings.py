@@ -99,7 +99,16 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 if not DEBUG:
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    # Django 4.2+ requires STORAGES dict; STATICFILES_STORAGE is silently
+    # ignored in Django 5.x. This is overridden below when Cloudinary is active.
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
 
 # --- Configuración de Archivos Media ---
 MEDIA_URL = '/media/'
@@ -110,13 +119,33 @@ MEDIA_ROOT = BASE_DIR / 'media'
 CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
 if CLOUDINARY_URL:
     try:
+        import cloudinary as _cloudinary
+        _cloudinary.config(cloudinary_url=CLOUDINARY_URL)
         _sf_idx = INSTALLED_APPS.index('django.contrib.staticfiles')
         INSTALLED_APPS.insert(_sf_idx, 'cloudinary_storage')
-        INSTALLED_APPS.append('cloudinary')
-        DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+        INSTALLED_APPS.insert(_sf_idx + 1, 'cloudinary')
+        # Django 4.2+ requires STORAGES dict; DEFAULT_FILE_STORAGE is silently
+        # ignored in Django 5.x.
+        _static_backend = (
+            'whitenoise.storage.CompressedManifestStaticFilesStorage'
+            if not DEBUG else
+            'django.contrib.staticfiles.storage.StaticFilesStorage'
+        )
+        STORAGES = {
+            'default': {
+                'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+            },
+            'staticfiles': {
+                'BACKEND': _static_backend,
+            },
+        }
+    except ValueError as _e:
+        import logging as _logging
+        _logging.error(f'Cloudinary setup error (django.contrib.staticfiles not found): {_e}')
     except Exception as _e:
         import logging as _logging
-        _logging.warning(f'Cloudinary setup error: {_e}')
+        _logging.error(f'Cloudinary setup unexpected error: {_e}')
+        raise
 
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'

@@ -58,7 +58,6 @@
                     <th>Talla/Color</th>
                     <th>Precio</th>
                     <th>Stock</th>
-                    <th>Barras</th>
                     {% if es_admin %}<th>Acciones</th>{% endif %}
                 </tr>
             </thead>
@@ -110,18 +109,9 @@
                         </span>
                         {% endif %}
                     </td>
-                    <td>
-                        <div class="d-flex flex-column align-items-center">
-                            <svg class="inv-barcode" data-value="{{ p.sku }}"></svg>
-                            <code class="small text-dark fw-bold mt-1">{{ p.sku }}</code>
-                        </div>
-                    </td>
                     {% if es_admin %}
                     <td>
-                        <button class="btn btn-sm btn-outline-primary border-0" onclick="imprimirEtiqueta({{ p.id }}, '{{ p.sku }}')" title="Imprimir etiqueta">
-                            <i class="bi bi-printer"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }})">
+                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteProduct({{ p.id }})">
@@ -258,6 +248,13 @@
             <div class="modal-body p-4">
                 <form id="editForm">
                     <input type="hidden" id="edit_id">
+                    <!-- Foto actual del producto -->
+                    <div class="mb-3 text-center" id="editFotoContainer">
+                        <div id="editFotoPreview"></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mt-2 rounded-pill" id="editFotoBtn" onclick="subirFotoDesdeModal()">
+                            <i class="bi bi-camera me-1"></i><span id="editFotoBtnLabel">Agregar foto</span>
+                        </button>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Rasgo 1</label>
                         <input type="text" id="edit_rasgo1" class="form-control" style="border-radius: 10px;">
@@ -291,7 +288,7 @@
 
                     <!-- Formulario oculto para agregar variante -->
                     <div id="addVariantForm" class="d-none p-3 bg-light rounded-3 mb-3 border">
-                        <h7 class="fw-bold d-block mb-2">Nueva Variante</h7>
+                        <p class="fw-bold mb-2">Nueva Variante</p>
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small">Color</label>
@@ -349,17 +346,89 @@
         window.open(url, '_blank');
     });
 
-    function openEditModal(id, r1, r2, precio, stock) {
+    function openEditModal(id, r1, r2, precio, stock, fotoUrl) {
         document.getElementById('edit_id').value = id;
         document.getElementById('edit_rasgo1').value = r1;
         document.getElementById('edit_rasgo2').value = r2;
         document.getElementById('edit_precio').value = precio;
         document.getElementById('edit_stock').value = stock;
 
+        // Show photo preview
+        const preview = document.getElementById('editFotoPreview');
+        const btnLabel = document.getElementById('editFotoBtnLabel');
+        preview.innerHTML = '';
+        if (fotoUrl) {
+            const img = document.createElement('img');
+            img.src = fotoUrl;
+            img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;';
+            img.title = 'Ver foto';
+            img.onclick = () => window.open(fotoUrl, '_blank');
+            img.onerror = () => {
+                img.style.display = 'none';
+                const ph = document.createElement('div');
+                ph.style.cssText = 'width:80px;height:80px;border-radius:8px;border:2px dashed #dee2e6;display:inline-flex;align-items:center;justify-content:center;color:#ccc;';
+                ph.innerHTML = '<i class="bi bi-camera" style="font-size:1.5rem;"></i>';
+                preview.appendChild(ph);
+            };
+            preview.appendChild(img);
+            btnLabel.textContent = 'Cambiar foto';
+        } else {
+            const ph = document.createElement('div');
+            ph.style.cssText = 'width:80px;height:80px;border-radius:8px;border:2px dashed #dee2e6;display:inline-flex;align-items:center;justify-content:center;color:#ccc;margin:0 auto;';
+            ph.innerHTML = '<i class="bi bi-camera" style="font-size:1.5rem;"></i>';
+            preview.appendChild(ph);
+            btnLabel.textContent = 'Agregar foto';
+        }
+
         loadVariants(id);
         hideAddVariantForm();
 
         new bootstrap.Modal(document.getElementById('editModal')).show();
+    }
+
+    function subirFotoDesdeModal() {
+        const pk = document.getElementById('edit_id').value;
+        if (!pk) return;
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/*';
+        input.onchange = async () => {
+            const foto = input.files[0]; if (!foto) return;
+            const fd = new FormData(); fd.append('foto', foto);
+            try {
+                const res = await fetch(`/api/producto-foto/${pk}/`, {
+                    method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: fd
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    const preview = document.getElementById('editFotoPreview');
+                    preview.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = data.foto_url;
+                    img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                    img.title = 'Ver foto';
+                    img.onclick = () => window.open(data.foto_url, '_blank');
+                    img.onerror = () => { img.style.display = 'none'; };
+                    preview.appendChild(img);
+                    document.getElementById('editFotoBtnLabel').textContent = 'Cambiar foto';
+                    // Also update the table row photo cell
+                    const rowImg = document.querySelector(`#row-${pk} img[title="Ver foto"]`);
+                    const rowDiv = document.querySelector(`#row-${pk} div[title="Agregar foto"]`);
+                    if (rowImg) {
+                        rowImg.src = data.foto_url;
+                    } else if (rowDiv) {
+                        const newImg = document.createElement('img');
+                        newImg.src = data.foto_url;
+                        newImg.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                        newImg.title = 'Ver foto';
+                        newImg.onclick = () => window.open(data.foto_url, '_blank');
+                        newImg.onerror = () => { newImg.style.display = 'none'; rowDiv.style.display = 'flex'; };
+                        rowDiv.style.display = 'none';
+                        rowDiv.parentNode.insertBefore(newImg, rowDiv);
+                    }
+                }
+            } catch (_) { alert('Error al subir la foto'); }
+        };
+        input.click();
     }
 
     function loadVariants(id) {
@@ -582,7 +651,12 @@
                     const img = document.createElement('img');
                     img.src = data.foto_url;
                     img.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                    img.title = 'Ver foto';
                     img.onclick = () => window.open(data.foto_url, '_blank');
+                    img.onerror = () => { img.style.display = 'none'; iconCell.style.display = 'flex'; };
+                    // Remove stale errored img sibling if present
+                    const prevImg = iconCell.previousElementSibling;
+                    if (prevImg && prevImg.tagName === 'IMG') prevImg.remove();
                     iconCell.replaceWith(img);
                 }
             } catch (_) { alert('Error al subir la foto'); }

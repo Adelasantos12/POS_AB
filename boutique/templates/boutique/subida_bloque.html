@@ -348,12 +348,17 @@ function mostrarResultados(resultados, localUrls = []) {
         const thumb = imgSrc
             ? `<img src="${imgSrc}" style="height:44px;width:44px;object-fit:cover;border-radius:8px;">`
             : '<span class="text-muted small">—</span>';
+        const dupBadge = r.posible_duplicado
+            ? ` <a href="/boutique/inventario/?q=${encodeURIComponent(r.posible_duplicado.sku)}" target="_blank"
+                   class="badge bg-warning text-dark rounded-pill ms-1"
+                   title="Posible duplicado detectado">&#9888; Posible duplicado: ${r.posible_duplicado.sku}</a>`
+            : '';
         tb.innerHTML += `
             <tr>
                 <td class="ps-4">${thumb}</td>
                 <td class="fw-bold small">${r.sku || '—'}</td>
                 <td class="small">${r.desc || ''}</td>
-                <td><span class="badge ${badge} rounded-pill">${label}</span> <span class="small text-muted">${r.msg || ''}</span></td>
+                <td><span class="badge ${badge} rounded-pill">${label}</span> <span class="small text-muted">${r.msg || ''}</span>${dupBadge}</td>
             </tr>`;
         if (r.status === 'nuevo')          nuevos++;
         else if (r.status === 'existente') existentes++;

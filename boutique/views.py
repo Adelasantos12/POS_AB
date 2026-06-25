@@ -171,6 +171,9 @@ def api_ai_analyze_image(request):
                 col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
                 if not col_exists: atributos['color'] = None
 
+                tela_exists = Tela.objects.filter(nombre=atributos.get('rasgo2')).exists()
+                if not tela_exists: atributos['rasgo2'] = None
+
                 return JsonResponse({'status': 'ok', 'atributos': atributos})
             else:
                 return JsonResponse({'status': 'error', 'message': 'No se pudo analizar la imagen'}, status=500)
@@ -198,6 +201,9 @@ def api_ai_extract_attributes(request):
 
             col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
             if not col_exists: atributos['color'] = None
+
+            tela_exists = Tela.objects.filter(nombre=atributos.get('rasgo2')).exists()
+            if not tela_exists: atributos['rasgo2'] = None
 
             return JsonResponse({'status': 'ok', 'atributos': atributos})
         else:
@@ -1672,7 +1678,8 @@ def api_editar_producto(request, pk):
                 notas=f'Ajuste manual de {producto.cantidad_actual} a {nuevo_stock}',
                 stock_resultante=nuevo_stock
             )
-        
+            producto.cantidad_actual = nuevo_stock
+
         producto.save()
 
         registrar_auditoria(
@@ -2633,14 +2640,28 @@ def api_subida_bloque(request):
                     nombre=fila['color'].strip(),
                     defaults={'codigo_hex': '#CCCCCC', 'activo': True}
                 )
+                rasgo1_val = fila.get('rasgo1', '').strip()
+                rasgo1_prefix = rasgo1_val[:20] if rasgo1_val else ''
+                posible_duplicado = None
+                if rasgo1_prefix:
+                    dup_candidate = Producto.objects.filter(
+                        categoria__nombre=fila['categoria'].strip(),
+                        color__nombre=fila['color'].strip(),
+                        rasgo1__icontains=rasgo1_prefix,
+                    ).exclude(rasgo1='').first()
+                    if dup_candidate:
+                        posible_duplicado = {'sku': dup_candidate.sku, 'id': dup_candidate.id}
                 producto, created = Producto.objects.get_or_create(
                     categoria=categoria,
                     color=color,
                     talla=fila.get('talla', 'U').strip(),
-                    rasgo1=fila.get('rasgo1', '').strip(),
+                    rasgo1=rasgo1_val,
                     rasgo2=fila.get('rasgo2', '').strip(),
                     defaults={'precio_venta': precio, 'cantidad_actual': 0, 'estado': 'TIENDA'}
                 )
+                # If get_or_create matched exactly, the posible_duplicado IS the same product — clear it
+                if posible_duplicado and not created and posible_duplicado['id'] == producto.id:
+                    posible_duplicado = None
                 producto.cantidad_actual += 1
                 if created:
                     producto.precio_venta = precio
@@ -2648,6 +2669,10 @@ def api_subida_bloque(request):
                 if foto_file and not producto.foto:
                     producto.foto = foto_file
                 producto.save(update_fields=['cantidad_actual', 'precio_venta', 'foto'])
+                # Refresh from DB so foto field holds the Cloudinary URL written
+                # by the storage backend, not the raw in-memory file object.
+                if producto.foto:
+                    producto.refresh_from_db(fields=['foto'])
                 resultados.append({
                     'fila': i + 1,
                     'status': 'nuevo' if created else 'existente',
@@ -2657,6 +2682,7 @@ def api_subida_bloque(request):
                     'msg': 'Creado' if created else f'Ya existía — stock +1 (total: {producto.cantidad_actual})',
                     'tiene_foto': bool(foto_file),
                     'foto_url': producto.foto.url if producto.foto else None,
+                    'posible_duplicado': posible_duplicado,
                 })
 
         ids_nuevos = [r['id'] for r in resultados if r['status'] in ('nuevo', 'existente')]
@@ -2683,4 +2709,7 @@ def api_foto_producto(request, pk):
             pass
     producto.foto = foto
     producto.save(update_fields=['foto'])
+    # Refresh from DB so the field holds the Cloudinary public ID/URL written
+    # by the storage backend, not the in-memory InMemoryUploadedFile object.
+    producto.refresh_from_db(fields=['foto'])
     return JsonResponse({'status': 'ok', 'foto_url': producto.foto.url})
