@@ -99,8 +99,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 if not DEBUG:
-    # Django 4.2+ requires STORAGES dict; STATICFILES_STORAGE is silently
-    # ignored in Django 5.x. This is overridden below when Cloudinary is active.
+    # Django 4.2+ requires STORAGES dict; overridden below when Cloudinary is active.
     STORAGES = {
         'default': {
             'BACKEND': 'django.core.files.storage.FileSystemStorage',
@@ -109,6 +108,9 @@ if not DEBUG:
             'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
         },
     }
+    # Compat shim: django-cloudinary-storage reads settings.STATICFILES_STORAGE
+    # which no longer exists as a top-level setting in Django 5.x.
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # --- Configuración de Archivos Media ---
 MEDIA_URL = '/media/'
@@ -139,6 +141,8 @@ if CLOUDINARY_URL:
                 'BACKEND': _static_backend,
             },
         }
+        # Compat shim for django-cloudinary-storage which reads this legacy attribute
+        STATICFILES_STORAGE = _static_backend
     except ValueError as _e:
         import logging as _logging
         _logging.error(f'Cloudinary setup error (django.contrib.staticfiles not found): {_e}')
