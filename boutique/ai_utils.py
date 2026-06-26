@@ -13,9 +13,11 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def get_gemini_client():
-    if not getattr(settings, 'GEMINI_API_KEY', ''):
+    key = getattr(settings, 'GEMINI_API_KEY', '')
+    if not key:
+        logger.warning("AI: GEMINI_API_KEY no configurado — funciones de IA desactivadas")
         return None
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(api_key=key)
 
 
 def extract_product_attributes(description):

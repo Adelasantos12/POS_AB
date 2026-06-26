@@ -16,6 +16,7 @@ from .models import (
 from .middleware import profile_permission_required
 from .utils import safe_decimal
 from django.utils import timezone
+from datetime import timedelta
 from decimal import Decimal
 import logging
 import json
@@ -985,7 +986,7 @@ def api_search_productos(request):
         Q(rasgo1__icontains=q) |
         Q(rasgo2__icontains=q) |
         Q(categoria__nombre__icontains=q)
-    )[:15]
+    ).select_related('categoria', 'color', 'modelo', 'tela')[:15]
     results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual, 'foto_url': p.foto.url if p.foto else None} for p in productos]
     return JsonResponse({'results': results})
 
@@ -1406,7 +1407,7 @@ def inventario_view(request):
         Q(sku__icontains=q) |
         Q(rasgo1__icontains=q) |
         Q(rasgo2__icontains=q)
-    ).select_related('categoria', 'color').order_by('-fecha_creacion')[:100]
+    ).select_related('categoria', 'color', 'modelo', 'tela').order_by('-fecha_creacion')[:100]
 
     # Añadir nivel de stock visual
     for p in productos:
@@ -1874,8 +1875,9 @@ def admin_dashboard(request):
         'liquidaciones': movs_hoy.filter(tipo='VENTA').aggregate(Sum('monto'))['monto__sum'] or 0,
     }
 
-    # 2. Ingresos por día (Venta + Abonos) - últimos 30 días
-    ventas_dia = MovimientoCaja.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
+    # 2. Ingresos por día - últimos 60 días
+    fecha_desde = timezone.now() - timedelta(days=60)
+    ventas_dia = MovimientoCaja.objects.filter(fecha__gte=fecha_desde).annotate(dia=TruncDate('fecha')).values('dia').annotate(
         total=Sum('monto'),
         cantidad=Count('id')
     ).order_by('dia')
