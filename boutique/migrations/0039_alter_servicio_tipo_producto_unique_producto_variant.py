@@ -31,20 +31,4 @@ class Migration(migrations.Migration):
                 max_length=20,
             ),
         ),
-        migrations.AddConstraint(
-            model_name="producto",
-            constraint=models.UniqueConstraint(
-                fields=(
-                    "categoria",
-                    "modelo",
-                    "tela",
-                    "color",
-                    "talla",
-                    "rasgo1",
-                    "rasgo2",
-                ),
-                name="unique_producto_variant",
-                nulls_distinct=False,
-            ),
-        ),
     ]

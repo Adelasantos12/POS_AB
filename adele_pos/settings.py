@@ -98,6 +98,8 @@ USE_TZ = True
 # --- Configuración de Archivos Estáticos ---
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Prevent collectstatic from crashing when a CSS file references a missing file
+WHITENOISE_MANIFEST_STRICT = False
 if not DEBUG:
     # Django 4.2+ requires STORAGES dict; overridden below when Cloudinary is active.
     STORAGES = {

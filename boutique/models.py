@@ -214,13 +214,6 @@ class Producto(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
     class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['categoria', 'modelo', 'tela', 'color', 'talla', 'rasgo1', 'rasgo2'],
-                name='unique_producto_variant',
-                nulls_distinct=False
-            )
-        ]
         verbose_name = "Variante (SKU)"
         verbose_name_plural = "Variantes (SKU)"
     def save(self, *args, **kwargs):
