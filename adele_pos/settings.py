@@ -98,60 +98,51 @@ USE_TZ = True
 # --- Configuración de Archivos Estáticos ---
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# Prevent collectstatic from crashing when a CSS file references a missing file
-WHITENOISE_MANIFEST_STRICT = False
 if not DEBUG:
-    # Django 4.2+ requires STORAGES dict; overridden below when Cloudinary is active.
+    # CompressedStaticFilesStorage: compresses files but does NOT build a strict
+    # manifest. CompressedManifest* crashes on Django 5.x admin CSS cross-references.
     STORAGES = {
         'default': {
             'BACKEND': 'django.core.files.storage.FileSystemStorage',
         },
         'staticfiles': {
-            'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
         },
     }
-    # Compat shim: django-cloudinary-storage reads settings.STATICFILES_STORAGE
-    # which no longer exists as a top-level setting in Django 5.x.
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    # Compat shim: django-cloudinary-storage reads this legacy attribute on Django 5.x.
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 # --- Configuración de Archivos Media ---
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# --- Cloudinary para fotos persistentes en producción ---
-# cloudinary_storage debe ir ANTES de django.contrib.staticfiles en INSTALLED_APPS
+# --- Cloudinary para fotos de productos persistentes en producción ---
+# IMPORTANTE: NO agregamos cloudinary_storage a INSTALLED_APPS porque su
+# comando collectstatic personalizado salta copy_file cuando no usa
+# StaticCloudinaryStorage, lo que rompe el post-procesado de whitenoise.
+# El backend MediaCloudinaryStorage funciona sin estar en INSTALLED_APPS.
 CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
 if CLOUDINARY_URL:
     try:
         import cloudinary as _cloudinary
         _cloudinary.config(cloudinary_url=CLOUDINARY_URL)
-        _sf_idx = INSTALLED_APPS.index('django.contrib.staticfiles')
-        INSTALLED_APPS.insert(_sf_idx, 'cloudinary_storage')
-        INSTALLED_APPS.insert(_sf_idx + 1, 'cloudinary')
-        # Django 4.2+ requires STORAGES dict; DEFAULT_FILE_STORAGE is silently
-        # ignored in Django 5.x.
-        _static_backend = (
-            'whitenoise.storage.CompressedManifestStaticFilesStorage'
-            if not DEBUG else
-            'django.contrib.staticfiles.storage.StaticFilesStorage'
-        )
-        STORAGES = {
-            'default': {
+        # Solo sobreescribir el backend de media (fotos), no el de static.
+        if not DEBUG:
+            STORAGES['default'] = {
                 'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
-            },
-            'staticfiles': {
-                'BACKEND': _static_backend,
-            },
-        }
-        # Compat shim for django-cloudinary-storage which reads this legacy attribute
-        STATICFILES_STORAGE = _static_backend
-    except ValueError as _e:
-        import logging as _logging
-        _logging.error(f'Cloudinary setup error (django.contrib.staticfiles not found): {_e}')
+            }
+        else:
+            STORAGES = {
+                'default': {
+                    'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+                },
+                'staticfiles': {
+                    'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+                },
+            }
     except Exception as _e:
         import logging as _logging
-        _logging.error(f'Cloudinary setup unexpected error: {_e}')
-        raise
+        _logging.error(f'Cloudinary setup error: {_e}')
 
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
