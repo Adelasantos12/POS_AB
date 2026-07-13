@@ -87,33 +87,31 @@ def api_color_eliminar(request, pk):
 @profile_permission_required(['Inventario', 'Vendedor'])
 def api_crear_color(request):
     """Crear nuevo color con validación IA de similitud"""
-    from .ai_utils import get_gemini_model
-    
+    from .ai_utils import get_gemini_client
+    from google.genai.errors import APIError
+
     data = json.loads(request.body)
     nombre = data.get('nombre', '').strip()
     codigo_hex = data.get('codigo_hex', '#CCCCCC')
     familia = data.get('familia', '')
-    
+
     if not nombre:
         return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
-    
-    # Verificar si ya existe exactamente
+
     if Color.objects.filter(nombre__iexact=nombre).exists():
-        return JsonResponse({
-            'status': 'blocked',
-            'message': f'Ya existe un color llamado "{nombre}"'
-        }, status=400)
-    
-    # Buscar colores similares para IA
+        return JsonResponse({'status': 'blocked', 'message': f'Ya existe un color llamado "{nombre}"'}, status=400)
+
+    # Buscar colores similares para aviso IA (opcional — falla silenciosamente)
     colores_similares = Color.objects.filter(
         Q(nombre__icontains=nombre.split()[0]) | Q(familia__iexact=familia)
     ).values_list('nombre', flat=True)[:10]
-    
+
     ai_warning = None
     if colores_similares:
-        model = get_gemini_model()
-        if model:
-            try:
+        try:
+            client = get_gemini_client()
+            if client:
+                from google.genai import types as _types
                 prompt = f"""¿El color "{nombre}" es igual o muy similar a alguno de estos colores existentes?
 Colores existentes: {', '.join(colores_similares)}
 
@@ -121,71 +119,51 @@ Responde SOLO con:
 - "IGUAL: [nombre]" si es el mismo color con diferente escritura
 - "SIMILAR: [nombre]" si es un tono muy parecido pero diferente
 - "DIFERENTE" si es un color claramente distinto"""
-
-                response = model.generate_content(prompt)
+                from django.conf import settings as _s
+                from boutique.ai_utils import GEMINI_MODEL
+                response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
                 ai_response = response.text.strip()
                 if 'IGUAL' in ai_response.upper():
-                    return JsonResponse({
-                        'status': 'blocked',
-                        'message': f'Este color parece ser igual a uno existente. {ai_response}'
-                    }, status=400)
+                    return JsonResponse({'status': 'blocked', 'message': f'Este color parece ser igual a uno existente. {ai_response}'}, status=400)
                 elif 'SIMILAR' in ai_response.upper():
                     ai_warning = ai_response
-            except:
-                pass
-    
-    # Crear el color
-    color = Color.objects.create(
-        nombre=nombre,
-        codigo_hex=codigo_hex,
-        familia=familia,
-        es_predefinido=False,
-        activo=True
-    )
-    
-    response = {
-        'status': 'ok',
-        'id': color.id,
-        'nombre': color.nombre,
-        'message': f'Color "{nombre}" creado correctamente'
-    }
+        except Exception:
+            pass
+
+    color = Color.objects.create(nombre=nombre, codigo_hex=codigo_hex, familia=familia, es_predefinido=False, activo=True)
+    result = {'status': 'ok', 'id': color.id, 'nombre': color.nombre, 'message': f'Color "{nombre}" creado correctamente'}
     if ai_warning:
-        response['warning'] = ai_warning
-    
-    return JsonResponse(response)
+        result['warning'] = ai_warning
+    return JsonResponse(result)
 
 
 @require_POST
 @profile_permission_required(['Inventario', 'Vendedor'])
 def api_crear_tela(request):
     """Crear nueva tela con validación IA de similitud"""
-    from .ai_utils import get_gemini_model
-    
+    from .ai_utils import get_gemini_client, GEMINI_MODEL
+
     data = json.loads(request.body)
     nombre = data.get('nombre', '').strip()
     descripcion = data.get('descripcion', '')
     codigo_proveedor = data.get('codigo_proveedor', '')
-    
+
     if not nombre:
         return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
-    
-    # Verificar si ya existe
+
     if Tela.objects.filter(nombre__iexact=nombre).exists():
-        return JsonResponse({
-            'status': 'blocked',
-            'message': f'Ya existe una tela llamada "{nombre}"'
-        }, status=400)
-    
-    # Buscar telas similares
+        return JsonResponse({'status': 'blocked', 'message': f'Ya existe una tela llamada "{nombre}"'}, status=400)
+
+    # Buscar telas similares para aviso IA (opcional — falla silenciosamente)
     telas_similares = Tela.objects.filter(
         Q(nombre__icontains=nombre.split()[0])
     ).values_list('nombre', flat=True)[:10]
-    
+
     ai_warning = None
     if telas_similares:
-        model = get_gemini_model()
-        if model:
-            try:
+        try:
+            client = get_gemini_client()
+            if client:
                 prompt = f"""¿La tela "{nombre}" es igual o muy similar a alguna de estas telas existentes?
 Telas existentes: {', '.join(telas_similares)}
 
@@ -193,42 +171,28 @@ Responde SOLO con:
 - "IGUAL: [nombre]" si es la misma tela con diferente escritura
 - "SIMILAR: [nombre]" si es muy parecida
 - "DIFERENTE" si es claramente distinta"""
-
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
                 ai_response = response.text.strip()
                 if 'IGUAL' in ai_response.upper():
-                    return JsonResponse({
-                        'status': 'blocked',
-                        'message': f'Esta tela parece ser igual a una existente. {ai_response}'
-                    }, status=400)
+                    return JsonResponse({'status': 'blocked', 'message': f'Esta tela parece ser igual a una existente. {ai_response}'}, status=400)
                 elif 'SIMILAR' in ai_response.upper():
                     ai_warning = ai_response
-            except:
-                pass
-    
-    # Crear la tela
-    from .models import Proveedor
-    prov = Proveedor.objects.first()
-    
+        except Exception:
+            pass
+
     tela = Tela.objects.create(
         nombre=nombre,
         descripcion=descripcion,
         codigo_proveedor=codigo_proveedor or nombre[:3].upper(),
-        proveedor=prov,
+        proveedor=None,
         es_predefinida=False,
         activa=True
     )
-    
-    response = {
-        'status': 'ok',
-        'id': tela.id,
-        'nombre': tela.nombre,
-        'message': f'Tela "{nombre}" creada correctamente'
-    }
+
+    result = {'status': 'ok', 'id': tela.id, 'nombre': tela.nombre, 'message': f'Tela "{nombre}" creada correctamente'}
     if ai_warning:
-        response['warning'] = ai_warning
-    
-    return JsonResponse(response)
+        result['warning'] = ai_warning
+    return JsonResponse(result)
 
 
 @require_POST

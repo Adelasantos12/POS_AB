@@ -7,24 +7,24 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="fw-bold">Inventario</h2>
-    <div>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <h2 class="fw-bold mb-0">Inventario</h2>
+    <div class="d-flex flex-wrap gap-2">
         {% if es_admin %}
-        <button class="btn btn-primary rounded-pill me-2" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
+        <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
             <i class="bi bi-plus-lg me-2"></i>Nuevo Producto
         </button>
-        <a href="{% url 'subida_bloque' %}" class="btn btn-outline-primary rounded-pill me-2">
+        <a href="{% url 'subida_bloque' %}" class="btn btn-outline-primary rounded-pill">
             <i class="bi bi-table me-2"></i>Subida en Bloque
         </a>
-        <a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-success rounded-pill me-2">
+        <a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-success rounded-pill">
             <i class="bi bi-file-earmark-spreadsheet me-2"></i>Exportar CSV
         </a>
         {% endif %}
-        <a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning rounded-pill me-2">
+        <a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning rounded-pill">
             <i class="bi bi-exclamation-triangle me-2"></i>Pendientes
         </a>
-        <button class="btn btn-outline-primary rounded-pill me-2" id="btnPrintSelected">
+        <button class="btn btn-outline-primary rounded-pill" id="btnPrintSelected">
             <i class="bi bi-printer me-2"></i>Imprimir Etiquetas
         </button>
     </div>

@@ -60,6 +60,8 @@
             padding: 1.5rem;
             display: flex;
             flex-direction: column;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
         
         .logo {
@@ -285,18 +287,23 @@
             font-size: 1rem;
         }
         
-        /* Responsive */
-        @media (max-width: 768px) {
+        /* Responsive — small laptops (769px–1024px): collapse sidebar to offcanvas */
+        @media (max-width: 1024px) {
             .sidebar {
                 display: none;
             }
             .main-content {
                 margin-left: 0;
+                padding: 1.25rem;
+            }
+        }
+        @media (max-width: 768px) {
+            .main-content {
                 padding-bottom: 5rem; /* room for bottom nav */
             }
         }
 
-        /* Mobile top bar */
+        /* Mobile/laptop top bar — shown whenever sidebar is hidden */
         .mobile-topbar {
             display: none;
             position: fixed;
@@ -309,7 +316,7 @@
             align-items: center;
             justify-content: space-between;
         }
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
             .mobile-topbar { display: flex; }
             .main-content { padding-top: 4rem; }
         }
@@ -324,7 +331,7 @@
             z-index: 1040;
             padding: 0.5rem 0 env(safe-area-inset-bottom, 0.5rem);
         }
-        @media (max-width: 768px) { .bottom-nav { display: flex; } }
+        @media (max-width: 1024px) { .bottom-nav { display: flex; } }
 
         .bottom-nav a {
             flex: 1;
