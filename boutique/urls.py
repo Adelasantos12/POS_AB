@@ -56,6 +56,7 @@ urlpatterns = [
     path('api/imprimir-etiquetas-lote/', views.api_imprimir_etiquetas_lote, name='api_imprimir_etiquetas_lote'),
     path('api/preview-etiqueta/<int:pk>/', views.api_preview_etiqueta, name='api_preview_etiqueta'),
     path('api/verificar-impresora/', views.api_verificar_impresora, name='api_verificar_impresora'),
+    path('api/regenerar-barcodes/', views.api_regenerar_barcodes, name='api_regenerar_barcodes'),
 
     # ============================================================
     # CATÁLOGOS

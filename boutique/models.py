@@ -364,9 +364,8 @@ class Ticket(models.Model):
             or (obj.cliente.telefono if hasattr(obj, 'cliente') and obj.cliente else '')
         )
 
-        if hasattr(obj, 'anticipo'):
-            self.total_pagado = obj.anticipo
-            self.cambio = 0
+        # total_pagado is already set correctly by registrar_cobro (= monto paid now)
+        self.cambio = 0
 
         # Items
         items_data = []
@@ -452,7 +451,7 @@ class Ticket(models.Model):
             'total': float(self.total),
             'total_pagado': float(self.total_pagado),
             'total_pagado_acumulado': total_pagado_acumulado,
-            'saldo_pendiente': float(self.total - self.total_pagado),
+            'saldo_pendiente': float(self.total - Decimal(str(total_pagado_acumulado))),
             'abonos': abonos,
             'items': items_data,
         }
@@ -1229,14 +1228,15 @@ class PagoPedido(models.Model):
     
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # Actualizar estado de pago del pedido
+        # Actualizar anticipo y estado de pago del pedido
         pedido = self.pedido
-        total_pagado = pedido.total_pagado
+        total_pagado = pedido.total_pagado  # property que suma pagos_pedido
+        pedido.anticipo = total_pagado
         if total_pagado >= pedido.precio:
             pedido.estado_pago = 'LIQUIDADO'
         elif total_pagado > 0:
             pedido.estado_pago = 'PARCIAL' if total_pagado > pedido.precio * Decimal('0.3') else 'APARTADO'
-        pedido.save(update_fields=['estado_pago'])
+        pedido.save(update_fields=['anticipo', 'estado_pago'])
     
     def __str__(self):
         return f"${self.monto} - {self.pedido.numero_ticket}"

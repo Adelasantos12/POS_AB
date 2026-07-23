@@ -12,7 +12,7 @@
         }
 
         /*
-         * Etiqueta DK-11204: 54 mm × 17 mm (landscape)
+         * Etiqueta: cinta continua 62 mm × 20 mm de largo
          * Layout Opción A:
          *  ┌──────────────────────────────────────────────┐
          *  │ ████████ barcode ████████   $1,200           │
@@ -22,8 +22,8 @@
          */
         .etiqueta {
             background: white;
-            width: 54mm;
-            height: 17mm;
+            width: 62mm;
+            height: 20mm;
             padding: 0.5mm 0.8mm;
             margin: 10px auto;
             border: 1px dashed #bbb;
@@ -106,7 +106,7 @@
 
         /* ── Print ── */
         @page {
-            size: 54mm 17mm;
+            size: 62mm 20mm;
             margin: 0;
         }
         @media print {
@@ -146,9 +146,9 @@
 </head>
 <body>
     <div class="no-print">
-        Presiona Ctrl+P · Etiqueta <strong>DK-11204 (54 mm × 17 mm)</strong> · Márgenes en 0.
+        Presiona Ctrl+P · Etiqueta <strong>62 mm × 20 mm</strong> (cinta continua DK-22243) · Márgenes en 0.
         <button onclick="window.print()">Imprimir Ahora</button>
-        <small>En el diálogo de impresión selecciona la impresora Brother QL-800 y el tamaño de papel 54×17 mm.</small>
+        <small>En el diálogo de impresión selecciona la impresora Brother QL-800 y el tamaño 62×20 mm.</small>
     </div>
 
     {% for p in productos %}

@@ -105,6 +105,24 @@
                         <span class="text-muted small italic">Sin definir</span>
                     {% endfor %}
                 </div>
+
+                {% if novia.notas %}
+                <hr class="my-2">
+                <div class="mb-2">
+                    <label class="text-muted small d-block mb-1"><i class="bi bi-sticky me-1"></i>Notas</label>
+                    <p class="small mb-0" style="white-space: pre-line;">{{ novia.notas }}</p>
+                </div>
+                {% endif %}
+
+                {% if novia.modelo_especial or novia.color_especial or novia.tela_especial %}
+                <hr class="my-2">
+                <div>
+                    <label class="text-muted small d-block mb-1">Especificaciones del Vestido</label>
+                    {% if novia.modelo_especial %}<p class="small mb-1"><strong>Modelo:</strong> {{ novia.modelo_especial }}</p>{% endif %}
+                    {% if novia.color_especial  %}<p class="small mb-1"><strong>Color:</strong> {{ novia.color_especial }}</p>{% endif %}
+                    {% if novia.tela_especial   %}<p class="small mb-0"><strong>Tela:</strong> {{ novia.tela_especial }}</p>{% endif %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -135,6 +153,9 @@
                                 <td class="small">{{ d.modelo_especial|default:"-" }}<br>{{ d.color_especial|default:"" }}</td>
                                 <td class="pe-4 text-end">
                                     <button class="btn btn-sm btn-link text-primary" onclick="generarPedido({{ d.id }}, false)">Pedido</button>
+                                    <button class="btn btn-sm btn-link text-secondary" onclick="abrirEditarDama({{ d.id }}, '{{ d.nombre|escapejs }}', '{{ d.telefono|escapejs }}', '{{ d.talla|escapejs }}', '{{ d.modelo_especial|escapejs }}', '{{ d.color_especial|escapejs }}', '{{ d.tela_especial|escapejs }}', '{{ d.notas_ajustes|escapejs }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
                                     <button class="btn btn-sm btn-outline-danger border-0" onclick="eliminarDama({{ d.id }})">
                                         <i class="bi bi-x-lg"></i>
                                     </button>
@@ -517,6 +538,57 @@
     </div>
 </div>
 
+<!-- Modal Editar Dama -->
+<div class="modal fade" id="modalEditarDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Dama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarDama">
+                    <input type="hidden" id="editDamaId">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Nombre</label>
+                            <input type="text" id="editDamaNombre" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" id="editDamaTelefono" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Talla</label>
+                            <input type="text" id="editDamaTalla" class="form-control" placeholder="S / M / L / XL / 34...">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Color del Vestido</label>
+                            <input type="text" id="editDamaColor" class="form-control" placeholder="Ej: Rosa Nude, Azul Cielo">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Modelo Especial</label>
+                            <input type="text" id="editDamaModelo" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Tela Especial</label>
+                            <input type="text" id="editDamaTela" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notas / Ajustes</label>
+                            <textarea id="editDamaNotas" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div class="text-end mt-3">
+                        <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Editar Novia -->
 <div class="modal fade" id="modalEditarNovia" tabindex="-1">
     <div class="modal-dialog">
@@ -639,6 +711,37 @@
         await fetch(`/api/dama/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });
         location.reload();
     }
+
+    function abrirEditarDama(id, nombre, telefono, talla, modelo, color, tela, notas) {
+        document.getElementById('editDamaId').value = id;
+        document.getElementById('editDamaNombre').value = nombre;
+        document.getElementById('editDamaTelefono').value = telefono;
+        document.getElementById('editDamaTalla').value = talla;
+        document.getElementById('editDamaColor').value = color;
+        document.getElementById('editDamaModelo').value = modelo;
+        document.getElementById('editDamaTela').value = tela;
+        document.getElementById('editDamaNotas').value = notas;
+        new bootstrap.Modal(document.getElementById('modalEditarDama')).show();
+    }
+
+    document.getElementById('formEditarDama').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('editDamaId').value;
+        await fetch(`/api/dama/${id}/editar/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+            body: JSON.stringify({
+                nombre:         document.getElementById('editDamaNombre').value,
+                telefono:       document.getElementById('editDamaTelefono').value,
+                talla:          document.getElementById('editDamaTalla').value,
+                color_especial: document.getElementById('editDamaColor').value,
+                modelo_especial:document.getElementById('editDamaModelo').value,
+                tela_especial:  document.getElementById('editDamaTela').value,
+                notas:          document.getElementById('editDamaNotas').value,
+            })
+        });
+        location.reload();
+    });
 
     // Hardening numeric inputs
     document.querySelectorAll('input[type="number"]').forEach(input => {

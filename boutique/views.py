@@ -1704,6 +1704,33 @@ def imprimir_etiquetas(request):
     return render(request, 'boutique/etiquetas_lote.html', {'productos': productos})
 
 
+@require_POST
+@login_required
+@profile_permission_required('Inventario')
+def api_regenerar_barcodes(request):
+    """Regenera códigos de barras para productos que no los tienen."""
+    sin_barcode = Producto.objects.filter(
+        Q(barcode_image='') | Q(barcode_image__isnull=True)
+    )
+    total = sin_barcode.count()
+    generados = 0
+    errores = []
+    for prod in sin_barcode:
+        try:
+            prod.barcode_image = None
+            prod.save()
+            generados += 1
+        except Exception as e:
+            errores.append(f"{prod.sku}: {e}")
+    return JsonResponse({
+        'status': 'ok',
+        'total_sin_barcode': total,
+        'generados': generados,
+        'errores': errores[:10],
+        'message': f'✅ {generados} barcodes generados de {total} sin código'
+    })
+
+
 # ============================================================
 # VISTAS DE AGENDA
 # ============================================================
