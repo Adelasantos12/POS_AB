@@ -208,18 +208,24 @@ def generate_pdf_ticket(ticket_id):
     p.setFont("Helvetica", 8)
     for item in items:
         desc = item['descripcion']
-        detail = []
-        if item.get('color'): detail.append(item['color'])
-        if item.get('talla'): detail.append(f"T:{item['talla']}")
-        if detail:
-            desc += f" ({'/'.join(detail)})"
         p.drawString(0.2 * inch, y, str(item['cantidad']))
-        p.drawString(0.6 * inch, y, desc[:28])
+        p.drawString(0.6 * inch, y, desc[:40])
         p.drawRightString(width - 0.2 * inch, y, f"${item['subtotal']:.2f}")
         y -= 0.15 * inch
-        if len(desc) > 28:
-            p.drawString(0.6 * inch, y, desc[28:56])
+        if len(desc) > 40:
+            p.drawString(0.6 * inch, y, desc[40:80])
             y -= 0.15 * inch
+        # Detail line: SKU + modelo + color + talla
+        detail_parts = []
+        if item.get('sku'):    detail_parts.append(item['sku'])
+        if item.get('modelo'): detail_parts.append(item['modelo'])
+        if item.get('color'):  detail_parts.append(item['color'])
+        if item.get('talla'):  detail_parts.append(f"T:{item['talla']}")
+        if detail_parts:
+            p.setFont("Helvetica", 7)
+            p.drawString(0.6 * inch, y, "  " + "  ".join(detail_parts)[:44])
+            p.setFont("Helvetica", 8)
+            y -= 0.13 * inch
         qty = item.get('cantidad', 1)
         if item.get('precio_unitario') and qty > 1:
             p.setFont("Helvetica", 7)
@@ -283,55 +289,6 @@ def generate_pdf_ticket(ticket_id):
     p.setFont("Helvetica", 7)
     p.drawCentredString(width / 2, y, "Sin ticket no se entrega el pedido.")
     y -= 0.18 * inch
-
-    # ── Checklist útil (solo grupos de novia con FK explícita) ──
-    # Solo aparece cuando el ticket está vinculado a una Novia real,
-    # nunca en ventas normales aunque el vestido sea de "Damas".
-    novia_nombre = snapshot.get('novia_nombre', '')
-    dama_nombre  = snapshot.get('dama_nombre', '')
-    es_grupo_novia = bool(ticket.novia or novia_nombre)
-
-    if es_grupo_novia and dama_nombre:
-        titulo = "Hermosa, un par de recordatorios:"
-        recordatorios = [
-            "✔  Trae los zapatos con el tacon del dia —",
-            "    el largo se ajusta a esa altura exacta",
-            "✔  Si cambiaste de talla o peso, avisanos",
-            "    a tiempo para hacer el ajuste correcto",
-            "✔  Por favor llega puntual a tu cita —",
-            "    las demas damas tambien dependen",
-            "    de los tiempos  ✿",
-        ]
-    elif es_grupo_novia:
-        titulo = "Hermosa, esto te ayudara para tu prueba:"
-        recordatorios = [
-            "✔  Trae los zapatos con el tacon del dia —",
-            "    el largo se mide con esa altura exacta",
-            "✔  Tu ropa interior — sin tirantes si el",
-            "    vestido es strapless o tiene escote",
-            "✔  Si usaras faja o corse, traelo a cada",
-            "    prueba para que el ajuste sea perfecto",
-            "✔  Corona o tocado para el velo — necesario",
-            "    en tu prueba final",
-            "✔  Tu madrina puede acompañarte, solo",
-            "    avisanos con tiempo  ✿",
-        ]
-    else:
-        recordatorios = []
-        titulo = ''
-
-    if recordatorios:
-        y -= 0.08 * inch
-        p.line(0.2 * inch, y, width - 0.2 * inch, y)
-        y -= 0.14 * inch
-        p.setFont("Helvetica-Bold", 7.5)
-        p.drawString(0.2 * inch, y, titulo)
-        y -= 0.13 * inch
-        p.setFont("Helvetica", 7)
-        for line in recordatorios:
-            p.drawString(0.2 * inch, y, line)
-            y -= 0.115 * inch
-        y -= 0.05 * inch
 
     # ── QR ───────────────────────────────────────────────────
     try:
@@ -472,12 +429,17 @@ def generate_escpos_data(ticket_id):
     items = snapshot.get('items', [])
     for item in items:
         desc = item['descripcion']
-        detail = []
-        if item.get('color'): detail.append(item['color'])
-        if item.get('talla'): detail.append(f"T:{item['talla']}")
-        if detail:
-            desc += f" ({'/'.join(detail)})"
-        d.text(f"{item['cantidad']} x {desc[:28]}\n")
+        d.text(f"{item['cantidad']} x {desc[:40]}\n")
+        if len(desc) > 40:
+            d.text(f"   {desc[40:80]}\n")
+        # Detail line: SKU + modelo + color + talla
+        detail_parts = []
+        if item.get('sku'):    detail_parts.append(item['sku'])
+        if item.get('modelo'): detail_parts.append(item['modelo'])
+        if item.get('color'):  detail_parts.append(item['color'])
+        if item.get('talla'):  detail_parts.append(f"T:{item['talla']}")
+        if detail_parts:
+            d.text(f"   {'  '.join(detail_parts)[:46]}\n")
         if item.get('precio_unitario') and item.get('cantidad', 1) > 1:
             d.text(f"  ${item['precio_unitario']:.2f} c/u\n")
         d.text(f"      ${item['subtotal']:>22.2f}\n")

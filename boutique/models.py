@@ -371,12 +371,23 @@ class Ticket(models.Model):
         items_data = []
         if hasattr(obj, 'items'):
             for item in obj.items.all():
-                desc = str(item.producto) if hasattr(item, 'producto') and item.producto else getattr(item, 'descripcion', 'Sin descripción')
+                prod = item.producto if hasattr(item, 'producto') and item.producto else None
+                desc = str(prod) if prod else getattr(item, 'descripcion', 'Sin descripción')
+                # Pull modelo/color from producto FK if available, fallback to item attrs
+                if prod:
+                    modelo_val = str(prod.modelo.nombre if prod.modelo else (getattr(item, 'modelo', '') or ''))
+                    color_val = str(prod.color.nombre if prod.color else (getattr(item, 'color', '') or ''))
+                    sku_val = prod.sku or ''
+                else:
+                    modelo_val = str(getattr(item, 'modelo', '') or '')
+                    color_val = str(getattr(item, 'color', '') or '')
+                    sku_val = ''
                 items_data.append({
                     'descripcion': desc,
-                    'modelo': str(getattr(item, 'modelo', '') or ''),
-                    'color': str(getattr(item, 'color', '') or ''),
-                    'talla': getattr(item, 'talla', '') or '',
+                    'modelo': modelo_val,
+                    'color': color_val,
+                    'sku': sku_val,
+                    'talla': getattr(item, 'talla', '') or (prod.talla if prod else ''),
                     'cantidad': item.cantidad,
                     'precio_unitario': float(item.precio_unitario),
                     'subtotal': float(item.subtotal if hasattr(item, 'subtotal') else item.cantidad * item.precio_unitario)
