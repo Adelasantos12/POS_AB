@@ -3,13 +3,18 @@ Servicio de impresión de etiquetas Brother QL-800
 Adelé Boutique (Gdl) — ByEasy POS
 
 Cinta instalada : 62 mm  (DK-22243 o similar)
-Tamaño de etiqueta deseado: 52 mm ancho × 20 mm alto
+Tamaño de etiqueta: ~52 mm ancho × 17 mm alto
 
 Cálculo de píxeles a 300 DPI:
   Cinta 62 mm → 696 px de área imprimible
-  Alto  20 mm → 236 px de alto
-  El contenido útil se centra en los 696 px de ancho;
-  equivale a ~52 mm de contenido con márgenes laterales de ~5 mm c/u.
+  Alto  17 mm → 201 px  (17/25.4*300 ≈ 201)
+
+Layout (696 × 201 px):
+  ┌──────────────────────────────────────────────┐
+  │ ████████████ barcode ████████████  $1,200    │
+  │                                   T: M       │
+  │  SKU-0042                                    │
+  └──────────────────────────────────────────────┘
 """
 import logging
 from io import BytesIO
@@ -19,16 +24,17 @@ logger = logging.getLogger(__name__)
 
 # ── Configuración ────────────────────────────────────────────────────────────
 BROTHER_PRINTER_MODEL = 'QL-800'
-BROTHER_LABEL_SIZE    = '62'      # cinta 62 mm (DK-22243); cambiar a '54' si usas 54 mm
-BROTHER_BACKEND       = 'pyusb'   # USB directo
+BROTHER_LABEL_SIZE    = '62'      # cinta 62 mm (DK-22243)
+BROTHER_BACKEND       = 'pyusb'
 
-# Dimensiones de imagen a 300 DPI para cinta 62 mm × etiqueta 20 mm de largo
-LABEL_W = 696   # px de ancho imprimible para cinta 62 mm
-LABEL_H = 236   # px = 20 mm a 300 DPI  (20 / 25.4 * 300 ≈ 236)
+LABEL_W  = 696   # px — 62 mm tape at 300 DPI
+LABEL_H  = 201   # px — 17 mm at 300 DPI  (17 / 25.4 * 300 ≈ 201)
+MARGIN_X = 18    # px lateral
+MARGIN_Y = 8     # px superior/inferior
 
-# Márgenes laterales para centrar el contenido en ~52 mm
-MARGIN_X = 25   # px ≈ 2 mm de cada lado → contenido útil ≈ 646 px ≈ 54.6 mm
-MARGIN_Y = 10   # px de margen superior/inferior
+# Franja reservada para SKU al pie del barcode
+SKU_STRIP_H = 28  # px
+
 
 # ── Detección de impresora ───────────────────────────────────────────────────
 
@@ -70,75 +76,42 @@ def _font(size, bold=False):
 
 def crear_imagen_etiqueta(producto):
     """
-    Genera la imagen de etiqueta optimizada para 62 mm × 20 mm.
+    Genera imagen de etiqueta para 62 mm × 17 mm (696 × 201 px a 300 DPI).
 
-    Layout (696 × 236 px):
-      ┌──────────────────────────────────────────┐
-      │ CATEGORÍA            TALLA: M   SKU:...  │  ← fila 1  (info compacta)
-      │ ─────────────────────────────────────────│
-      │ $1,200              Color: Blanco Satín  │  ← fila 2  (precio + attr)
-      │ ─────────────────────────────────────────│
-      │ ██████ barcode ██████   ADELE-0042       │  ← fila 3  (código de barras)
-      └──────────────────────────────────────────┘
+    Layout:
+      • Zona izquierda  — código de barras (alto = LABEL_H - 2*MARGIN_Y - SKU_STRIP_H)
+      • Zona derecha    — precio en grande + talla debajo
+      • Franja inferior — SKU en letra pequeña debajo del barcode
+      Sin barcode: SKU centrado + precio a la derecha.
     """
     img  = Image.new('RGB', (LABEL_W, LABEL_H), color='white')
     draw = ImageDraw.Draw(img)
 
-    content_w = LABEL_W - 2 * MARGIN_X   # 646 px
-    x0 = MARGIN_X
+    content_w = LABEL_W - 2 * MARGIN_X   # ≈ 660 px
 
     # Fuentes
-    f_big   = _font(52, bold=True)   # precio
-    f_med   = _font(30, bold=False)  # atributos
-    f_small = _font(22, bold=False)  # SKU / etiqueta
-    f_cat   = _font(26, bold=True)   # categoría
+    f_price = _font(48, bold=True)   # precio  — zona derecha
+    f_talla = _font(26, bold=False)  # talla   — zona derecha
+    f_sku   = _font(20, bold=False)  # SKU     — franja inferior
 
-    # ── Fila 1: Categoría + Talla + SKU ──────────────────────────────────────
-    y1 = MARGIN_Y
-    cat_text   = (producto.categoria.nombre if producto.categoria else "---").upper()
-    talla_text = f"T: {producto.talla}" if producto.talla else ""
     sku_text   = producto.sku or ""
-
-    draw.text((x0, y1), cat_text, fill='black', font=f_cat)
-    if talla_text:
-        # Alineado a la derecha
-        talla_w = draw.textlength(talla_text, font=f_med)
-        draw.text((LABEL_W - MARGIN_X - talla_w, y1 + 2), talla_text, fill='#333333', font=f_med)
-
-    y1 += 32
-    # Línea divisoria fina
-    draw.line([(x0, y1), (LABEL_W - MARGIN_X, y1)], fill='#CCCCCC', width=1)
-
-    # ── Fila 2: Precio + Color/Material ──────────────────────────────────────
-    y2 = y1 + 6
     precio_text = f"${producto.precio_venta:,.0f}" if producto.precio_venta else "$---"
-    draw.text((x0, y2), precio_text, fill='black', font=f_big)
+    talla_text  = f"T: {producto.talla}" if producto.talla else ""
 
-    # Color y material (rasgo1/rasgo2) a la derecha del precio
-    color_nombre = producto.color.nombre if producto.color else ""
-    rasgo2       = producto.rasgo2 or (producto.tela.nombre if producto.tela else "")
-    attr_parts   = [p for p in [color_nombre, rasgo2] if p]
-    attr_text    = "  ·  ".join(attr_parts)
-    if attr_text:
-        attr_w = draw.textlength(attr_text, font=f_med)
-        draw.text((LABEL_W - MARGIN_X - attr_w, y2 + 14), attr_text, fill='#555555', font=f_med)
+    # Altura disponible para el barcode (sin franja SKU)
+    bc_zone_h = LABEL_H - 2 * MARGIN_Y - SKU_STRIP_H   # ≈ 157 px
 
-    y2 += 62
-    draw.line([(x0, y2), (LABEL_W - MARGIN_X, y2)], fill='#CCCCCC', width=1)
-
-    # ── Fila 3: Código de barras + SKU ───────────────────────────────────────
-    y3 = y2 + 5
     barcode_placed = False
+    bc_w = 0
 
     if producto.barcode_image:
         try:
             from PIL import Image as PilImage
-            # barcode_image puede ser Cloudinary URL o archivo local
+
             try:
                 bc_img = PilImage.open(producto.barcode_image.path)
             except Exception:
-                import urllib.request
-                import tempfile, os
+                import urllib.request, tempfile, os
                 url = producto.barcode_image.url
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
                 tmp.close()
@@ -146,24 +119,48 @@ def crear_imagen_etiqueta(producto):
                 bc_img = PilImage.open(tmp.name)
                 os.unlink(tmp.name)
 
-            bc_h = LABEL_H - y3 - MARGIN_Y          # altura disponible restante
+            # Escalar manteniendo proporción; máximo 62 % del ancho útil
+            bc_h = bc_zone_h
             bc_w = int(bc_img.width * bc_h / bc_img.height)
-            bc_w = min(bc_w, int(content_w * 0.70))  # máximo 70 % del ancho
+            bc_w = min(bc_w, int(content_w * 0.62))
             bc_img = bc_img.convert('RGB').resize((bc_w, bc_h), Image.LANCZOS)
-            img.paste(bc_img, (x0, y3))
+            img.paste(bc_img, (MARGIN_X, MARGIN_Y))
             barcode_placed = True
 
-            # SKU a la derecha del barcode
-            sku_x = x0 + bc_w + 10
-            if sku_x + 60 < LABEL_W - MARGIN_X:
-                draw.text((sku_x, y3 + 4),      sku_text,   fill='#333333', font=f_small)
         except Exception as exc:
             logger.warning(f"No se pudo cargar barcode para {producto.sku}: {exc}")
 
-    if not barcode_placed:
-        # Sin barcode: mostrar SKU centrado
-        sku_w = draw.textlength(sku_text, font=f_med)
-        draw.text(((LABEL_W - sku_w) / 2, y3 + 5), sku_text, fill='#555555', font=f_med)
+    # ── Zona derecha: precio + talla ─────────────────────────────────────────
+    right_x = MARGIN_X + bc_w + 14 if barcode_placed else MARGIN_X + int(content_w * 0.62) + 14
+    right_w = LABEL_W - MARGIN_X - right_x
+
+    if right_w > 40:
+        # Precio — alineado arriba en zona derecha
+        price_w = draw.textlength(precio_text, font=f_price)
+        if price_w > right_w:
+            # Reducir fuente si no cabe
+            f_price = _font(34, bold=True)
+            price_w = draw.textlength(precio_text, font=f_price)
+        price_y = MARGIN_Y + max(0, (bc_zone_h - 48 - (30 if talla_text else 0)) // 2)
+        draw.text((right_x, price_y), precio_text, fill='black', font=f_price)
+
+        # Talla — debajo del precio
+        if talla_text:
+            talla_y = price_y + 52
+            draw.text((right_x, talla_y), talla_text, fill='#444444', font=f_talla)
+
+    # ── Franja inferior: SKU ─────────────────────────────────────────────────
+    sku_y = LABEL_H - MARGIN_Y - SKU_STRIP_H + 4
+    if sku_text:
+        if barcode_placed:
+            # Alineado bajo el barcode
+            draw.text((MARGIN_X, sku_y), sku_text, fill='#555555', font=f_sku)
+        else:
+            # Sin barcode: SKU centrado grande
+            f_sku_big = _font(28, bold=True)
+            sku_bw = draw.textlength(sku_text, font=f_sku_big)
+            draw.text(((LABEL_W - sku_bw) / 2, MARGIN_Y + 10), sku_text,
+                      fill='black', font=f_sku_big)
 
     return img
 
