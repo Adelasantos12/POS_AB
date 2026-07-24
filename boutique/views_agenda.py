@@ -1534,10 +1534,7 @@ def api_pedido_editar(request, pk):
     pedido = get_object_or_404(Pedido, pk=pk)
     try:
         data = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError):
-        return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
 
-    try:
         campos = ['evento', 'notas', 'notas_ajustes', 'notas_entrega', 'tipo_pedido']
         for c in campos:
             if c in data:
@@ -1554,6 +1551,8 @@ def api_pedido_editar(request, pk):
 
         pedido.save()
         return JsonResponse({'status': 'ok', 'precio': float(pedido.precio)})
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 

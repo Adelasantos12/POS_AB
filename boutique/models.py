@@ -453,9 +453,9 @@ class Ticket(models.Model):
             })
         # For Servicio (ajuste/costura): build items from AjusteLinea or single tipo
         if not items_data and hasattr(obj, 'pagos_servicio'):
-            lineas_qs = getattr(obj, 'lineas', None)
-            if lineas_qs is not None and lineas_qs.exists():
-                for linea in lineas_qs.all():
+            lineas_list = list(obj.lineas.all())  # single query; avoids exists()+all() double hit
+            if lineas_list:
+                for linea in lineas_list:
                     items_data.append({
                         'descripcion': linea.descripcion_ticket,
                         'prenda': linea.prenda,

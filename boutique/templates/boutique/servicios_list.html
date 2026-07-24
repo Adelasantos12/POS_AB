@@ -294,22 +294,23 @@ async function guardarServicio() {
     if (!clienteNombre) { alert('El nombre del cliente es requerido.'); return; }
 
     // Recopilar líneas
-    const lineas = [];
-    let lineasValidas = true;
-    document.querySelectorAll('.linea-ajuste').forEach(row => {
-        const precio = parseFloat(row.querySelector('.linea-precio').value);
-        if (!precio || precio <= 0) { lineasValidas = false; return; }
-        lineas.push({
-            tipo:          row.querySelector('.linea-tipo').value,
-            precio_unitario: precio,
-            cantidad:      parseInt(row.querySelector('.linea-cantidad').value) || 1,
-            prenda:        row.querySelector('.linea-prenda').value.trim(),
-            descripcion:   row.querySelector('.linea-descripcion').value.trim(),
-        });
-    });
+    const rows = Array.from(document.querySelectorAll('.linea-ajuste'));
+    if (!rows.length) { alert('Agrega al menos una línea de ajuste con precio.'); return; }
 
-    if (lineas.length === 0) { alert('Agrega al menos una línea de ajuste con precio.'); return; }
-    if (!lineasValidas)      { alert('Todas las líneas deben tener un precio mayor a $0.'); return; }
+    const lineas = [];
+    const todasValidas = rows.every(row => {
+        const precio = parseFloat(row.querySelector('.linea-precio').value);
+        if (!precio || precio <= 0) return false;
+        lineas.push({
+            tipo:            row.querySelector('.linea-tipo').value,
+            precio_unitario: precio,
+            cantidad:        parseInt(row.querySelector('.linea-cantidad').value) || 1,
+            prenda:          row.querySelector('.linea-prenda').value.trim(),
+            descripcion:     row.querySelector('.linea-descripcion').value.trim(),
+        });
+        return true;
+    });
+    if (!todasValidas) { alert('Todas las líneas deben tener un precio mayor a $0.'); return; }
 
     const data = {
         descripcion:     document.getElementById('srvDescripcion').value.trim(),
