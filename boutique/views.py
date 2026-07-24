@@ -1896,6 +1896,7 @@ def servicios_list(request):
     except Exception:
         pass
 
+    from .models import AjusteLinea
     return render(request, 'boutique/servicios_list.html', {
         'servicios': servicios,
         'q': q,
@@ -1903,6 +1904,7 @@ def servicios_list(request):
         'clientes': list(clientes),
         'ESTADOS': Servicio.ESTADOS,
         'TIPOS': Servicio.TIPOS,
+        'TIPOS_LINEA': AjusteLinea.TIPOS,
     })
 
 
@@ -1910,35 +1912,79 @@ def servicios_list(request):
 @login_required
 @profile_permission_required('Vendedor')
 def api_crear_servicio(request):
-    """Crea un nuevo servicio/ajuste"""
-    from .models import Servicio, Cliente
+    """Crea un nuevo servicio/ajuste con líneas de ajuste opcionales."""
+    from .models import Servicio, Cliente, AjusteLinea
+    from .services.cash_service import registrar_cobro
     try:
         data = json.loads(request.body)
         cliente_nombre_input = (data.get('cliente_nombre') or '').strip()
         if not data.get('cliente_id') and not cliente_nombre_input:
             return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para registrar un servicio.'}, status=400)
 
-        cliente = None
-        if data.get('cliente_id'):
-            cliente = Cliente.objects.filter(pk=data['cliente_id']).first()
-        elif cliente_nombre_input:
-            tel = (data.get('cliente_telefono') or '').strip() or '0000000000'
-            cliente, _ = Cliente.objects.get_or_create(
-                telefono=tel,
-                defaults={'nombre': cliente_nombre_input}
+        lineas_data = data.get('lineas', [])
+
+        with transaction.atomic():
+            # Resolve cliente
+            cliente = None
+            if data.get('cliente_id'):
+                cliente = Cliente.objects.filter(pk=data['cliente_id']).first()
+            elif cliente_nombre_input:
+                tel = (data.get('cliente_telefono') or '').strip() or '0000000000'
+                cliente, _ = Cliente.objects.get_or_create(
+                    telefono=tel,
+                    defaults={'nombre': cliente_nombre_input}
+                )
+
+            # Costo: sum from lineas when provided, else explicit field
+            if lineas_data:
+                costo = sum(
+                    safe_decimal(l.get('precio_unitario', 0)) * int(l.get('cantidad', 1) or 1)
+                    for l in lineas_data
+                )
+            else:
+                costo = safe_decimal(data.get('costo', 0))
+
+            # Create Servicio — anticipo starts at 0; PagoServicio updates it
+            srv = Servicio.objects.create(
+                tipo=data.get('tipo', 'AJUSTE'),
+                descripcion=data.get('descripcion', ''),
+                cliente=cliente,
+                costo=costo,
+                fecha_prometida=data.get('fecha_prometida') or None,
+                notas=data.get('notas', ''),
+                creado_por=request.active_profile,
             )
 
-        srv = Servicio.objects.create(
-            tipo=data.get('tipo', 'AJUSTE'),
-            descripcion=data.get('descripcion', ''),
-            cliente=cliente,
-            costo=safe_decimal(data.get('costo', 0)),
-            anticipo=safe_decimal(data.get('anticipo', 0)),
-            fecha_prometida=data.get('fecha_prometida') or None,
-            notas=data.get('notas', ''),
-            creado_por=request.active_profile,
-        )
-        return JsonResponse({'status': 'ok', 'id': srv.pk})
+            # Create AjusteLinea records
+            for i, l in enumerate(lineas_data):
+                AjusteLinea.objects.create(
+                    servicio=srv,
+                    tipo=(l.get('tipo') or 'OTRO'),
+                    descripcion=(l.get('descripcion') or '').strip(),
+                    precio_unitario=safe_decimal(l.get('precio_unitario', 0)),
+                    cantidad=int(l.get('cantidad', 1) or 1),
+                    notas=(l.get('notas') or '').strip(),
+                    prenda=(l.get('prenda') or '').strip(),
+                    orden=i,
+                )
+
+            # Register anticipo through caja (requires open CorteCaja)
+            anticipo = safe_decimal(data.get('anticipo', 0))
+            ticket_folio = None
+            if anticipo > 0:
+                ticket = registrar_cobro(
+                    origen_tipo='servicio',
+                    origen_obj=srv,
+                    monto=anticipo,
+                    metodo=data.get('metodo_pago', 'EFECTIVO'),
+                    usuario=request.active_profile,
+                    notas='Anticipo inicial',
+                )
+                ticket_folio = ticket.folio
+
+        return JsonResponse({'status': 'ok', 'id': srv.pk, 'folio': ticket_folio})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     except Exception as e:
         logger.exception("Error en api_crear_servicio")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)

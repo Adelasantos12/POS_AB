@@ -1532,24 +1532,30 @@ def api_pedido_nuevo(request):
 def api_pedido_editar(request, pk):
     """Edita campos del pedido (sin cambiar ítems)."""
     pedido = get_object_or_404(Pedido, pk=pk)
-    data = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
 
-    campos = ['evento', 'notas', 'notas_ajustes', 'notas_entrega', 'tipo_pedido']
-    for c in campos:
-        if c in data:
-            setattr(pedido, c, data[c])
+    try:
+        campos = ['evento', 'notas', 'notas_ajustes', 'notas_entrega', 'tipo_pedido']
+        for c in campos:
+            if c in data:
+                setattr(pedido, c, data[c])
 
-    if 'fecha_entrega_estimada' in data:
-        pedido.fecha_entrega_estimada = data['fecha_entrega_estimada'] or None
-    if 'fecha_evento' in data:
-        pedido.fecha_evento = data['fecha_evento'] or None
-    if 'precio' in data:
-        pedido.precio = float(data['precio'])
-    if 'estado' in data:
-        pedido.estado = data['estado']
+        if 'fecha_entrega_estimada' in data:
+            pedido.fecha_entrega_estimada = data['fecha_entrega_estimada'] or None
+        if 'fecha_evento' in data:
+            pedido.fecha_evento = data['fecha_evento'] or None
+        if 'precio' in data and data['precio'] not in ('', None):
+            pedido.precio = safe_decimal(data['precio'])
+        if 'estado' in data:
+            pedido.estado = data['estado']
 
-    pedido.save()
-    return JsonResponse({'status': 'ok'})
+        pedido.save()
+        return JsonResponse({'status': 'ok', 'precio': float(pedido.precio)})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
 @require_POST

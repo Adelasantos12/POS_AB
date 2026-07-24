@@ -451,6 +451,33 @@ class Ticket(models.Model):
                 'precio_unitario': precio_val,
                 'subtotal': precio_val,
             })
+        # For Servicio (ajuste/costura): build items from AjusteLinea or single tipo
+        if not items_data and hasattr(obj, 'pagos_servicio'):
+            lineas_qs = getattr(obj, 'lineas', None)
+            if lineas_qs is not None and lineas_qs.exists():
+                for linea in lineas_qs.all():
+                    items_data.append({
+                        'descripcion': linea.descripcion_ticket,
+                        'prenda': linea.prenda,
+                        'notas': linea.notas,
+                        'color': '',
+                        'talla': '',
+                        'cantidad': linea.cantidad,
+                        'precio_unitario': float(linea.precio_unitario),
+                        'subtotal': float(linea.subtotal),
+                    })
+            else:
+                desc = obj.get_tipo_display()
+                if obj.descripcion:
+                    desc += f': {obj.descripcion[:60]}'
+                items_data.append({
+                    'descripcion': desc,
+                    'color': '',
+                    'talla': '',
+                    'cantidad': 1,
+                    'precio_unitario': float(obj.costo),
+                    'subtotal': float(obj.costo),
+                })
 
         # Historial de abonos
         abonos = []
@@ -1554,6 +1581,48 @@ class PagoServicio(models.Model):
 
     def __str__(self):
         return f"${self.monto} - {self.servicio}"
+
+
+class AjusteLinea(models.Model):
+    """Línea de ajuste dentro de un Servicio — permite múltiples tipos por operación."""
+    TIPOS = [
+        ('BASTILLA',  'Bastilla'),
+        ('TIRANTE',   'Tirante'),
+        ('HOMBRO',    'Hombro'),
+        ('PIERNA',    'Pierna'),
+        ('CINTURA',   'Cintura'),
+        ('BUSTO',     'Busto'),
+        ('CIERRE',    'Cierre / Cremallera'),
+        ('MANGA',     'Manga'),
+        ('COSTADO',   'Costado'),
+        ('OTRO',      'Otro'),
+    ]
+    servicio        = models.ForeignKey(Servicio, on_delete=models.CASCADE, related_name='lineas')
+    tipo            = models.CharField(max_length=20, choices=TIPOS)
+    descripcion     = models.TextField(blank=True, help_text='Detalle adicional. Requerido cuando tipo=OTRO.')
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+    cantidad        = models.PositiveIntegerField(default=1)
+    subtotal        = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    notas           = models.TextField(blank=True)
+    prenda          = models.CharField(max_length=200, blank=True, help_text='Prenda o ítem relacionado')
+    orden           = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['orden', 'pk']
+
+    def save(self, *args, **kwargs):
+        self.subtotal = self.precio_unitario * self.cantidad
+        super().save(*args, **kwargs)
+
+    @property
+    def descripcion_ticket(self):
+        base = f"Ajuste — {self.get_tipo_display()}"
+        if self.prenda:
+            base += f" ({self.prenda})"
+        return base
+
+    def __str__(self):
+        return self.descripcion_ticket
 
 
 # ============================================================

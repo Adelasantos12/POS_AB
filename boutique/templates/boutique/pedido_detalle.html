@@ -324,22 +324,26 @@ async function guardarEdicion() {
     const data = {
         estado: document.getElementById('editEstado').value,
         fecha_entrega_estimada: document.getElementById('editEntrega').value || null,
-        precio: document.getElementById('editPrecio').value,
+        precio: document.getElementById('editPrecio').value || null,
         notas: document.getElementById('editNotas').value,
         notas_ajustes: document.getElementById('editAjustes').value,
         notas_entrega: document.getElementById('editEntregaNotas').value,
     };
-    const res = await fetch(`/api/pedido/${PEDIDO_ID}/editar/`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-        body: JSON.stringify(data),
-    });
-    const d = await res.json();
-    if (d.status === 'ok') {
-        bootstrap.Modal.getInstance(document.getElementById('modalEditarPedido')).hide();
-        location.reload();
-    } else {
-        alert('Error: ' + d.message);
+    try {
+        const res = await fetch(`/api/pedido/${PEDIDO_ID}/editar/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(data),
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+            bootstrap.Modal.getInstance(document.getElementById('modalEditarPedido')).hide();
+            location.reload();
+        } else {
+            alert('Error al guardar: ' + (d.message || 'Error desconocido'));
+        }
+    } catch (e) {
+        alert('Error de red al guardar el pedido: ' + e.message);
     }
 }
 </script>

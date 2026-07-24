@@ -107,62 +107,95 @@
     </div>
 </div>
 
+<!-- Opciones de tipos de ajuste para las líneas -->
+<script>
+const TIPOS_AJUSTE = [
+    {% for code, label in TIPOS_LINEA %}['{{ code }}', '{{ label }}'],{% endfor %}
+];
+</script>
+
 <!-- Modal Nuevo Servicio -->
 <div class="modal fade" id="modalNuevoServicio" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content rounded-4 border-0 shadow">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold">Nuevo Servicio</h5>
+                <h5 class="modal-title fw-bold">Nuevo Servicio / Ajuste</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body pt-2">
                 <form id="formNuevoServicio">
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold">Tipo de Servicio</label>
-                            <select name="tipo" class="form-select" id="srvTipo">
-                                {% for code, label in TIPOS %}
-                                <option value="{{ code }}">{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold">Fecha Prometida</label>
-                            <input type="date" name="fecha_prometida" class="form-control" id="srvFechaPrometida">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label small fw-bold">Descripción del Trabajo</label>
-                            <textarea name="descripcion" class="form-control" rows="2" id="srvDescripcion"
-                                      placeholder="Ej: Ajuste de talle en vestido de XV años, bajar 3 cm..." required></textarea>
-                        </div>
-
+                        <!-- Cliente -->
                         <div class="col-12">
                             <div class="bg-light rounded-3 p-3">
                                 <div class="small fw-bold text-muted mb-2">CLIENTE</div>
                                 <div class="row g-2">
-                                    <div class="col-md-4">
-                                        <label class="form-label small">Nombre</label>
-                                        <input type="text" class="form-control" id="srvClienteNombre" placeholder="Nombre del cliente">
+                                    <div class="col-md-6">
+                                        <label class="form-label small">Nombre *</label>
+                                        <input type="text" class="form-control" id="srvClienteNombre" placeholder="Nombre del cliente" required>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-6">
                                         <label class="form-label small">Teléfono</label>
                                         <input type="tel" class="form-control" id="srvClienteTelefono" placeholder="10 dígitos">
-                                    </div>
-                                    <div class="col-md-4 d-flex align-items-end">
-                                        <small class="text-muted">Si el cliente ya existe se asociará automáticamente por teléfono.</small>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold">Costo Total ($)</label>
-                            <input type="number" step="0.01" min="0" class="form-control" id="srvCosto" placeholder="0.00">
+                        <!-- Descripción general y fecha -->
+                        <div class="col-md-8">
+                            <label class="form-label small fw-bold">Descripción general</label>
+                            <textarea class="form-control" rows="2" id="srvDescripcion"
+                                      placeholder="Ej: Vestido XV años azul, bajar talle 3 cm..."></textarea>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold">Anticipo Inicial ($)</label>
-                            <input type="number" step="0.01" min="0" class="form-control" id="srvAnticipo" placeholder="0.00" value="0">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Fecha prometida</label>
+                            <input type="date" class="form-control" id="srvFechaPrometida">
                         </div>
+
+                        <!-- Líneas de ajuste -->
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small fw-bold text-muted">LÍNEAS DE AJUSTE</span>
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3"
+                                        onclick="agregarLineaAjuste()">
+                                    <i class="bi bi-plus-lg me-1"></i>Agregar línea
+                                </button>
+                            </div>
+                            <div id="lineasContainer">
+                                <!-- líneas dinámicas -->
+                            </div>
+                            <div class="text-end mt-2">
+                                <span class="small text-muted">Total calculado:&nbsp;</span>
+                                <strong id="srvTotalCalc">$0.00</strong>
+                            </div>
+                        </div>
+
+                        <!-- Anticipo -->
+                        <div class="col-12">
+                            <div class="bg-light rounded-3 p-3">
+                                <div class="small fw-bold text-muted mb-2">ANTICIPO (opcional)</div>
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Monto ($)</label>
+                                        <input type="number" step="0.01" min="0" class="form-control"
+                                               id="srvAnticipo" placeholder="0.00" value="0">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small">Método de pago</label>
+                                        <select class="form-select" id="srvMetodoPago">
+                                            <option value="EFECTIVO">Efectivo</option>
+                                            <option value="TARJETA">Tarjeta</option>
+                                            <option value="TRANSFERENCIA">Transferencia</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <small class="text-muted">Requiere caja abierta si el anticipo es &gt; $0.</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="col-12">
                             <label class="form-label small fw-bold">Notas internas</label>
                             <input type="text" class="form-control" id="srvNotas" placeholder="Opcional">
@@ -185,18 +218,109 @@
 <script>
 const csrfToken = '{{ csrf_token }}';
 
+// ── Líneas de ajuste ──────────────────────────────────────────
+function buildTipoOptions(selected) {
+    return TIPOS_AJUSTE.map(([code, label]) =>
+        `<option value="${code}" ${code === selected ? 'selected' : ''}>${label}</option>`
+    ).join('');
+}
+
+function recalcularTotal() {
+    let total = 0;
+    document.querySelectorAll('.linea-ajuste').forEach(row => {
+        const pu = parseFloat(row.querySelector('.linea-precio').value) || 0;
+        const qty = parseInt(row.querySelector('.linea-cantidad').value) || 1;
+        total += pu * qty;
+    });
+    document.getElementById('srvTotalCalc').textContent = '$' + total.toFixed(2);
+}
+
+function agregarLineaAjuste(tipo = 'BASTILLA', precio = '', cantidad = 1, descripcion = '', prenda = '', notas = '') {
+    const container = document.getElementById('lineasContainer');
+    const div = document.createElement('div');
+    div.className = 'linea-ajuste border rounded-3 p-2 mb-2 bg-white';
+    div.innerHTML = `
+        <div class="row g-2 align-items-start">
+            <div class="col-md-3">
+                <label class="form-label small">Tipo *</label>
+                <select class="form-select form-select-sm linea-tipo">${buildTipoOptions(tipo)}</select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Precio ($) *</label>
+                <input type="number" step="0.01" min="0" class="form-control form-control-sm linea-precio"
+                       value="${precio}" placeholder="0.00" oninput="recalcularTotal()">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small">Cant.</label>
+                <input type="number" min="1" class="form-control form-control-sm linea-cantidad"
+                       value="${cantidad}" oninput="recalcularTotal()">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Prenda</label>
+                <input type="text" class="form-control form-control-sm linea-prenda"
+                       value="${prenda}" placeholder="Ej: vestido">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Detalle</label>
+                <input type="text" class="form-control form-control-sm linea-descripcion"
+                       value="${descripcion}" placeholder="Opcional">
+            </div>
+            <div class="col-md-1 d-flex align-items-end pb-1">
+                <button type="button" class="btn btn-sm btn-outline-danger w-100"
+                        onclick="this.closest('.linea-ajuste').remove(); recalcularTotal();">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>`;
+    container.appendChild(div);
+    recalcularTotal();
+}
+
+// Abrir modal limpio con al menos una línea vacía
+document.getElementById('modalNuevoServicio').addEventListener('show.bs.modal', () => {
+    document.getElementById('srvClienteNombre').value = '';
+    document.getElementById('srvClienteTelefono').value = '';
+    document.getElementById('srvDescripcion').value = '';
+    document.getElementById('srvFechaPrometida').value = '';
+    document.getElementById('srvAnticipo').value = '0';
+    document.getElementById('srvMetodoPago').value = 'EFECTIVO';
+    document.getElementById('srvNotas').value = '';
+    document.getElementById('lineasContainer').innerHTML = '';
+    agregarLineaAjuste();
+});
+
 async function guardarServicio() {
+    const clienteNombre = document.getElementById('srvClienteNombre').value.trim();
+    if (!clienteNombre) { alert('El nombre del cliente es requerido.'); return; }
+
+    // Recopilar líneas
+    const lineas = [];
+    let lineasValidas = true;
+    document.querySelectorAll('.linea-ajuste').forEach(row => {
+        const precio = parseFloat(row.querySelector('.linea-precio').value);
+        if (!precio || precio <= 0) { lineasValidas = false; return; }
+        lineas.push({
+            tipo:          row.querySelector('.linea-tipo').value,
+            precio_unitario: precio,
+            cantidad:      parseInt(row.querySelector('.linea-cantidad').value) || 1,
+            prenda:        row.querySelector('.linea-prenda').value.trim(),
+            descripcion:   row.querySelector('.linea-descripcion').value.trim(),
+        });
+    });
+
+    if (lineas.length === 0) { alert('Agrega al menos una línea de ajuste con precio.'); return; }
+    if (!lineasValidas)      { alert('Todas las líneas deben tener un precio mayor a $0.'); return; }
+
     const data = {
-        tipo: document.getElementById('srvTipo').value,
-        descripcion: document.getElementById('srvDescripcion').value.trim(),
-        cliente_nombre: document.getElementById('srvClienteNombre').value.trim(),
+        descripcion:     document.getElementById('srvDescripcion').value.trim(),
+        cliente_nombre:  clienteNombre,
         cliente_telefono: document.getElementById('srvClienteTelefono').value.trim(),
-        costo: document.getElementById('srvCosto').value,
-        anticipo: document.getElementById('srvAnticipo').value,
+        anticipo:        document.getElementById('srvAnticipo').value,
+        metodo_pago:     document.getElementById('srvMetodoPago').value,
         fecha_prometida: document.getElementById('srvFechaPrometida').value || null,
-        notas: document.getElementById('srvNotas').value,
+        notas:           document.getElementById('srvNotas').value,
+        lineas,
     };
-    if (!data.descripcion) { alert('La descripción es requerida.'); return; }
 
     try {
         const res = await fetch('{% url "api_crear_servicio" %}', {
@@ -214,6 +338,7 @@ async function guardarServicio() {
     } catch (e) { alert('Error de red: ' + e); }
 }
 
+// ── Cobro y estado ────────────────────────────────────────────
 function abrirCobro(id, saldo) {
     abrirModalCobro('servicio', id, saldo, 'SRV-' + id);
 }
