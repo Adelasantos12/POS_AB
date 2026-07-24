@@ -694,13 +694,27 @@ def api_venta_rapida(request):
 
         # Datos del cliente
         cliente_telefono = request.POST.get('cliente_telefono', '').strip()
-        cliente_nombre = request.POST.get('cliente_nombre')
+        cliente_nombre = (request.POST.get('cliente_nombre') or '').strip()
         cliente_notas = request.POST.get('cliente_notas')
         evento = request.POST.get('evento', '')
         fecha_entrega_est = request.POST.get('fecha_entrega_estimada')
         fecha_evento = request.POST.get('fecha_evento')
+        sin_registro = request.POST.get('sin_registro') == 'true'
 
-        # 1.5 Validaciones duras para Pedidos
+        # 1.5 Validaciones de identidad de cliente
+        if tipo_op == 'VENTA_NORMAL' and not es_apartado:
+            # Venta inmediata: nombre obligatorio O sin_registro explícito
+            if not sin_registro and not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'Ingresa el nombre del cliente o selecciona "Sin registro".'}, status=400)
+        elif tipo_op == 'VENTA_NORMAL' and es_apartado:
+            if not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para apartados.'}, status=400)
+            if cliente_nombre.lower() == 'sin registro':
+                return JsonResponse({'status': 'error', 'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'}, status=400)
+        elif tipo_op in ['HECHURA', 'PEDIDO_EXTERNO', 'DAMA_HONOR']:
+            if not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para este tipo de operación.'}, status=400)
+
         if tipo_op in ['HECHURA', 'PEDIDO_EXTERNO']:
             if not cliente_telefono:
                 return JsonResponse({'status': 'error', 'message': 'El teléfono del cliente es obligatorio para este tipo de pedido.'}, status=400)
@@ -762,7 +776,7 @@ def api_venta_rapida(request):
                     # FLUJO APARTADO
                     apartado = Apartado.objects.create(
                         cliente=cliente_obj,
-                        cliente_nombre=cliente_nombre or f"Venta Rápida {producto.sku}",
+                        cliente_nombre=cliente_nombre,
                         cliente_telefono=cliente_telefono or '',
                         total=precio,
                         anticipo=0,
@@ -808,6 +822,15 @@ def api_venta_rapida(request):
                         origen_tipo='venta', origen_obj=venta,
                         monto=anticipo, metodo=metodo, usuario=request.active_profile
                     )
+                    # Venta.cliente_nombre no existe como campo; parchamos el ticket
+                    if not ticket.cliente_nombre:
+                        ticket.cliente_nombre = 'Sin registro' if sin_registro else (cliente_nombre or '')
+                        ticket.cliente_telefono = '' if sin_registro else cliente_telefono
+                        _snap = ticket.snapshot_json or {}
+                        _snap['cliente'] = ticket.cliente_nombre
+                        _snap['cliente_telefono'] = ticket.cliente_telefono
+                        ticket.snapshot_json = _snap
+                        ticket.save(update_fields=['cliente_nombre', 'cliente_telefono', 'snapshot_json'])
                     # Guardar largo_aprox en snapshot si se proporcionó en el formulario
                     _m_largo = request.POST.get('m_largo', '').strip()
                     if _m_largo:
@@ -1086,13 +1109,26 @@ def api_registrar_venta(request):
         pago_inicial = safe_decimal(data.get('pago_inicial', total))
         metodo = data.get('metodo', 'EFECTIVO')
         es_apartado = data.get('es_apartado', False)
+        cliente_nombre = (data.get('cliente_nombre') or '').strip()
+        cliente_telefono = (data.get('cliente_telefono') or '').strip()
+        sin_registro = bool(data.get('sin_registro', False))
+
+        # Identidad mínima obligatoria
+        if es_apartado:
+            if not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para apartados.'}, status=400)
+            if cliente_nombre.lower() == 'sin registro':
+                return JsonResponse({'status': 'error', 'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'}, status=400)
+        else:
+            if not sin_registro and not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio. Para ventas anónimas, selecciona "Sin registro".'}, status=400)
 
         with transaction.atomic():
             if es_apartado:
                 # Nuevo flujo de Apartado Independiente
                 apartado = Apartado.objects.create(
-                    cliente_nombre=data.get('cliente_nombre', 'Cliente POS'),
-                    cliente_telefono=data.get('cliente_telefono', ''),
+                    cliente_nombre=cliente_nombre,
+                    cliente_telefono=cliente_telefono,
                     total=total,
                     anticipo=0,
                     notas=f"Apartado POS - {len(items)} items"
@@ -1143,8 +1179,20 @@ def api_registrar_venta(request):
 
             else:
                 # Flujo de Venta normal
+                # Vincular cliente por teléfono si se proporcionó
+                cliente_obj = None
+                if cliente_telefono:
+                    cliente_obj, created = Cliente.objects.get_or_create(
+                        telefono=cliente_telefono,
+                        defaults={'nombre': cliente_nombre or 'Sin nombre'}
+                    )
+                    if not created and cliente_nombre:
+                        cliente_obj.nombre = cliente_nombre
+                        cliente_obj.save(update_fields=['nombre'])
+
                 venta = Venta.objects.create(
                     vendedor=request.active_profile,
+                    cliente=cliente_obj,
                     total=total
                 )
 
@@ -1175,6 +1223,16 @@ def api_registrar_venta(request):
                     metodo=metodo,
                     usuario=request.active_profile
                 )
+
+                # Venta.cliente_nombre no existe como campo; parchamos el ticket
+                if not ticket.cliente_nombre:
+                    ticket.cliente_nombre = 'Sin registro' if sin_registro else (cliente_nombre or '')
+                    ticket.cliente_telefono = '' if sin_registro else cliente_telefono
+                    snap = ticket.snapshot_json or {}
+                    snap['cliente'] = ticket.cliente_nombre
+                    snap['cliente_telefono'] = ticket.cliente_telefono
+                    ticket.snapshot_json = snap
+                    ticket.save(update_fields=['cliente_nombre', 'cliente_telefono', 'snapshot_json'])
 
                 registrar_auditoria(
                     usuario=request.active_profile,
@@ -1788,14 +1846,18 @@ def api_crear_servicio(request):
     from .models import Servicio, Cliente
     try:
         data = json.loads(request.body)
+        cliente_nombre_input = (data.get('cliente_nombre') or '').strip()
+        if not data.get('cliente_id') and not cliente_nombre_input:
+            return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para registrar un servicio.'}, status=400)
+
         cliente = None
         if data.get('cliente_id'):
             cliente = Cliente.objects.filter(pk=data['cliente_id']).first()
-        elif data.get('cliente_nombre'):
-            tel = data.get('cliente_telefono', '0000000000')
+        elif cliente_nombre_input:
+            tel = (data.get('cliente_telefono') or '').strip() or '0000000000'
             cliente, _ = Cliente.objects.get_or_create(
                 telefono=tel,
-                defaults={'nombre': data['cliente_nombre']}
+                defaults={'nombre': cliente_nombre_input}
             )
 
         srv = Servicio.objects.create(

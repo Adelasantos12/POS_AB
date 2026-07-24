@@ -275,14 +275,20 @@
 
                         <!-- Cliente -->
                         <div class="p-3 bg-light rounded-3 border">
-                            <h6 class="fw-bold mb-2 small"><i class="bi bi-person me-1"></i>Datos del Cliente <span id="vr_cliente_required_label" class="d-none text-danger small">*Requerido</span></h6>
+                            <h6 class="fw-bold mb-2 small"><i class="bi bi-person me-1"></i>Datos del Cliente <span id="vr_cliente_required_label" class="text-danger small">*Requerido</span></h6>
                             <div class="row g-2">
                                 <div class="col-12 position-relative">
                                     <input type="text" id="vr_cliente_telefono" name="cliente_telefono" class="form-control form-control-sm" placeholder="Teléfono (auto-completa nombre)" autocomplete="off">
                                     <div id="vr_cliente_results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1050;max-height:140px;overflow-y:auto;"></div>
                                 </div>
                                 <div class="col-12">
-                                    <input type="text" id="vr_cliente_nombre" name="cliente_nombre" class="form-control form-control-sm" placeholder="Nombre completo">
+                                    <input type="text" id="vr_cliente_nombre" name="cliente_nombre" class="form-control form-control-sm" placeholder="Nombre completo" required>
+                                </div>
+                                <div class="col-12" id="vr_sin_registro_div">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="vr_btn_sin_registro">
+                                        <i class="bi bi-person-slash me-1"></i>Sin registro (venta anónima)
+                                    </button>
+                                    <input type="hidden" name="sin_registro" id="vr_sin_registro_input" value="">
                                 </div>
                                 <div class="col-12">
                                     <textarea name="cliente_notas" class="form-control form-control-sm" rows="1" placeholder="Notas opcionales..."></textarea>
@@ -1084,7 +1090,39 @@
 
     function toggleAnticipoField(checked) {
         document.getElementById('vr_anticipo_div').classList.toggle('d-none', !checked);
+        // Si activa apartado, desactiva "Sin registro" (deuda anónima no permitida)
+        if (checked) {
+            vrResetSinRegistro();
+            document.getElementById('vr_sin_registro_div').classList.add('d-none');
+        } else {
+            const val = document.getElementById('ventaRapidaForm').tipo_operacion.value;
+            document.getElementById('vr_sin_registro_div').classList.toggle('d-none', val !== 'VENTA_NORMAL');
+        }
     }
+
+    document.getElementById('vr_btn_sin_registro').addEventListener('click', function() {
+        const input = document.getElementById('vr_sin_registro_input');
+        const nombreField = document.getElementById('vr_cliente_nombre');
+        if (input.value === 'true') {
+            // Desactivar sin_registro
+            input.value = '';
+            nombreField.value = '';
+            nombreField.disabled = false;
+            nombreField.required = true;
+            this.classList.remove('btn-secondary');
+            this.classList.add('btn-outline-secondary');
+            this.innerHTML = '<i class="bi bi-person-slash me-1"></i>Sin registro (venta anónima)';
+        } else {
+            // Activar sin_registro
+            input.value = 'true';
+            nombreField.value = 'Sin registro';
+            nombreField.disabled = true;
+            nombreField.required = false;
+            this.classList.remove('btn-outline-secondary');
+            this.classList.add('btn-secondary');
+            this.innerHTML = '<i class="bi bi-person-check me-1"></i>Cancelar — ingresar nombre';
+        }
+    });
 
     document.getElementById('vrBtnNext').addEventListener('click', function() {
         const form = document.getElementById('ventaRapidaForm');
@@ -1116,6 +1154,8 @@
         vrGoToStep(1);
         document.getElementById('ventaRapidaForm').reset();
         document.getElementById('vr_image_preview').innerHTML = '<i class="bi bi-camera text-muted fs-2"></i>';
+        vrResetSinRegistro();
+        document.getElementById('vr_sin_registro_div').classList.add('d-none');
     });
 
     // ── End wizard navigation ────────────────────────────────────────────
@@ -1125,10 +1165,10 @@
         const form = document.getElementById('ventaRapidaForm');
         const val = form.tipo_operacion.value;
         const isHechuraOrExterno = (val === 'HECHURA' || val === 'PEDIDO_EXTERNO');
+        const isVentaNormal = (val === 'VENTA_NORMAL');
         document.getElementById('vr_section_dama').classList.toggle('d-none', val !== 'DAMA_HONOR');
         document.getElementById('vr_section_hechura').classList.toggle('d-none', !isHechuraOrExterno);
         document.getElementById('vr_section_medidas').classList.toggle('d-none', val === 'VENTA_NORMAL');
-        document.getElementById('vr_cliente_required_label').classList.toggle('d-none', !isHechuraOrExterno);
         document.getElementById('hechura_fecha_evento_col').classList.toggle('d-none', !isHechuraOrExterno);
         if (val === 'HECHURA') {
             document.getElementById('vr_hechura_title').innerHTML = '<i class="bi bi-scissors me-1"></i>Detalles de Hechura (Taller)';
@@ -1138,6 +1178,19 @@
         document.getElementById('vr_cliente_telefono').required = isHechuraOrExterno;
         const fechaEntregaInput = document.querySelector('#ventaRapidaForm input[name="fecha_entrega_estimada"]');
         if (fechaEntregaInput) fechaEntregaInput.required = isHechuraOrExterno;
+        // "Sin registro" solo disponible para VENTA_NORMAL (el switch de apartado lo desactiva dinámicamente)
+        document.getElementById('vr_sin_registro_div').classList.toggle('d-none', !isVentaNormal);
+        vrResetSinRegistro();
+    }
+
+    function vrResetSinRegistro() {
+        document.getElementById('vr_sin_registro_input').value = '';
+        document.getElementById('vr_cliente_nombre').value = '';
+        document.getElementById('vr_cliente_nombre').disabled = false;
+        document.getElementById('vr_cliente_nombre').required = true;
+        document.getElementById('vr_btn_sin_registro').classList.remove('btn-secondary');
+        document.getElementById('vr_btn_sin_registro').classList.add('btn-outline-secondary');
+        document.getElementById('vr_btn_sin_registro').innerHTML = '<i class="bi bi-person-slash me-1"></i>Sin registro (venta anónima)';
     }
 
     document.querySelectorAll('input[name="tipo_operacion"]').forEach(r => {
@@ -1290,6 +1343,20 @@
         const form = document.getElementById('ventaRapidaForm');
         if (!form.checkValidity()) {
             form.reportValidity();
+            return;
+        }
+
+        // Validación de identidad de cliente
+        const tipoOp = form.tipo_operacion.value;
+        const esApartado = document.getElementById('vr_es_apartado').checked;
+        const sinRegistro = document.getElementById('vr_sin_registro_input').value === 'true';
+        const nombreCliente = (document.getElementById('vr_cliente_nombre').value || '').trim();
+        if (!sinRegistro && !nombreCliente) {
+            alert('⚠️ El nombre del cliente es obligatorio. Para ventas anónimas, usa el botón "Sin registro".');
+            return;
+        }
+        if (esApartado && sinRegistro) {
+            alert('⚠️ Un apartado con saldo pendiente no puede quedar sin registro de cliente.');
             return;
         }
 
