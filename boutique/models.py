@@ -98,15 +98,71 @@ class Proveedor(models.Model):
 
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
+
+    def save(self, *args, **kwargs):
+        from .utils import normalizar_nombre
+        self.nombre = normalizar_nombre(self.nombre)
+        super().save(*args, **kwargs)
+
     def __str__(self): return self.nombre
+
+
+class Talla(models.Model):
+    """Catálogo controlado de tallas con alias para normalización (S = CH = ch)."""
+    nombre = models.CharField(max_length=20, unique=True)
+    aliases_json = models.JSONField(
+        default=list, blank=True,
+        help_text='Lista de alias aceptados. Ej: ["ch", "chico", "small"]'
+    )
+    orden = models.PositiveSmallIntegerField(default=0)
+    activa = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['orden', 'nombre']
+        verbose_name = 'Talla'
+        verbose_name_plural = 'Tallas'
+
+    def __str__(self):
+        return self.nombre
+
+    @classmethod
+    def buscar_por_alias(cls, raw: str):
+        """Return the Talla whose nombre or aliases match `raw` (case-insensitive). Returns None if no match."""
+        if not raw:
+            return None
+        raw_lower = raw.strip().lower()
+        for talla in cls.objects.filter(activa=True):
+            if talla.nombre.lower() == raw_lower:
+                return talla
+            if any(alias.lower() == raw_lower for alias in (talla.aliases_json or [])):
+                return talla
+        return None
+
 
 class Modelo(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True)
+    # Catalog normalization fields
+    referencia = models.CharField(max_length=100, blank=True, help_text='Número/código de referencia del modelo')
+    foto_principal = models.ImageField(upload_to='modelos/', null=True, blank=True)
+    categoria = models.ForeignKey(Categoria, on_delete=models.SET_NULL, null=True, blank=True, related_name='modelos')
+    es_especial = models.BooleanField(default=False, help_text='Habilita campos adicionales para modelos hechos a medida')
+    # Extra fields for special models
+    combinacion_telas = models.TextField(blank=True)
+    notas_confeccion = models.TextField(blank=True)
+    codigo_especial = models.CharField(max_length=100, blank=True)
+
     class Meta:
         verbose_name = "Modelo de Producto"
         verbose_name_plural = "Modelos de Productos"
+
+    def save(self, *args, **kwargs):
+        from .utils import normalizar_nombre
+        self.nombre = normalizar_nombre(self.nombre)
+        super().save(*args, **kwargs)
+
     def __str__(self): return self.nombre
+
 
 class Tela(models.Model):
     """Catálogo de tipos de tela con código de proveedor"""
@@ -116,11 +172,16 @@ class Tela(models.Model):
     descripcion = models.TextField(blank=True, help_text="Características de la tela")
     es_predefinida = models.BooleanField(default=False, help_text="Telas del catálogo base")
     activa = models.BooleanField(default=True)
-    
-    class Meta: 
+
+    class Meta:
         unique_together = ('nombre', 'proveedor')
-    
-    def __str__(self): 
+
+    def save(self, *args, **kwargs):
+        from .utils import normalizar_nombre
+        self.nombre = normalizar_nombre(self.nombre)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
         if self.proveedor:
             return f"{self.nombre} ({self.proveedor.nombre})"
         return self.nombre
@@ -171,8 +232,13 @@ class Color(models.Model):
     
     class Meta:
         ordering = ['familia', 'orden', 'nombre']
-    
-    def __str__(self): 
+
+    def save(self, *args, **kwargs):
+        from .utils import normalizar_nombre
+        self.nombre = normalizar_nombre(self.nombre)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
         return self.nombre
 
 RASGOS_ESTILO = ['Sin manga', 'Manga corta', 'Manga larga', 'Un hombro', 'Hombros descubiertos', 'Tirantes', 'Sin tirantes']
@@ -196,6 +262,7 @@ class Producto(models.Model):
     tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
     color = models.ForeignKey(Color, on_delete=models.PROTECT)
     talla = models.CharField(max_length=10, choices=TALLAS, default='M')
+    talla_obj = models.ForeignKey('Talla', on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Talla (catálogo)', related_name='productos')
     talla_especial = models.CharField(max_length=50, blank=True, help_text="Para casos no estándar")
     precio_venta = models.DecimalField(max_digits=10, decimal_places=2)
     cantidad_actual = models.PositiveIntegerField(default=0)
@@ -216,6 +283,14 @@ class Producto(models.Model):
     class Meta:
         verbose_name = "Variante (SKU)"
         verbose_name_plural = "Variantes (SKU)"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['modelo', 'color', 'tela', 'talla_obj'],
+                condition=Q(modelo__isnull=False) & Q(talla_obj__isnull=False),
+                name='uq_variante_modelo_color_tela_talla',
+            )
+        ]
+
     def save(self, *args, **kwargs):
         is_new = self.pk is None
 
@@ -1114,6 +1189,7 @@ class Dama(models.Model):
     tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
     modelo = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True)
     talla = models.CharField(max_length=10, blank=True)
+    talla_obj = models.ForeignKey('Talla', on_delete=models.SET_NULL, null=True, blank=True, related_name='damas')
 
     # Detalles para Hechura Especial
     modelo_especial = models.CharField(max_length=200, blank=True)
@@ -1202,7 +1278,8 @@ class Pedido(models.Model):
     color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True)
     tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
     talla = models.CharField(max_length=10, blank=True)
-    
+    talla_obj = models.ForeignKey('Talla', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos')
+
     # Imagen de referencia
     imagen_referencia = models.ImageField(upload_to='pedidos/', blank=True, null=True)
     
@@ -1319,6 +1396,7 @@ class PedidoItem(models.Model):
     numero_modelo = models.CharField(max_length=50, blank=True)
     descripcion_especial = models.TextField(blank=True)
     talla = models.CharField(max_length=10, blank=True)
+    talla_obj = models.ForeignKey('Talla', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedido_items')
     color = models.ForeignKey('Color', on_delete=models.SET_NULL, null=True, blank=True)
     tela = models.ForeignKey('Tela', on_delete=models.SET_NULL, null=True, blank=True)
 
@@ -1723,6 +1801,7 @@ class VestidoDama(models.Model):
     numero_modelo = models.CharField(max_length=100, blank=True)
     descripcion_especial = models.TextField(blank=True)
     talla = models.CharField(max_length=10, blank=True)
+    talla_obj = models.ForeignKey('Talla', on_delete=models.SET_NULL, null=True, blank=True, related_name='vestidos_dama')
     color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True)
     tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
     foto_referencia = models.ImageField(upload_to='vestidos/', null=True, blank=True)

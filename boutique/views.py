@@ -9,12 +9,12 @@ from django.db import transaction
 from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
 from .models import (
-    Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
-    CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
+    Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente,
+    CorteCaja, Tienda, MovimientoInventario, Modelo, Tela, Talla,
     registrar_auditoria, Ticket, Pedido, Apartado, Novia, Dama
 )
 from .middleware import profile_permission_required
-from .utils import safe_decimal
+from .utils import safe_decimal, normalizar_nombre, nombres_son_iguales
 from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
@@ -1444,44 +1444,91 @@ def api_validar_crear_producto(request):
                 'requiere_confirmacion': False
             }, status=400)
     
-    # Crear el producto
+    # Resolver objetos FK: accept both ID (preferred) and name (legacy AI fill)
     try:
-        cat_nombre = data.get('categoria', 'Sin definir')
-        color_nombre = data.get('color', 'Sin definir')
-        
-        categoria = Categoria.objects.filter(nombre=cat_nombre).first()
-        if not categoria:
-            categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+        # Categoría
+        if data.get('categoria_id'):
+            categoria = get_object_or_404(Categoria, pk=data['categoria_id'])
+        else:
+            cat_nombre = data.get('categoria', 'Sin definir')
+            categoria = Categoria.objects.filter(nombre__iexact=cat_nombre).first()
+            if not categoria:
+                categoria, _ = Categoria.objects.get_or_create(nombre=normalizar_nombre(cat_nombre) or 'Sin definir')
 
-        color_obj = Color.objects.filter(nombre=color_nombre).first()
-        if not color_obj:
-            color_obj, _ = Color.objects.get_or_create(nombre="Sin definir")
-        
-        rasgo2 = data.get('rasgo2', '')
-        tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+        # Color
+        if data.get('color_id'):
+            color_obj = get_object_or_404(Color, pk=data['color_id'])
+        else:
+            color_nombre = data.get('color', 'Sin definir')
+            color_obj = Color.objects.filter(nombre__iexact=color_nombre).first()
+            if not color_obj:
+                color_obj, _ = Color.objects.get_or_create(nombre=normalizar_nombre(color_nombre) or 'Sin definir')
 
-        # Usar get_or_create para prevenir duplicados a nivel BD
+        # Modelo
+        modelo_obj = None
+        if data.get('modelo_id'):
+            modelo_obj = Modelo.objects.filter(pk=data['modelo_id']).first()
+        elif data.get('rasgo1'):
+            modelo_obj = Modelo.objects.filter(nombre__iexact=data['rasgo1']).first()
+
+        # Tela
+        tela_obj = None
+        if data.get('tela_id'):
+            tela_obj = Tela.objects.filter(pk=data['tela_id']).first()
+        else:
+            rasgo2 = data.get('rasgo2', '')
+            if rasgo2:
+                tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
+        # Talla FK
+        talla_str = data.get('talla', 'U')
+        talla_obj_cat = None
+        if data.get('talla_id'):
+            talla_obj_cat = Talla.objects.filter(pk=data['talla_id']).first()
+        if talla_obj_cat is None:
+            talla_obj_cat = Talla.buscar_por_alias(talla_str)
+
+        # Uniqueness check via FK constraint (when modelo + talla are set)
+        if not forzar_crear and modelo_obj and talla_obj_cat:
+            qs = Producto.objects.filter(
+                modelo=modelo_obj,
+                color=color_obj,
+                tela=tela_obj,
+                talla_obj=talla_obj_cat,
+            )
+            if qs.exists():
+                return JsonResponse({
+                    'status': 'blocked',
+                    'message': '🚫 Ya existe una variante con ese modelo, color, tela y talla.',
+                    'requiere_confirmacion': False,
+                }, status=400)
+
+        rasgo1 = data.get('rasgo1', modelo_obj.nombre if modelo_obj else '')
+        rasgo2 = data.get('rasgo2', tela_obj.nombre if tela_obj else '')
+
         producto, created = Producto.objects.get_or_create(
             categoria=categoria,
             color=color_obj,
             tela=tela_obj,
-            rasgo1=data.get('rasgo1', ''),
+            modelo=modelo_obj,
+            rasgo1=rasgo1,
             rasgo2=rasgo2,
-            talla=data.get('talla', 'U'),
+            talla=talla_str,
+            talla_obj=talla_obj_cat,
             defaults={
                 'precio_venta': safe_decimal(data.get('precio', 0)),
                 'estado': data.get('estado', 'TIENDA'),
                 'cantidad_actual': int(data.get('stock', 1)),
-                'foto': foto
+                'foto': foto,
             }
         )
-        
+
         res = {
-            'status': 'ok', 
-            'sku': producto.sku, 
-            'id': producto.id, 
+            'status': 'ok',
+            'sku': producto.sku,
+            'id': producto.id,
             'text': str(producto),
-            'message': '✅ Producto creado correctamente' if created else '✅ Producto existente reutilizado'
+            'message': '✅ Producto creado correctamente' if created else '✅ Producto existente reutilizado',
         }
 
         if idem_key:
@@ -1490,7 +1537,7 @@ def api_validar_crear_producto(request):
             log.save()
 
         return JsonResponse(res)
-        
+
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
@@ -1543,7 +1590,10 @@ def inventario_view(request):
         'q': q,
         'es_admin': es_admin(request.active_profile),
         'categorias': Categoria.objects.all().order_by('nombre'),
-        'colores': Color.objects.filter(activo=True).order_by('nombre')
+        'colores': Color.objects.filter(activo=True).order_by('nombre'),
+        'tallas': Talla.objects.filter(activa=True).order_by('orden', 'nombre'),
+        'modelos': Modelo.objects.all().order_by('nombre'),
+        'telas': Tela.objects.filter(activa=True).order_by('nombre'),
     })
 
 
@@ -1672,30 +1722,55 @@ def api_get_variantes(request, pk):
 @login_required
 @profile_permission_required('Inventario')
 def api_clonar_variante(request, pk):
-    """Clona un producto base para crear una variante (mismo modelo/tela, diferente color/talla)"""
+    """Clona un producto base para crear una variante (mismo modelo/tela, diferente color/talla)."""
     try:
         producto_base = get_object_or_404(Producto, pk=pk)
         data = json.loads(request.body)
-
-        color_nombre = data.get('color')
-        talla = data.get('talla')
         stock_inicial = int(data.get('stock', 0))
 
-        color_obj, _ = Color.objects.get_or_create(nombre=color_nombre)
+        # Resolver color
+        if data.get('color_id'):
+            color_obj = get_object_or_404(Color, pk=data['color_id'])
+        else:
+            color_nombre = data.get('color', '')
+            color_obj, _ = Color.objects.get_or_create(nombre=normalizar_nombre(color_nombre) or color_nombre)
 
-        # Clonar el producto
+        # Resolver talla
+        talla_str = data.get('talla', '')
+        if data.get('talla_id'):
+            talla_obj_cat = Talla.objects.filter(pk=data['talla_id']).first()
+        else:
+            talla_obj_cat = Talla.buscar_por_alias(talla_str) if talla_str else None
+
+        modelo_obj = producto_base.modelo
+        tela_obj = producto_base.tela
+
+        # Dedup check via FK constraint
+        if modelo_obj and talla_obj_cat:
+            if Producto.objects.filter(
+                modelo=modelo_obj,
+                color=color_obj,
+                tela=tela_obj,
+                talla_obj=talla_obj_cat,
+            ).exists():
+                return JsonResponse({
+                    'status': 'blocked',
+                    'message': 'Ya existe una variante con ese modelo, color, tela y talla.',
+                }, status=400)
+
         nueva_variante = Producto.objects.create(
             categoria=producto_base.categoria,
-            modelo=producto_base.modelo,
-            tela=producto_base.tela,
+            modelo=modelo_obj,
+            tela=tela_obj,
             color=color_obj,
-            talla=talla,
+            talla=talla_str,
+            talla_obj=talla_obj_cat,
             precio_venta=producto_base.precio_venta,
             rasgo1=producto_base.rasgo1,
             rasgo2=producto_base.rasgo2,
             cantidad_actual=stock_inicial,
             stock_teorico=stock_inicial,
-            estado='TIENDA'
+            estado='TIENDA',
         )
 
         registrar_auditoria(
@@ -1703,14 +1778,14 @@ def api_clonar_variante(request, pk):
             accion='MOVIMIENTO_INV',
             detalles=f'Variante creada para {producto_base.sku}: {nueva_variante.sku}',
             entidad=nueva_variante,
-            request=request
+            request=request,
         )
 
         return JsonResponse({
             'status': 'ok',
             'sku': nueva_variante.sku,
             'id': nueva_variante.id,
-            'message': 'Variante agregada con éxito'
+            'message': 'Variante agregada con éxito',
         })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -2918,3 +2993,120 @@ def api_foto_producto(request, pk):
     # by the storage backend, not the in-memory InMemoryUploadedFile object.
     producto.refresh_from_db(fields=['foto'])
     return JsonResponse({'status': 'ok', 'foto_url': producto.foto.url})
+
+
+# ============================================================
+# CATÁLOGOS CONTROLADOS: Talla, Modelo
+# ============================================================
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_crear_talla(request):
+    """Crea una nueva talla controlada con validación de duplicados."""
+    data = json.loads(request.body)
+    nombre = data.get('nombre', '').strip()
+    if not nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
+
+    # Case-insensitive dedup
+    if Talla.objects.filter(nombre__iexact=nombre).exists():
+        return JsonResponse({'status': 'blocked', 'message': f'Ya existe una talla "{nombre}"'}, status=400)
+
+    # Check alias collision
+    existing = Talla.buscar_por_alias(nombre)
+    if existing:
+        return JsonResponse({
+            'status': 'blocked',
+            'message': f'"{nombre}" es un alias de la talla existente "{existing.nombre}"',
+        }, status=400)
+
+    talla = Talla.objects.create(
+        nombre=nombre,
+        aliases_json=data.get('aliases', []),
+        orden=data.get('orden', 999),
+        activa=True,
+    )
+    return JsonResponse({'status': 'ok', 'id': talla.id, 'nombre': talla.nombre})
+
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_listar_tallas(request):
+    """Lista tallas activas del catálogo."""
+    tallas = list(
+        Talla.objects.filter(activa=True)
+        .order_by('orden', 'nombre')
+        .values('id', 'nombre', 'aliases_json', 'orden')
+    )
+    return JsonResponse({'status': 'ok', 'tallas': tallas})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_crear_modelo_catalogo(request):
+    """Crea un nuevo modelo en el catálogo con validación de duplicados."""
+    data = json.loads(request.body)
+    nombre = data.get('nombre', '').strip()
+    if not nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
+
+    nombre_norm = normalizar_nombre(nombre)
+
+    # Accent-insensitive dedup
+    if Modelo.objects.filter(nombre__iexact=nombre_norm).exists():
+        return JsonResponse({'status': 'blocked', 'message': f'Ya existe un modelo "{nombre_norm}"'}, status=400)
+
+    # AI similarity check (optional, silent on failure)
+    ai_warning = None
+    similares = Modelo.objects.filter(
+        nombre__icontains=nombre_norm.split()[0] if nombre_norm else ''
+    ).values_list('nombre', flat=True)[:10]
+    if similares:
+        try:
+            from .ai_utils import get_gemini_client, GEMINI_MODEL
+            client = get_gemini_client()
+            if client:
+                prompt = f"""¿El modelo "{nombre_norm}" es igual o muy similar a alguno de estos modelos?
+Modelos existentes: {', '.join(similares)}
+Responde SOLO con "IGUAL: [nombre]", "SIMILAR: [nombre]" o "DIFERENTE"."""
+                response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+                ai_resp = response.text.strip()
+                if 'IGUAL' in ai_resp.upper():
+                    return JsonResponse({'status': 'blocked', 'message': f'Parece igual a uno existente. {ai_resp}'}, status=400)
+                elif 'SIMILAR' in ai_resp.upper():
+                    ai_warning = ai_resp
+        except Exception:
+            pass
+
+    categoria = None
+    if data.get('categoria_id'):
+        categoria = Categoria.objects.filter(pk=data['categoria_id']).first()
+
+    modelo = Modelo.objects.create(
+        nombre=nombre_norm,
+        descripcion=data.get('descripcion', ''),
+        referencia=data.get('referencia', ''),
+        categoria=categoria,
+        es_especial=data.get('es_especial', False),
+        combinacion_telas=data.get('combinacion_telas', ''),
+        notas_confeccion=data.get('notas_confeccion', ''),
+        codigo_especial=data.get('codigo_especial', ''),
+    )
+    res = {'status': 'ok', 'id': modelo.id, 'nombre': modelo.nombre, 'message': f'Modelo "{modelo.nombre}" creado'}
+    if ai_warning:
+        res['warning'] = ai_warning
+    return JsonResponse(res)
+
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_listar_modelos(request):
+    """Lista modelos con búsqueda opcional."""
+    q = request.GET.get('q', '')
+    qs = Modelo.objects.all()
+    if q:
+        qs = qs.filter(nombre__icontains=q)
+    modelos = list(qs.order_by('nombre').values('id', 'nombre', 'referencia', 'es_especial', 'categoria_id')[:100])
+    return JsonResponse({'status': 'ok', 'modelos': modelos})

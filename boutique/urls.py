@@ -71,7 +71,11 @@ urlpatterns = [
     path('api/crear-tela/', views_agenda.api_crear_tela, name='api_crear_tela'),
     path('api/tela-editar/<int:pk>/', views_agenda.api_tela_editar, name='api_tela_editar'),
     path('api/tela-eliminar/<int:pk>/', views_agenda.api_tela_eliminar, name='api_tela_eliminar'),
-    
+    path('api/tallas/', views.api_listar_tallas, name='api_listar_tallas'),
+    path('api/crear-talla/', views.api_crear_talla, name='api_crear_talla'),
+    path('api/modelos/', views.api_listar_modelos, name='api_listar_modelos'),
+    path('api/crear-modelo/', views.api_crear_modelo_catalogo, name='api_crear_modelo_catalogo'),
+
     # ============================================================
     # AGENDA Y CALENDARIO
     # ============================================================

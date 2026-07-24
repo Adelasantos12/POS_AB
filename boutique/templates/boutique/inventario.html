@@ -168,46 +168,71 @@
 
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Categoría</label>
-                        <select name="categoria" class="form-select" required>
+                        <select name="categoria" id="np_categoria" class="form-select" required>
                             <option value="">Seleccione categoría...</option>
                             {% for c in categorias %}
-                                <option value="{{ c.nombre }}">{{ c.nombre }}</option>
+                                <option value="{{ c.nombre }}" data-id="{{ c.id }}">{{ c.nombre }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Color</label>
-                        <select name="color" class="form-select" required>
-                            <option value="">Seleccione color...</option>
-                            {% for c in colores %}
-                                <option value="{{ c.nombre }}">{{ c.nombre }}</option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group">
+                            <select name="color" id="np_color" class="form-select" required>
+                                <option value="">Seleccione color...</option>
+                                {% for c in colores %}
+                                    <option value="{{ c.nombre }}" data-id="{{ c.id }}">{{ c.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevoColor()" title="Agregar color">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Rasgo 1 (Modelo)</label>
-                            <input type="text" name="rasgo1" class="form-control" placeholder="Ej: Manga Larga" required>
+                            <label class="form-label small fw-bold">Modelo</label>
+                            <div class="input-group">
+                                <select name="rasgo1" id="np_modelo" class="form-select">
+                                    <option value="">Sin modelo...</option>
+                                    {% for m in modelos %}
+                                        <option value="{{ m.nombre }}" data-id="{{ m.id }}">{{ m.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevoModelo()" title="Agregar modelo">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Rasgo 2 (Tela)</label>
-                            <input type="text" name="rasgo2" class="form-control" placeholder="Ej: Seda" required>
+                            <label class="form-label small fw-bold">Tela</label>
+                            <div class="input-group">
+                                <select name="rasgo2" id="np_tela" class="form-select">
+                                    <option value="">Sin tela...</option>
+                                    {% for t in telas %}
+                                        <option value="{{ t.nombre }}" data-id="{{ t.id }}">{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevaTela()" title="Agregar tela">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-4 mb-3">
                             <label class="form-label small fw-bold">Talla</label>
-                            <select name="talla" class="form-select" required>
-                                <option value="XS">XS</option>
-                                <option value="S">S</option>
-                                <option value="M" selected>M</option>
-                                <option value="L">L</option>
-                                <option value="XL">XL</option>
-                                <option value="2XL">2XL</option>
-                                <option value="3XL">3XL</option>
-                                <option value="4XL">4XL</option>
-                                <option value="U">Unitalla</option>
-                            </select>
+                            <div class="input-group">
+                                <select name="talla" id="np_talla" class="form-select" required>
+                                    <option value="">Talla...</option>
+                                    {% for t in tallas %}
+                                        <option value="{{ t.nombre }}" data-id="{{ t.id }}" {% if t.nombre == 'M' %}selected{% endif %}>{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevaTalla()" title="Agregar talla">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-4 mb-3">
                             <label class="form-label small fw-bold">Precio</label>
@@ -518,6 +543,11 @@
         });
     }
 
+    function _selectedId(selectEl) {
+        const opt = selectEl.options[selectEl.selectedIndex];
+        return opt ? (opt.dataset.id || null) : null;
+    }
+
     function crearProducto() {
         const form = document.getElementById('formNuevoProducto');
         const formData = new FormData(form);
@@ -528,7 +558,15 @@
             formData.append('foto', aiImage.files[0]);
         }
 
-        formData.append('forzar_crear', 'true');
+        // Append FK IDs for controlled catalog fields so the backend can enforce uniqueness
+        const colorSel = document.getElementById('np_color');
+        const modeloSel = document.getElementById('np_modelo');
+        const telaSel = document.getElementById('np_tela');
+        const tallaSel = document.getElementById('np_talla');
+        if (colorSel && _selectedId(colorSel))  formData.append('color_id',  _selectedId(colorSel));
+        if (modeloSel && _selectedId(modeloSel)) formData.append('modelo_id', _selectedId(modeloSel));
+        if (telaSel && _selectedId(telaSel))   formData.append('tela_id',   _selectedId(telaSel));
+        if (tallaSel && _selectedId(tallaSel))  formData.append('talla_id',  _selectedId(tallaSel));
 
         fetch('{% url "api_validar_crear_producto" %}', {
             method: 'POST',
@@ -540,11 +578,77 @@
             if (res.status === 'ok') {
                 alert('Producto creado: ' + res.sku);
                 location.reload();
+            } else if (res.status === 'blocked') {
+                alert(res.message);
             } else {
                 alert('Error: ' + res.message);
             }
         })
         .catch(err => alert('Error al procesar la solicitud'));
+    }
+
+    // ── "Agregar nuevo" helpers ──────────────────────────────
+    function _agregarOpcion(selectId, id, nombre) {
+        const sel = document.getElementById(selectId);
+        if (!sel) return;
+        const opt = document.createElement('option');
+        opt.value = nombre;
+        opt.dataset.id = id;
+        opt.text = nombre;
+        opt.selected = true;
+        sel.appendChild(opt);
+    }
+
+    function abrirNuevoColor() {
+        const nombre = prompt('Nombre del nuevo color:');
+        if (!nombre) return;
+        fetch('{% url "api_crear_color" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_color', res.id, res.nombre);
+            else alert(res.message);
+        });
+    }
+
+    function abrirNuevoModelo() {
+        const nombre = prompt('Nombre del nuevo modelo:');
+        if (!nombre) return;
+        fetch('{% url "api_crear_modelo_catalogo" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_modelo', res.id, res.nombre);
+            else alert(res.message);
+        });
+    }
+
+    function abrirNuevaTela() {
+        const nombre = prompt('Nombre de la nueva tela:');
+        if (!nombre) return;
+        fetch('{% url "api_crear_tela" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_tela', res.id, res.nombre);
+            else alert(res.message);
+        });
+    }
+
+    function abrirNuevaTalla() {
+        const nombre = prompt('Nombre de la nueva talla (ej: 38, XS+, Petite):');
+        if (!nombre) return;
+        fetch('{% url "api_crear_talla" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_talla', res.id, res.nombre);
+            else alert(res.message);
+        });
     }
 
     function deleteProduct(id) {
