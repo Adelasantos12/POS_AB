@@ -1137,16 +1137,28 @@ def api_registrar_venta(request):
         cliente_nombre = (data.get('cliente_nombre') or '').strip()
         cliente_telefono = (data.get('cliente_telefono') or '').strip()
         sin_registro = bool(data.get('sin_registro', False))
+        notas_operacion = (data.get('notas_operacion') or '').strip()
+        cliente_id_hint = data.get('cliente_id')
+        tiene_saldo = pago_inicial < total
 
         # Identidad mínima obligatoria
-        if es_apartado:
+        if es_apartado or tiene_saldo:
             if not cliente_nombre:
-                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para apartados.'}, status=400)
+                return JsonResponse({
+                    'status': 'error', 'field': 'cliente_nombre',
+                    'message': 'Agrega el nombre del cliente para continuar con el apartado.'
+                }, status=400)
             if cliente_nombre.lower() == 'sin registro':
-                return JsonResponse({'status': 'error', 'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'}, status=400)
+                return JsonResponse({
+                    'status': 'error', 'field': 'cliente_nombre',
+                    'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'
+                }, status=400)
         else:
             if not sin_registro and not cliente_nombre:
-                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio. Para ventas anónimas, selecciona "Sin registro".'}, status=400)
+                return JsonResponse({
+                    'status': 'error', 'field': 'cliente_nombre',
+                    'message': 'Agrega el nombre del cliente, o selecciona "Continuar sin registro" para ventas anónimas.'
+                }, status=400)
 
         with transaction.atomic():
             if es_apartado:
@@ -1156,7 +1168,7 @@ def api_registrar_venta(request):
                     cliente_telefono=cliente_telefono,
                     total=total,
                     anticipo=0,
-                    notas=f"Apartado POS - {len(items)} items"
+                    notas_entrega=notas_operacion,
                 )
 
                 for it in items:
@@ -1189,8 +1201,13 @@ def api_registrar_venta(request):
                     monto=pago_inicial,
                     metodo=metodo,
                     usuario=request.active_profile,
-                    notas='Anticipo POS'
+                    notas=notas_operacion or 'Anticipo POS',
                 )
+                if notas_operacion:
+                    snap = ticket.snapshot_json or {}
+                    snap['notas_operacion'] = notas_operacion
+                    ticket.snapshot_json = snap
+                    ticket.save(update_fields=['snapshot_json'])
 
                 registrar_auditoria(
                     usuario=request.active_profile,
@@ -1204,9 +1221,17 @@ def api_registrar_venta(request):
 
             else:
                 # Flujo de Venta normal
-                # Vincular cliente por teléfono si se proporcionó
+                # Vincular cliente: primero por ID explícito, luego por teléfono
                 cliente_obj = None
-                if cliente_telefono:
+                if cliente_id_hint:
+                    try:
+                        cliente_obj = Cliente.objects.get(pk=int(cliente_id_hint))
+                        if cliente_nombre and cliente_obj.nombre != cliente_nombre:
+                            cliente_obj.nombre = cliente_nombre
+                            cliente_obj.save(update_fields=['nombre'])
+                    except (Cliente.DoesNotExist, ValueError):
+                        pass
+                if not cliente_obj and cliente_telefono:
                     cliente_obj, created = Cliente.objects.get_or_create(
                         telefono=cliente_telefono,
                         defaults={'nombre': cliente_nombre or 'Sin nombre'}
@@ -1218,7 +1243,8 @@ def api_registrar_venta(request):
                 venta = Venta.objects.create(
                     vendedor=request.active_profile,
                     cliente=cliente_obj,
-                    total=total
+                    total=total,
+                    notas=notas_operacion,
                 )
 
                 for it in items:
@@ -1249,15 +1275,20 @@ def api_registrar_venta(request):
                     usuario=request.active_profile
                 )
 
-                # Venta.cliente_nombre no existe como campo; parchamos el ticket
+                # Parchamos ticket con nombre, teléfono y notas de operación
+                snap = ticket.snapshot_json or {}
+                update_fields = []
                 if not ticket.cliente_nombre:
                     ticket.cliente_nombre = 'Sin registro' if sin_registro else (cliente_nombre or '')
                     ticket.cliente_telefono = '' if sin_registro else cliente_telefono
-                    snap = ticket.snapshot_json or {}
                     snap['cliente'] = ticket.cliente_nombre
                     snap['cliente_telefono'] = ticket.cliente_telefono
+                    update_fields += ['cliente_nombre', 'cliente_telefono']
+                if notas_operacion:
+                    snap['notas_operacion'] = notas_operacion
+                if update_fields or notas_operacion:
                     ticket.snapshot_json = snap
-                    ticket.save(update_fields=['cliente_nombre', 'cliente_telefono', 'snapshot_json'])
+                    ticket.save(update_fields=update_fields + ['snapshot_json'])
 
                 registrar_auditoria(
                     usuario=request.active_profile,

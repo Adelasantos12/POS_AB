@@ -81,6 +81,57 @@
                     <span class="h5 text-primary fw-bold" id="cartTotal" data-testid="cart-total">$0.00</span>
                 </div>
 
+                <!-- ── Datos del cliente ── -->
+                <div class="mb-3 border rounded-3 p-3" id="seccionCliente" style="background:#f8fafc;">
+                    <div class="small fw-bold text-secondary text-uppercase mb-2" style="letter-spacing:.5px;font-size:10px;">
+                        <i class="bi bi-person-lines-fill me-1"></i>Datos del cliente
+                    </div>
+
+                    <!-- Buscador de cliente existente -->
+                    <div class="position-relative mb-2">
+                        <input type="text" id="posClienteBuscar" class="form-control form-control-sm"
+                               placeholder="Buscar cliente existente…" autocomplete="off" style="border-radius:8px;">
+                        <div id="posClienteResultados" class="list-group position-absolute w-100 shadow"
+                             style="z-index:1060;max-height:150px;overflow-y:auto;display:none;"></div>
+                    </div>
+
+                    <!-- Badge de cliente vinculado -->
+                    <div id="posClienteVinculado" class="d-none mb-2">
+                        <i class="bi bi-person-check text-success me-1"></i>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle" id="posClienteVinculadoNombre"></span>
+                        <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-1" id="posBtnDesvincular" title="Desvincular">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    </div>
+
+                    <!-- Nombre -->
+                    <div class="mb-2">
+                        <input type="text" id="posClienteNombre" class="form-control form-control-sm"
+                               placeholder="Nombre del cliente *" style="border-radius:8px;" data-testid="pos-cliente-nombre">
+                        <div id="posNombreError" class="text-danger small mt-1" style="display:none;">
+                            <i class="bi bi-exclamation-circle me-1"></i>Agrega el nombre del cliente para continuar.
+                        </div>
+                    </div>
+
+                    <!-- Teléfono -->
+                    <input type="tel" id="posClienteTelefono" class="form-control form-control-sm mb-2"
+                           placeholder="Teléfono" style="border-radius:8px;">
+
+                    <!-- Notas de operación -->
+                    <textarea id="posNotasOperacion" class="form-control form-control-sm mb-2" rows="2"
+                              placeholder="Notas: recoge el viernes, requiere ajuste, llamar antes…"
+                              style="border-radius:8px;resize:none;"></textarea>
+
+                    <!-- Sin registro (se oculta cuando es apartado o hay saldo pendiente) -->
+                    <div id="posSinRegistroDiv">
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="posBtnSinRegistro"
+                                style="border-radius:8px;font-size:11px;">
+                            <i class="bi bi-person-slash me-1"></i>Continuar sin registro
+                        </button>
+                        <input type="hidden" id="posSinRegistroInput" value="">
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label small fw-bold">Método de Pago</label>
                     <select class="form-select" id="paymentMethod" style="border-radius: 10px;" data-testid="payment-method">
@@ -523,12 +574,15 @@
                 </div>
                 <h4 class="fw-bold mb-2">¡Venta Registrada!</h4>
                 <p class="text-muted mb-4" id="saleSuccessMsg">La operación se completó correctamente.</p>
-                <div class="d-flex gap-2 justify-content-center">
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
                     <button class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">
                         Cerrar
                     </button>
-                    <button class="btn btn-primary" onclick="imprimirUltimaVenta()" style="border-radius: 100px;">
+                    <button class="btn btn-primary" onclick="imprimirUltimaVenta(1)" style="border-radius: 100px;">
                         <i class="bi bi-printer me-1"></i>Imprimir Ticket
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="imprimirUltimaVenta(2)" style="border-radius: 100px;" title="Imprime dos copias: una para ti y una para la clienta">
+                        <i class="bi bi-printer-fill me-1"></i>Doble (×2)
                     </button>
                 </div>
             </div>
@@ -770,7 +824,136 @@
     updateOfflineCount();
     updateOnlineStatus();
 
-    // Checkout
+    // ── Cliente POS: búsqueda, autocompletado, sin-registro ──────────────────
+    let posClienteId = null;  // FK al Cliente vinculado
+
+    const posClienteBuscar   = document.getElementById('posClienteBuscar');
+    const posClienteResultados = document.getElementById('posClienteResultados');
+    const posClienteNombre   = document.getElementById('posClienteNombre');
+    const posClienteTelefono = document.getElementById('posClienteTelefono');
+    const posNombreError     = document.getElementById('posNombreError');
+    const posSinRegistroDiv  = document.getElementById('posSinRegistroDiv');
+    const posSinRegistroInput = document.getElementById('posSinRegistroInput');
+    const posBtnSinRegistro  = document.getElementById('posBtnSinRegistro');
+    const posClienteVinculado = document.getElementById('posClienteVinculado');
+    const posClienteVinculadoNombre = document.getElementById('posClienteVinculadoNombre');
+
+    let posClienteBuscarTimer = null;
+    posClienteBuscar.addEventListener('input', function() {
+        clearTimeout(posClienteBuscarTimer);
+        const q = this.value.trim();
+        if (q.length < 2) { posClienteResultados.style.display = 'none'; return; }
+        posClienteBuscarTimer = setTimeout(() => {
+            fetch(`/api/search-clientes/?q=${encodeURIComponent(q)}`)
+            .then(r => r.json()).then(data => {
+                if (!data.results.length) { posClienteResultados.style.display = 'none'; return; }
+                posClienteResultados.innerHTML = data.results.map(c =>
+                    `<button type="button" class="list-group-item list-group-item-action py-1 px-2 small"
+                             data-id="${c.id}" data-nombre="${c.nombre}" data-tel="${c.telefono || ''}">
+                        <strong>${c.nombre}</strong> <span class="text-muted">${c.telefono || ''}</span>
+                     </button>`
+                ).join('');
+                posClienteResultados.style.display = 'block';
+                posClienteResultados.querySelectorAll('button').forEach(btn => {
+                    btn.addEventListener('click', () => posSeleccionarCliente(
+                        parseInt(btn.dataset.id), btn.dataset.nombre, btn.dataset.tel
+                    ));
+                });
+            });
+        }, 300);
+    });
+
+    document.addEventListener('click', e => {
+        if (!posClienteResultados.contains(e.target) && e.target !== posClienteBuscar)
+            posClienteResultados.style.display = 'none';
+    });
+
+    function posSeleccionarCliente(id, nombre, telefono) {
+        posClienteId = id;
+        posClienteNombre.value = nombre;
+        posClienteTelefono.value = telefono;
+        posClienteVinculadoNombre.textContent = nombre;
+        posClienteVinculado.classList.remove('d-none');
+        posClienteBuscar.value = '';
+        posClienteResultados.style.display = 'none';
+        posResetSinRegistro();
+        posSinRegistroDiv.classList.add('d-none');  // ya tiene cliente
+        posNombreError.style.display = 'none';
+        posClienteNombre.classList.remove('is-invalid');
+    }
+
+    document.getElementById('posBtnDesvincular').addEventListener('click', () => {
+        posClienteId = null;
+        posClienteVinculado.classList.add('d-none');
+        posClienteVinculadoNombre.textContent = '';
+        const esApartado = document.getElementById('isApartado').checked;
+        if (!esApartado) posSinRegistroDiv.classList.remove('d-none');
+    });
+
+    function posResetSinRegistro() {
+        posSinRegistroInput.value = '';
+        posBtnSinRegistro.classList.remove('btn-secondary');
+        posBtnSinRegistro.classList.add('btn-outline-secondary');
+        posBtnSinRegistro.innerHTML = '<i class="bi bi-person-slash me-1"></i>Continuar sin registro';
+        posClienteNombre.disabled = false;
+    }
+
+    posBtnSinRegistro.addEventListener('click', function() {
+        if (posSinRegistroInput.value === 'true') {
+            posSinRegistroInput.value = '';
+            posClienteNombre.value = '';
+            posClienteNombre.disabled = false;
+            this.classList.remove('btn-secondary');
+            this.classList.add('btn-outline-secondary');
+            this.innerHTML = '<i class="bi bi-person-slash me-1"></i>Continuar sin registro';
+        } else {
+            posSinRegistroInput.value = 'true';
+            posClienteNombre.value = 'Sin registro';
+            posClienteNombre.disabled = true;
+            this.classList.add('btn-secondary');
+            this.classList.remove('btn-outline-secondary');
+            this.innerHTML = '<i class="bi bi-person-check me-1"></i>Sin registro activado';
+        }
+        posNombreError.style.display = 'none';
+        posClienteNombre.classList.remove('is-invalid');
+    });
+
+    document.getElementById('isApartado').addEventListener('change', function() {
+        if (this.checked) {
+            posSinRegistroDiv.classList.add('d-none');
+            posResetSinRegistro();
+        } else {
+            if (!posClienteId) posSinRegistroDiv.classList.remove('d-none');
+        }
+    });
+
+    // Si pago_inicial < total → tratar como saldo pendiente y exigir cliente
+    document.getElementById('initialPayment').addEventListener('input', function() {
+        const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+        const pago = parseFloat(this.value) || 0;
+        const tieneSaldo = pago < total && pago > 0;
+        if (tieneSaldo) {
+            posSinRegistroDiv.classList.add('d-none');
+            posResetSinRegistro();
+        } else if (!document.getElementById('isApartado').checked && !posClienteId) {
+            posSinRegistroDiv.classList.remove('d-none');
+        }
+    });
+
+    function posLimpiarCliente() {
+        posClienteId = null;
+        posClienteNombre.value = '';
+        posClienteNombre.disabled = false;
+        posClienteTelefono.value = '';
+        document.getElementById('posNotasOperacion').value = '';
+        posClienteVinculado.classList.add('d-none');
+        posResetSinRegistro();
+        posSinRegistroDiv.classList.remove('d-none');
+        posNombreError.style.display = 'none';
+        posClienteNombre.classList.remove('is-invalid');
+    }
+
+    // ── Checkout ──────────────────────────────────────────────────────────────
     document.getElementById('btnCheckout').addEventListener('click', function() {
         if (cart.length === 0) {
             alert('El carrito está vacío');
@@ -781,8 +964,36 @@
         const initialPayment = parseFloat(document.getElementById('initialPayment').value) || total;
         const method = document.getElementById('paymentMethod').value;
         const esApartado = document.getElementById('isApartado').checked;
+        const sinRegistro = posSinRegistroInput.value === 'true';
+        const nombreCliente = posClienteNombre.value.trim();
+        const telefonoCliente = posClienteTelefono.value.trim();
+        const notasOp = document.getElementById('posNotasOperacion').value.trim();
+        const tieneSaldo = initialPayment < total;
 
-        const payload = {items, total, pago_inicial: initialPayment, metodo: method, es_apartado: esApartado, fecha: new Date().toISOString()};
+        // Validación inline
+        const necesitaNombre = esApartado || (tieneSaldo && initialPayment > 0);
+        if (necesitaNombre && (!nombreCliente || nombreCliente === 'Sin registro')) {
+            posClienteNombre.classList.add('is-invalid');
+            posNombreError.style.display = 'block';
+            posClienteNombre.focus();
+            return;
+        }
+        if (!sinRegistro && !nombreCliente && !esApartado) {
+            // Venta liquidada sin nombre ni sin_registro
+            // Permitir si pago completo — mostrar warning sutil sin bloquear
+        }
+        posClienteNombre.classList.remove('is-invalid');
+        posNombreError.style.display = 'none';
+
+        const payload = {
+            items, total, pago_inicial: initialPayment, metodo: method,
+            es_apartado: esApartado, fecha: new Date().toISOString(),
+            cliente_nombre: sinRegistro ? '' : nombreCliente,
+            cliente_telefono: telefonoCliente,
+            sin_registro: sinRegistro,
+            notas_operacion: notasOp,
+            cliente_id: posClienteId,
+        };
 
         if (!isOnline()) {
             queueOfflineOperation('venta', payload);
@@ -790,6 +1001,7 @@
             cart = [];
             renderCart();
             document.getElementById('initialPayment').value = '';
+            posLimpiarCliente();
             return;
         }
 
@@ -814,12 +1026,21 @@
                 renderCart();
                 document.getElementById('initialPayment').value = '';
                 document.getElementById('isApartado').checked = false;
+                posLimpiarCliente();
             } else if (data.status === 'caja_cerrada') {
                 new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();
+            } else if (data.field === 'cliente_nombre') {
+                posClienteNombre.classList.add('is-invalid');
+                posNombreError.querySelector
+                    ? (posNombreError.querySelector('span') || posNombreError).textContent = data.message
+                    : null;
+                posNombreError.style.display = 'block';
+                posClienteNombre.focus();
             } else {
-                alert('Error: ' + data.message);
+                alert('Error: ' + (data.message || 'Error desconocido'));
             }
-        });
+        })
+        .catch(() => alert('Error de conexión. Verifica tu red e intenta de nuevo.'));
     });
 
     // Duplicate Detection with AI
@@ -1497,11 +1718,15 @@
 
     let lastFolio = null;
 
-    function imprimirUltimaVenta() {
-        if (lastFolio) {
-            window.open(`/api/tickets/${lastFolio}/pdf/`, '_blank');
-        } else if (lastSaleId) {
-            alert('Venta registrada sin folio generado.');
+    function imprimirUltimaVenta(copias) {
+        copias = copias || 1;
+        if (!lastFolio) {
+            if (lastSaleId) alert('Venta registrada sin folio generado.');
+            return;
+        }
+        for (let i = 0; i < copias; i++) {
+            // Pequeño delay entre ventanas para que el navegador las abra sin bloquearlas
+            setTimeout(() => window.open(`/api/tickets/${lastFolio}/pdf/`, '_blank'), i * 400);
         }
     }
 </script>
