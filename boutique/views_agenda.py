@@ -17,8 +17,8 @@ from django.conf import settings
 
 from .models import (
     Color, Tela, Novia, Dama, CitaAgenda,
-    Producto, Modelo, registrar_auditoria, Pedido, Apartado,
-    MedidasDama, VestidoDama, MovimientoVestido,
+    Producto, Modelo, registrar_auditoria, Pedido, PedidoItem, Apartado,
+    MedidasDama, VestidoDama, MovimientoVestido, Cliente,
 )
 from .middleware import profile_permission_required
 from .utils import safe_decimal
@@ -962,11 +962,8 @@ def pedidos_en_puerta(request):
     mes = request.GET.get('mes', '') # Formato YYYY-MM
     today = timezone.now().date()
 
-    # Tipos que requieren seguimiento externo (según ajuste de alcance)
-    tipos_seguimiento = ['HECHURA', 'PEDIDO_EXTERNO']
-
     pedidos_qs = Pedido.objects.filter(
-        tipo_pedido__in=tipos_seguimiento
+        ~Q(tipo_pedido='')  # todos los tipos
     ).exclude(
         estado__in=['ENTREGADO', 'CANCELADO']
     ).select_related('novia', 'dama', 'color', 'tela', 'modelo', 'cliente')
@@ -993,24 +990,22 @@ def pedidos_en_puerta(request):
     # Agrupar por tipo_pedido para el tablero
     pedidos_por_tipo = {}
     for t_code, t_label in Pedido.TIPOS_PEDIDO:
-        if t_code in tipos_seguimiento:
-            pedidos_tipo = [p for p in pedidos_qs if p.tipo_pedido == t_code]
-            if pedidos_tipo or not q: # Mostrar siempre si no hay búsqueda
-                pedidos_por_tipo[t_code] = {
-                    'label': t_label,
-                    'pedidos': pedidos_tipo,
-                    'count': len(pedidos_tipo),
-                    # Contadores por estado específicos para este tipo
-                    'stats': {
-                        'NUEVO': sum(1 for p in pedidos_tipo if p.estado == 'NUEVO'),
-                        'EN_CONFECCION': sum(1 for p in pedidos_tipo if p.estado == 'EN_CONFECCION'),
-                        'LISTO': sum(1 for p in pedidos_tipo if p.estado == 'LISTO'),
-                        'SOLICITADO': sum(1 for p in pedidos_tipo if p.estado == 'SOLICITADO'),
-                        'EN_PROCESO': sum(1 for p in pedidos_tipo if p.estado == 'EN_PROCESO'),
-                        'POR_RECOGER': sum(1 for p in pedidos_tipo if p.estado == 'POR_RECOGER'),
-                        'RECIBIDO': sum(1 for p in pedidos_tipo if p.estado == 'RECIBIDO'),
-                    }
+        pedidos_tipo = [p for p in pedidos_qs if p.tipo_pedido == t_code]
+        if pedidos_tipo or not q:
+            pedidos_por_tipo[t_code] = {
+                'label': t_label,
+                'pedidos': pedidos_tipo,
+                'count': len(pedidos_tipo),
+                'stats': {
+                    'NUEVO': sum(1 for p in pedidos_tipo if p.estado == 'NUEVO'),
+                    'EN_CONFECCION': sum(1 for p in pedidos_tipo if p.estado == 'EN_CONFECCION'),
+                    'LISTO': sum(1 for p in pedidos_tipo if p.estado == 'LISTO'),
+                    'SOLICITADO': sum(1 for p in pedidos_tipo if p.estado == 'SOLICITADO'),
+                    'EN_PROCESO': sum(1 for p in pedidos_tipo if p.estado == 'EN_PROCESO'),
+                    'POR_RECOGER': sum(1 for p in pedidos_tipo if p.estado == 'POR_RECOGER'),
+                    'RECIBIDO': sum(1 for p in pedidos_tipo if p.estado == 'RECIBIDO'),
                 }
+            }
     
     return render(request, 'boutique/pedidos_en_puerta.html', {
         'pedidos_por_tipo': pedidos_por_tipo,
@@ -1305,3 +1300,268 @@ def api_vestido_entregar(request, pk):
             vestido.pedido.save(update_fields=['estado', 'fecha_entrega_real'])
 
     return JsonResponse({'status': 'ok', 'vestido': vestido.to_dict()})
+
+
+# ============================================================
+# PEDIDOS — MÓDULO OPERATIVO COMPLETO
+# ============================================================
+
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor', 'Caja'])
+def pedido_detalle(request, pk):
+    """Vista operativa completa de un pedido."""
+    pedido = get_object_or_404(
+        Pedido.objects.select_related(
+            'cliente', 'novia', 'dama', 'modelo', 'color', 'tela', 'creado_por'
+        ).prefetch_related('items__modelo', 'items__color', 'items__tela', 'items__dama'),
+        pk=pk,
+    )
+    pagos = pedido.pagos_pedido.order_by('fecha')
+    total_pagado = sum(p.monto for p in pagos)
+    saldo = pedido.precio - total_pagado
+    today = timezone.now().date()
+
+    # Medidas vigentes para la dama (si aplica)
+    medidas_vigentes = None
+    if pedido.dama:
+        medidas_vigentes = pedido.dama.medidas_registradas.filter(vigente=True).first()
+
+    colores = Color.objects.all().order_by('nombre')
+    telas = Tela.objects.all().order_by('nombre')
+    modelos = Modelo.objects.all().order_by('nombre')
+
+    return render(request, 'boutique/pedido_detalle.html', {
+        'pedido': pedido,
+        'pagos': pagos,
+        'total_pagado': total_pagado,
+        'saldo': saldo,
+        'today': today,
+        'medidas_vigentes': medidas_vigentes,
+        'colores': colores,
+        'telas': telas,
+        'modelos': modelos,
+        'PEDIDO_ESTADOS': Pedido.ESTADOS,
+        'ITEM_TIPOS': PedidoItem.TIPOS,
+        'ITEM_ESTADOS': PedidoItem.ESTADOS,
+    })
+
+
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor', 'Caja'])
+def pedido_nuevo(request):
+    """Formulario unificado de creación de pedido."""
+    cliente_id = request.GET.get('cliente_id')
+    novia_id = request.GET.get('novia_id')
+    dama_id = request.GET.get('dama_id')
+
+    cliente = None
+    novia = None
+    dama = None
+
+    if cliente_id:
+        cliente = Cliente.objects.filter(pk=cliente_id).first()
+    if novia_id:
+        novia = Novia.objects.filter(pk=novia_id).first()
+    if dama_id:
+        dama = Dama.objects.select_related('novia').filter(pk=dama_id).first()
+        if dama and not novia:
+            novia = dama.novia
+
+    colores = Color.objects.all().order_by('nombre')
+    telas = Tela.objects.all().order_by('nombre')
+    modelos = Modelo.objects.all().order_by('nombre')
+
+    return render(request, 'boutique/pedido_nuevo.html', {
+        'cliente': cliente,
+        'novia': novia,
+        'dama': dama,
+        'colores': colores,
+        'telas': telas,
+        'modelos': modelos,
+        'TIPOS_PEDIDO': Pedido.TIPOS_PEDIDO,
+        'EVENTOS': Pedido.EVENTOS,
+        'ITEM_TIPOS': PedidoItem.TIPOS,
+    })
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor', 'Caja'])
+def api_pedido_nuevo(request):
+    """Crea un Pedido completo con sus ítems desde el formulario unificado."""
+    from .services import cash_service
+    from .models import Ticket
+
+    data = json.loads(request.body)
+
+    # --- Cliente ---
+    cliente_nombre = (data.get('cliente_nombre') or '').strip()
+    cliente_telefono = (data.get('cliente_telefono') or '').strip()
+    if not cliente_nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio.'}, status=400)
+
+    cliente_obj = None
+    if cliente_telefono:
+        cliente_obj, _ = Cliente.objects.get_or_create(
+            telefono=cliente_telefono,
+            defaults={'nombre': cliente_nombre},
+        )
+
+    # --- Relaciones opcionales ---
+    novia_obj = None
+    dama_obj = None
+    if data.get('novia_id'):
+        novia_obj = Novia.objects.filter(pk=data['novia_id']).first()
+    if data.get('dama_id'):
+        dama_obj = Dama.objects.filter(pk=data['dama_id']).first()
+
+    # --- Items ---
+    items_data = data.get('items', [])
+    if not items_data:
+        return JsonResponse({'status': 'error', 'message': 'El pedido debe tener al menos un ítem.'}, status=400)
+
+    precio_total = sum(
+        float(it.get('precio', 0)) * int(it.get('cantidad', 1))
+        for it in items_data
+    )
+    anticipo = float(data.get('anticipo', 0))
+
+    with transaction.atomic():
+        pedido = Pedido.objects.create(
+            cliente=cliente_obj,
+            novia=novia_obj,
+            dama=dama_obj,
+            tipo_pedido=data.get('tipo_pedido', 'SOBRE_PEDIDO'),
+            evento=data.get('evento', ''),
+            precio=precio_total,
+            anticipo=anticipo,
+            fecha_entrega_estimada=data.get('fecha_entrega_estimada') or None,
+            fecha_evento=data.get('fecha_evento') or None,
+            notas=data.get('notas', ''),
+            creado_por=request.active_profile,
+        )
+
+        for it in items_data:
+            item_dama = None
+            if it.get('dama_id'):
+                item_dama = Dama.objects.filter(pk=it['dama_id']).first()
+            modelo_obj = None
+            if it.get('modelo_id'):
+                from .models import Modelo as _M
+                modelo_obj = _M.objects.filter(pk=it['modelo_id']).first()
+            color_obj = None
+            if it.get('color_id'):
+                color_obj = Color.objects.filter(pk=it['color_id']).first()
+            tela_obj = None
+            if it.get('tela_id'):
+                tela_obj = Tela.objects.filter(pk=it['tela_id']).first()
+
+            PedidoItem.objects.create(
+                pedido=pedido,
+                dama=item_dama or dama_obj,
+                tipo=it.get('tipo', 'VESTIDO'),
+                modelo=modelo_obj,
+                numero_modelo=it.get('numero_modelo', ''),
+                descripcion_especial=it.get('descripcion_especial', ''),
+                talla=it.get('talla', ''),
+                color=color_obj,
+                tela=tela_obj,
+                cantidad=int(it.get('cantidad', 1)),
+                precio=float(it.get('precio', 0)),
+                notas=it.get('notas', ''),
+            )
+
+        # Ticket inicial
+        ticket = Ticket.objects.create(
+            tipo='PEDIDO',
+            cliente_nombre=cliente_nombre,
+            cliente_telefono=cliente_telefono,
+            total=precio_total,
+            total_pagado=anticipo,
+            cajero_nombre=request.active_profile.username,
+            novia=novia_obj,
+            pedido=pedido,
+        )
+        ticket.populate_from_obj(pedido)
+        # populate_from_obj may clear cliente_nombre if Pedido has no such field — restore it
+        if not ticket.cliente_nombre:
+            ticket.cliente_nombre = cliente_nombre
+            ticket.cliente_telefono = cliente_telefono
+            _snap = ticket.snapshot_json or {}
+            _snap['cliente'] = cliente_nombre
+            _snap['cliente_telefono'] = cliente_telefono
+            ticket.snapshot_json = _snap
+            ticket.save(update_fields=['cliente_nombre', 'cliente_telefono', 'snapshot_json'])
+        pedido.ticket = ticket
+        pedido.save(update_fields=['ticket'])
+
+        # Registrar anticipo si lo hay
+        if anticipo > 0:
+            metodo = data.get('metodo_pago', 'EFECTIVO')
+            cash_service.registrar_cobro(
+                origen_tipo='pedido',
+                origen_obj=pedido,
+                monto=anticipo,
+                metodo=metodo,
+                usuario=request.active_profile,
+                notas='Anticipo inicial al crear pedido',
+            )
+
+    return JsonResponse({
+        'status': 'ok',
+        'pedido_id': pedido.pk,
+        'folio': pedido.numero_ticket,
+        'detalle_url': f'/pedidos/{pedido.pk}/',
+    })
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_pedido_editar(request, pk):
+    """Edita campos del pedido (sin cambiar ítems)."""
+    pedido = get_object_or_404(Pedido, pk=pk)
+    data = json.loads(request.body)
+
+    campos = ['evento', 'notas', 'notas_ajustes', 'notas_entrega', 'tipo_pedido']
+    for c in campos:
+        if c in data:
+            setattr(pedido, c, data[c])
+
+    if 'fecha_entrega_estimada' in data:
+        pedido.fecha_entrega_estimada = data['fecha_entrega_estimada'] or None
+    if 'fecha_evento' in data:
+        pedido.fecha_evento = data['fecha_evento'] or None
+    if 'precio' in data:
+        pedido.precio = float(data['precio'])
+    if 'estado' in data:
+        pedido.estado = data['estado']
+
+    pedido.save()
+    return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_pedido_item_estado(request, pk):
+    """Cambia el estado de un PedidoItem."""
+    item = get_object_or_404(PedidoItem, pk=pk)
+    data = json.loads(request.body)
+    nuevo_estado = data.get('estado')
+    if not nuevo_estado:
+        return JsonResponse({'status': 'error', 'message': 'Estado requerido.'}, status=400)
+
+    valid = [s[0] for s in PedidoItem.ESTADOS]
+    if nuevo_estado not in valid:
+        return JsonResponse({'status': 'error', 'message': 'Estado inválido.'}, status=400)
+
+    with transaction.atomic():
+        item.estado = nuevo_estado
+        if nuevo_estado == 'LLEGO' and not item.llego_en:
+            item.llego_en = timezone.now()
+        if nuevo_estado == 'ENTREGADO' and not item.entregado_en:
+            item.entregado_en = timezone.now()
+        item.save()
+
+    return JsonResponse({'status': 'ok', 'item': item.to_dict()})

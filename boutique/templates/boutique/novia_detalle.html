@@ -18,6 +18,9 @@
         <button class="btn btn-outline-danger" onclick="eliminarNovia({{ novia.id }})">
             <i class="bi bi-trash"></i>
         </button>
+        <a href="{% url 'pedido_nuevo' %}?novia_id={{ novia.pk }}" class="btn btn-outline-success rounded-pill">
+            <i class="bi bi-clipboard-plus me-1"></i>Nuevo Pedido
+        </a>
         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaDama">
             <i class="bi bi-person-plus me-2"></i>Agregar Dama
         </button>

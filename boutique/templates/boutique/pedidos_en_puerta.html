@@ -8,11 +8,14 @@
         <h1 class="page-title">Pedidos</h1>
         <p class="page-subtitle">Seguimiento de Hechuras y Pedidos Externos</p>
     </div>
-    <div class="d-flex gap-3">
+    <div class="d-flex gap-3 align-items-center">
         <div class="text-end">
             <div class="h4 fw-bold mb-0">{{ total_pedidos }}</div>
             <small class="text-muted text-uppercase small fw-bold">Total Pendientes</small>
         </div>
+        <a href="{% url 'pedido_nuevo' %}" class="btn btn-primary rounded-pill px-4">
+            <i class="bi bi-plus-lg me-2"></i>Nuevo Pedido
+        </a>
     </div>
 </div>
 
@@ -149,15 +152,9 @@
                                             title="Editar Entrega">
                                         <i class="bi bi-calendar-event"></i>
                                     </button>
-                                    {% if p.novia %}
-                                    <a href="{% url 'novia_detalle' p.novia.id %}" class="btn btn-xs btn-outline-secondary" title="Ver Detalle" target="_blank">
+                                    <a href="{% url 'pedido_detalle' p.id %}" class="btn btn-xs btn-outline-secondary" title="Ver Detalle del Pedido">
                                         <i class="bi bi-eye"></i>
                                     </a>
-                                    {% else %}
-                                    <button class="btn btn-xs btn-outline-secondary" disabled title="Sin detalle vinculado">
-                                        <i class="bi bi-eye-slash"></i>
-                                    </button>
-                                    {% endif %}
                                 </div>
                             </td>
                         </tr>

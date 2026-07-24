@@ -125,8 +125,13 @@ urlpatterns = [
     path('api/servicio/<int:pk>/estado/', views.api_cambiar_estado_servicio, name='api_cambiar_estado_servicio'),
     path('api/servicio/<int:pk>/eliminar/', views.api_eliminar_servicio, name='api_eliminar_servicio'),
 
-    # Pedidos en puerta
+    # Pedidos — módulo operativo
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),
+    path('pedidos/nuevo/', views_agenda.pedido_nuevo, name='pedido_nuevo'),
+    path('pedidos/<int:pk>/', views_agenda.pedido_detalle, name='pedido_detalle'),
+    path('api/pedido/nuevo/', views_agenda.api_pedido_nuevo, name='api_pedido_nuevo'),
+    path('api/pedido/<int:pk>/editar/', views_agenda.api_pedido_editar, name='api_pedido_editar'),
+    path('api/pedido-item/<int:pk>/estado/', views_agenda.api_pedido_item_estado, name='api_pedido_item_estado'),
     path('resumen-nocturno/', views_agenda.resumen_nocturno, name='resumen_nocturno'),
 
     # Dashboards y Analítica

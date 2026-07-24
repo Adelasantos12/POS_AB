@@ -369,30 +369,8 @@ class Ticket(models.Model):
 
         # Items
         items_data = []
-        if hasattr(obj, 'items'):
-            for item in obj.items.all():
-                prod = item.producto if hasattr(item, 'producto') and item.producto else None
-                desc = str(prod) if prod else getattr(item, 'descripcion', 'Sin descripción')
-                # Pull modelo/color from producto FK if available, fallback to item attrs
-                if prod:
-                    modelo_val = str(prod.modelo.nombre if prod.modelo else (getattr(item, 'modelo', '') or ''))
-                    color_val = str(prod.color.nombre if prod.color else (getattr(item, 'color', '') or ''))
-                    sku_val = prod.sku or ''
-                else:
-                    modelo_val = str(getattr(item, 'modelo', '') or '')
-                    color_val = str(getattr(item, 'color', '') or '')
-                    sku_val = ''
-                items_data.append({
-                    'descripcion': desc,
-                    'modelo': modelo_val,
-                    'color': color_val,
-                    'sku': sku_val,
-                    'talla': getattr(item, 'talla', '') or (prod.talla if prod else ''),
-                    'cantidad': item.cantidad,
-                    'precio_unitario': float(item.precio_unitario),
-                    'subtotal': float(item.subtotal if hasattr(item, 'subtotal') else item.cantidad * item.precio_unitario)
-                })
-        elif hasattr(obj, 'vestido_dama'):
+        # VestidoDama takes priority over generic items for Pedido objects
+        if hasattr(obj, 'vestido_dama'):
             # Pedido con VestidoDama asignado: generar item sintético desde el vestido
             try:
                 vd = obj.vestido_dama
@@ -416,6 +394,46 @@ class Ticket(models.Model):
                 })
             except Exception:
                 pass
+        # For non-Pedido objects (Apartado, Venta) with line items
+        if not items_data and hasattr(obj, 'items') and not hasattr(obj, 'vestido_dama'):
+            for item in obj.items.all():
+                prod = item.producto if hasattr(item, 'producto') and item.producto else None
+                desc = str(prod) if prod else getattr(item, 'descripcion', 'Sin descripción')
+                if prod:
+                    modelo_val = str(prod.modelo.nombre if prod.modelo else (getattr(item, 'modelo', '') or ''))
+                    color_val = str(prod.color.nombre if prod.color else (getattr(item, 'color', '') or ''))
+                    sku_val = prod.sku or ''
+                else:
+                    modelo_val = str(getattr(item, 'modelo', '') or '')
+                    color_val = str(getattr(item, 'color', '') or '')
+                    sku_val = ''
+                pu = float(getattr(item, 'precio_unitario', None) or getattr(item, 'precio', 0))
+                items_data.append({
+                    'descripcion': desc,
+                    'modelo': modelo_val,
+                    'color': color_val,
+                    'sku': sku_val,
+                    'talla': getattr(item, 'talla', '') or (prod.talla if prod else ''),
+                    'cantidad': item.cantidad,
+                    'precio_unitario': pu,
+                    'subtotal': float(getattr(item, 'subtotal', None) or (item.cantidad * pu)),
+                })
+        # For Pedido with PedidoItems (but no VestidoDama): use the PedidoItems
+        if not items_data and hasattr(obj, 'items') and hasattr(obj, 'vestido_dama'):
+            for item in obj.items.all():
+                pu = float(item.precio)
+                items_data.append({
+                    'descripcion': item.descripcion_especial or item.get_tipo_display(),
+                    'modelo': item.modelo.nombre if item.modelo else '',
+                    'numero_modelo': item.numero_modelo,
+                    'color': item.color.nombre if item.color else '',
+                    'tela': item.tela.nombre if item.tela else '',
+                    'sku': item.codigo,
+                    'talla': item.talla,
+                    'cantidad': item.cantidad,
+                    'precio_unitario': pu,
+                    'subtotal': pu * item.cantidad,
+                })
         if not items_data and hasattr(obj, 'precio'):
             # Pedido sin VestidoDama ni items: generar ítem sintético desde el pedido
             modelo_val = obj.modelo.nombre if obj.modelo else ''
@@ -513,7 +531,7 @@ class Ticket(models.Model):
             'total': float(self.total),
             'total_pagado': float(self.total_pagado),
             'total_pagado_acumulado': total_pagado_acumulado,
-            'saldo_pendiente': float(self.total - Decimal(str(total_pagado_acumulado))),
+            'saldo_pendiente': float(Decimal(str(self.total)) - Decimal(str(total_pagado_acumulado))),
             'abonos': abonos,
             'items': items_data,
         }
@@ -1246,6 +1264,88 @@ class Pedido(models.Model):
         return int(pct_clave + pct_sec)
 
 
+class PedidoItem(models.Model):
+    """Línea de un pedido — cada vestido, accesorio o ajuste es un ítem separado."""
+    TIPOS = [
+        ('VESTIDO', 'Vestido (catálogo/importación)'),
+        ('HECHURA', 'Hechura especial'),
+        ('ESPECIAL', 'Modelo especial'),
+        ('ACCESORIO', 'Accesorio'),
+        ('AJUSTE', 'Ajuste / costura'),
+    ]
+    ESTADOS = [
+        ('PENDIENTE', 'Pendiente'),
+        ('SOLICITADO', 'Solicitado'),
+        ('EN_PROCESO', 'En proceso'),
+        ('POR_RECOGER', 'Por recoger'),
+        ('LLEGO', 'Llegó a tienda'),
+        ('ENTREGADO', 'Entregado'),
+        ('CANCELADO', 'Cancelado'),
+    ]
+
+    pedido = models.ForeignKey('Pedido', on_delete=models.CASCADE, related_name='items')
+    dama = models.ForeignKey('Dama', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedido_items')
+    codigo = models.CharField(max_length=30, unique=True, db_index=True)
+
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='VESTIDO')
+    modelo = models.ForeignKey('Modelo', on_delete=models.SET_NULL, null=True, blank=True)
+    numero_modelo = models.CharField(max_length=50, blank=True)
+    descripcion_especial = models.TextField(blank=True)
+    talla = models.CharField(max_length=10, blank=True)
+    color = models.ForeignKey('Color', on_delete=models.SET_NULL, null=True, blank=True)
+    tela = models.ForeignKey('Tela', on_delete=models.SET_NULL, null=True, blank=True)
+
+    cantidad = models.PositiveIntegerField(default=1)
+    precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    notas = models.TextField(blank=True)
+    foto = models.ImageField(upload_to='pedido_items/', blank=True, null=True)
+
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+    llego_en = models.DateTimeField(null=True, blank=True)
+    entregado_en = models.DateTimeField(null=True, blank=True)
+
+    vestido_dama = models.OneToOneField(
+        'VestidoDama', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pedido_item'
+    )
+
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['creado_en']
+
+    def save(self, *args, **kwargs):
+        if not self.codigo:
+            self.codigo = Secuencia.siguiente('PI')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.codigo} — {self.get_tipo_display()}"
+
+    def to_dict(self):
+        return {
+            'id': self.pk,
+            'codigo': self.codigo,
+            'tipo': self.tipo,
+            'tipo_display': self.get_tipo_display(),
+            'modelo': self.modelo.nombre if self.modelo else '',
+            'numero_modelo': self.numero_modelo,
+            'descripcion_especial': self.descripcion_especial,
+            'talla': self.talla,
+            'color': self.color.nombre if self.color else '',
+            'tela': self.tela.nombre if self.tela else '',
+            'cantidad': self.cantidad,
+            'precio': float(self.precio),
+            'notas': self.notas,
+            'estado': self.estado,
+            'estado_display': self.get_estado_display(),
+            'dama': self.dama.nombre if self.dama else '',
+            'llego_en': self.llego_en.isoformat() if self.llego_en else None,
+            'entregado_en': self.entregado_en.isoformat() if self.entregado_en else None,
+        }
+
+
 class PagoApartado(models.Model):
     """Pagos asociados a un apartado independiente"""
     METODOS = [
@@ -1297,7 +1397,7 @@ class PagoPedido(models.Model):
         if total_pagado >= pedido.precio:
             pedido.estado_pago = 'LIQUIDADO'
         elif total_pagado > 0:
-            pedido.estado_pago = 'PARCIAL' if total_pagado > pedido.precio * Decimal('0.3') else 'APARTADO'
+            pedido.estado_pago = 'PARCIAL' if total_pagado > Decimal(str(pedido.precio)) * Decimal('0.3') else 'APARTADO'
         pedido.save(update_fields=['anticipo', 'estado_pago'])
     
     def __str__(self):

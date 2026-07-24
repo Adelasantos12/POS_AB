@@ -1,0 +1,313 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Nuevo Pedido — Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'pedidos_en_puerta' %}">Pedidos</a></li>
+                <li class="breadcrumb-item active">Nuevo Pedido</li>
+            </ol>
+        </nav>
+        <h1 class="page-title mb-0">Nuevo Pedido</h1>
+    </div>
+</div>
+
+<form id="formNuevoPedido">
+<div class="row g-4">
+
+    <!-- Cliente / Contexto -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0" style="border-radius:15px;">
+            <div class="card-header bg-white border-0 py-3 px-4">
+                <h6 class="fw-bold mb-0"><i class="bi bi-person me-2"></i>Cliente</h6>
+            </div>
+            <div class="card-body row g-3">
+                <div class="col-md-7">
+                    <label class="form-label small fw-bold">Nombre <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="pNombre" required
+                           value="{% if cliente %}{{ cliente.nombre }}{% elif novia %}{{ novia.nombre }}{% elif dama %}{{ dama.nombre }}{% endif %}"
+                           placeholder="Nombre del cliente">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small fw-bold">Teléfono</label>
+                    <input type="tel" class="form-control" id="pTelefono"
+                           value="{% if cliente %}{{ cliente.telefono }}{% endif %}"
+                           placeholder="10 dígitos">
+                </div>
+                {% if novia %}
+                <input type="hidden" id="pNoviaId" value="{{ novia.pk }}">
+                <div class="col-12">
+                    <div class="bg-light rounded-3 p-2 small">
+                        <i class="bi bi-heart-fill text-danger me-1"></i>
+                        Novia: <strong>{{ novia.nombre }}</strong>
+                        {% if novia.evento %} — {{ novia.evento }}{% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <input type="hidden" id="pNoviaId" value="">
+                {% endif %}
+                {% if dama %}
+                <input type="hidden" id="pDamaId" value="{{ dama.pk }}">
+                <div class="col-12">
+                    <div class="bg-light rounded-3 p-2 small">
+                        <i class="bi bi-person-dress text-info me-1"></i>
+                        Dama: <strong>{{ dama.nombre }}</strong>
+                    </div>
+                </div>
+                {% else %}
+                <input type="hidden" id="pDamaId" value="">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Detalles del pedido -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0" style="border-radius:15px;">
+            <div class="card-header bg-white border-0 py-3 px-4">
+                <h6 class="fw-bold mb-0"><i class="bi bi-clipboard me-2"></i>Detalles del Pedido</h6>
+            </div>
+            <div class="card-body row g-3">
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Tipo de pedido</label>
+                    <select class="form-select" id="pTipo">
+                        {% for code, label in TIPOS_PEDIDO %}
+                        <option value="{{ code }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Evento</label>
+                    <select class="form-select" id="pEvento">
+                        <option value="">— Sin evento —</option>
+                        {% for code, label in EVENTOS %}
+                        <option value="{{ code }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Entrega estimada</label>
+                    <input type="date" class="form-control" id="pEntrega">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Fecha del evento</label>
+                    <input type="date" class="form-control" id="pFechaEvento">
+                </div>
+                <div class="col-12">
+                    <label class="form-label small fw-bold">Notas</label>
+                    <textarea class="form-control" id="pNotas" rows="2" placeholder="Instrucciones especiales, detalles de entrega..."></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ítems -->
+    <div class="col-12">
+        <div class="card shadow-sm border-0" style="border-radius:15px;">
+            <div class="card-header bg-white border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0"><i class="bi bi-list-ul me-2"></i>Ítems del pedido</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="agregarItem()">
+                    <i class="bi bi-plus-lg me-1"></i>Agregar ítem
+                </button>
+            </div>
+            <div class="card-body" id="itemsContainer">
+                <!-- Los ítems se generan dinámicamente -->
+            </div>
+            <div class="card-footer bg-white border-0 px-4 py-3 d-flex justify-content-end gap-2">
+                <span class="text-muted small me-2 align-self-center">Total:</span>
+                <span class="fw-bold fs-5" id="totalDisplay">$0.00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Anticipo -->
+    <div class="col-12">
+        <div class="card shadow-sm border-0" style="border-radius:15px;">
+            <div class="card-body row g-3 align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Anticipo inicial ($)</label>
+                    <input type="number" step="0.01" min="0" class="form-control" id="pAnticipo" value="0" oninput="recalcular()">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Método de pago</label>
+                    <select class="form-select" id="pMetodo">
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="TARJETA">Tarjeta</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex align-items-end justify-content-end gap-2">
+                    <a href="{% url 'pedidos_en_puerta' %}" class="btn btn-light rounded-pill px-4">Cancelar</a>
+                    <button type="button" class="btn btn-primary rounded-pill px-4" onclick="guardarPedido()">
+                        <i class="bi bi-check-lg me-1"></i>Crear Pedido
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+</form>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+const COLORES = [{% for c in colores %}{"id":{{ c.pk }},"nombre":"{{ c.nombre }}"},{% endfor %}];
+const TELAS = [{% for t in telas %}{"id":{{ t.pk }},"nombre":"{{ t.nombre }}"},{% endfor %}];
+const MODELOS = [{% for m in modelos %}{"id":{{ m.pk }},"nombre":"{{ m.nombre }}"},{% endfor %}];
+const ITEM_TIPOS = [{% for code, label in ITEM_TIPOS %}{"code":"{{ code }}","label":"{{ label }}"},{% endfor %}];
+
+let itemCount = 0;
+
+function buildSelect(items, placeholder) {
+    let opts = `<option value="">${placeholder}</option>`;
+    items.forEach(i => { opts += `<option value="${i.id}">${i.nombre}</option>`; });
+    return opts;
+}
+
+function agregarItem() {
+    itemCount++;
+    const idx = itemCount;
+    const div = document.createElement('div');
+    div.className = 'border rounded-3 p-3 mb-3';
+    div.id = `item-${idx}`;
+    div.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-bold small text-muted">Ítem #${idx}</span>
+            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" onclick="eliminarItem(${idx})">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-3">
+                <label class="form-label small">Tipo</label>
+                <select class="form-select form-select-sm" id="it${idx}_tipo">
+                    ${ITEM_TIPOS.map(t => `<option value="${t.code}">${t.label}</option>`).join('')}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Modelo</label>
+                <select class="form-select form-select-sm" id="it${idx}_modelo">
+                    ${buildSelect(MODELOS, '— Modelo —')}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Núm. modelo</label>
+                <input type="text" class="form-control form-control-sm" id="it${idx}_nummodelo" placeholder="Ref.">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Talla</label>
+                <input type="text" class="form-control form-control-sm" id="it${idx}_talla" placeholder="S/M/L/XS">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Precio ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="it${idx}_precio" value="0" oninput="recalcular()">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Color</label>
+                <select class="form-select form-select-sm" id="it${idx}_color">
+                    ${buildSelect(COLORES, '— Color —')}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Tela</label>
+                <select class="form-select form-select-sm" id="it${idx}_tela">
+                    ${buildSelect(TELAS, '— Tela —')}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Cantidad</label>
+                <input type="number" min="1" class="form-control form-control-sm" id="it${idx}_cantidad" value="1" oninput="recalcular()">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small">Descripción especial</label>
+                <input type="text" class="form-control form-control-sm" id="it${idx}_desc" placeholder="Detalles...">
+            </div>
+            <div class="col-12">
+                <label class="form-label small">Notas del ítem</label>
+                <input type="text" class="form-control form-control-sm" id="it${idx}_notas" placeholder="Opcional">
+            </div>
+        </div>
+    `;
+    document.getElementById('itemsContainer').appendChild(div);
+    recalcular();
+}
+
+function eliminarItem(idx) {
+    const el = document.getElementById(`item-${idx}`);
+    if (el) el.remove();
+    recalcular();
+}
+
+function recalcular() {
+    let total = 0;
+    for (let i = 1; i <= itemCount; i++) {
+        const precio = parseFloat(document.getElementById(`it${i}_precio`)?.value || 0);
+        const cant = parseInt(document.getElementById(`it${i}_cantidad`)?.value || 1);
+        if (!isNaN(precio) && !isNaN(cant)) total += precio * cant;
+    }
+    document.getElementById('totalDisplay').textContent = '$' + total.toFixed(2);
+}
+
+async function guardarPedido() {
+    const nombre = document.getElementById('pNombre').value.trim();
+    if (!nombre) { alert('El nombre del cliente es obligatorio.'); return; }
+
+    const items = [];
+    for (let i = 1; i <= itemCount; i++) {
+        if (!document.getElementById(`it${i}_tipo`)) continue;
+        items.push({
+            tipo: document.getElementById(`it${i}_tipo`).value,
+            modelo_id: document.getElementById(`it${i}_modelo`).value || null,
+            numero_modelo: document.getElementById(`it${i}_nummodelo`).value,
+            talla: document.getElementById(`it${i}_talla`).value,
+            precio: document.getElementById(`it${i}_precio`).value,
+            color_id: document.getElementById(`it${i}_color`).value || null,
+            tela_id: document.getElementById(`it${i}_tela`).value || null,
+            cantidad: document.getElementById(`it${i}_cantidad`).value,
+            descripcion_especial: document.getElementById(`it${i}_desc`).value,
+            notas: document.getElementById(`it${i}_notas`).value,
+            dama_id: document.getElementById('pDamaId')?.value || null,
+        });
+    }
+
+    if (items.length === 0) { alert('Agrega al menos un ítem al pedido.'); return; }
+
+    const data = {
+        cliente_nombre: nombre,
+        cliente_telefono: document.getElementById('pTelefono').value.trim(),
+        novia_id: document.getElementById('pNoviaId')?.value || null,
+        dama_id: document.getElementById('pDamaId')?.value || null,
+        tipo_pedido: document.getElementById('pTipo').value,
+        evento: document.getElementById('pEvento').value,
+        fecha_entrega_estimada: document.getElementById('pEntrega').value || null,
+        fecha_evento: document.getElementById('pFechaEvento').value || null,
+        notas: document.getElementById('pNotas').value,
+        anticipo: document.getElementById('pAnticipo').value,
+        metodo_pago: document.getElementById('pMetodo').value,
+        items,
+    };
+
+    try {
+        const res = await fetch('{% url "api_pedido_nuevo" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(data),
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+            window.location.href = d.detalle_url;
+        } else {
+            alert('Error: ' + d.message);
+        }
+    } catch (e) {
+        alert('Error de red: ' + e);
+    }
+}
+
+// Agregar primer ítem por defecto
+agregarItem();
+</script>
+{% endblock %}
