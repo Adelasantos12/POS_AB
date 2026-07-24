@@ -62,7 +62,7 @@
                 <tr id="srv-row-{{ s.pk }}">
                     <td class="ps-4 small text-muted">SRV-{{ s.pk }}</td>
                     <td>
-                        <div class="fw-bold small">{{ s.cliente.nombre|default:s.novia.nombre|default:"Sin cliente" }}</div>
+                        <div class="fw-bold small">{% if s.cliente %}{{ s.cliente.nombre }}{% elif s.novia %}{{ s.novia.nombre }}{% else %}Sin cliente{% endif %}</div>
                         <small class="text-muted">{{ s.cliente.telefono|default:"" }}</small>
                     </td>
                     <td class="small">

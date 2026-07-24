@@ -1,0 +1,373 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Expediente Dama — {{ dama.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'novias_list' %}">Novias</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'novia_detalle' novia.pk %}">{{ novia.nombre }}</a></li>
+                <li class="breadcrumb-item active">{{ dama.nombre }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title"><i class="bi bi-person-badge me-2"></i>{{ dama.nombre }}</h1>
+        <p class="page-subtitle">Dama de honor · {{ novia.nombre }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-primary" id="btnEditarMedidas">
+            <i class="bi bi-rulers me-1"></i>{% if medidas_vigentes %}Editar medidas{% else %}Registrar medidas{% endif %}
+        </button>
+        {% if medidas_vigentes %}
+        <button class="btn btn-outline-secondary" id="btnVerHistorial">
+            <i class="bi bi-clock-history me-1"></i>Ver historial
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-4">
+
+    <!-- ── Columna izquierda: Medidas y Vestido ── -->
+    <div class="col-12 col-lg-5">
+
+        <!-- Medidas vigentes -->
+        <div class="card mb-4" id="cardMedidas">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-bold"><i class="bi bi-rulers me-1"></i>Medidas vigentes</span>
+                {% if medidas_vigentes %}
+                <small class="text-muted">{{ medidas_vigentes.fecha_medicion|date:"d/m/Y" }}</small>
+                {% endif %}
+            </div>
+            <div class="card-body" id="medidas-display">
+                {% if medidas_vigentes %}
+                <div class="row g-2 small" id="medidasGrid">
+                    {% with m=medidas_vigentes %}
+                    {% if m.busto %}<div class="col-6"><span class="text-muted">Busto:</span> <strong>{{ m.busto }} cm</strong></div>{% endif %}
+                    {% if m.cintura %}<div class="col-6"><span class="text-muted">Cintura:</span> <strong>{{ m.cintura }} cm</strong></div>{% endif %}
+                    {% if m.cadera %}<div class="col-6"><span class="text-muted">Cadera:</span> <strong>{{ m.cadera }} cm</strong></div>{% endif %}
+                    {% if m.largo_aproximado %}<div class="col-6"><span class="text-muted">Largo:</span> <strong>{{ m.largo_aproximado }} cm</strong></div>{% endif %}
+                    {% if m.hombro %}<div class="col-6"><span class="text-muted">Hombro:</span> <strong>{{ m.hombro }} cm</strong></div>{% endif %}
+                    {% if m.brazo %}<div class="col-6"><span class="text-muted">Brazo:</span> <strong>{{ m.brazo }} cm</strong></div>{% endif %}
+                    {% if m.espalda %}<div class="col-6"><span class="text-muted">Ancho espalda:</span> <strong>{{ m.espalda }} cm</strong></div>{% endif %}
+                    {% if m.talle_delantero %}<div class="col-6"><span class="text-muted">Talle del.:</span> <strong>{{ m.talle_delantero }} cm</strong></div>{% endif %}
+                    {% if m.talle_trasero %}<div class="col-6"><span class="text-muted">Talle tras.:</span> <strong>{{ m.talle_trasero }} cm</strong></div>{% endif %}
+                    {% if m.bajo_busto %}<div class="col-6"><span class="text-muted">Bajo busto:</span> <strong>{{ m.bajo_busto }} cm</strong></div>{% endif %}
+                    {% if m.largo_talle %}<div class="col-6"><span class="text-muted">Largo talle:</span> <strong>{{ m.largo_talle }} cm</strong></div>{% endif %}
+                    {% if m.hombro_pezon %}<div class="col-6"><span class="text-muted">Hombro-pezón:</span> <strong>{{ m.hombro_pezon }} cm</strong></div>{% endif %}
+                    {% if m.hombro_bajo_busto %}<div class="col-6"><span class="text-muted">Hombro-bajo busto:</span> <strong>{{ m.hombro_bajo_busto }} cm</strong></div>{% endif %}
+                    {% if m.altura_busto %}<div class="col-6"><span class="text-muted">Altura busto:</span> <strong>{{ m.altura_busto }} cm</strong></div>{% endif %}
+                    {% if m.separacion_busto %}<div class="col-6"><span class="text-muted">Separación busto:</span> <strong>{{ m.separacion_busto }} cm</strong></div>{% endif %}
+                    {% endwith %}
+                </div>
+                {% if medidas_vigentes.notas %}
+                <div class="mt-2 small text-muted border-top pt-2">
+                    <i class="bi bi-chat-left-text me-1"></i>{{ medidas_vigentes.notas }}
+                </div>
+                {% endif %}
+                {% if medidas_vigentes.registrado_por %}
+                <div class="mt-1 x-small text-muted">
+                    Registrado por {{ medidas_vigentes.registrado_por.get_full_name|default:medidas_vigentes.registrado_por.username }}
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="text-muted text-center py-3">
+                    <i class="bi bi-rulers fs-2 d-block mb-2 opacity-25"></i>
+                    Sin medidas registradas todavía.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Vestido asignado -->
+        <div class="card mb-4">
+            <div class="card-header fw-bold"><i class="bi bi-bag-heart me-1"></i>Vestido asignado</div>
+            <div class="card-body" id="vestido-display">
+                {% if vestido %}
+                <div class="mb-2">
+                    <span class="badge bg-primary me-1">{{ vestido.codigo }}</span>
+                    <span class="badge {% if vestido.estado == 'ENTREGADO' %}bg-success{% elif vestido.estado == 'RESERVADO' or vestido.estado == 'LLEGO_A_TIENDA' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                        {{ vestido.get_estado_display }}
+                    </span>
+                </div>
+                <div class="row g-2 small">
+                    <div class="col-6"><span class="text-muted">Tipo:</span> <strong>{{ vestido.get_tipo_display }}</strong></div>
+                    {% if vestido.modelo %}<div class="col-6"><span class="text-muted">Modelo:</span> <strong>{{ vestido.modelo.nombre }}</strong></div>{% endif %}
+                    {% if vestido.numero_modelo %}<div class="col-6"><span class="text-muted">Referencia:</span> <strong>{{ vestido.numero_modelo }}</strong></div>{% endif %}
+                    {% if vestido.talla %}<div class="col-6"><span class="text-muted">Talla:</span> <strong>{{ vestido.talla }}</strong></div>{% endif %}
+                    {% if vestido.color %}<div class="col-6"><span class="text-muted">Color:</span> <strong>{{ vestido.color.nombre }}</strong></div>{% endif %}
+                    {% if vestido.tela %}<div class="col-6"><span class="text-muted">Tela:</span> <strong>{{ vestido.tela.nombre }}</strong></div>{% endif %}
+                    <div class="col-6"><span class="text-muted">Precio:</span> <strong>${{ vestido.precio|floatformat:2 }}</strong></div>
+                    {% if vestido.llego_en %}<div class="col-12 text-success"><i class="bi bi-check-circle me-1"></i>Llegó {{ vestido.llego_en|date:"d/m/Y H:i" }}</div>{% endif %}
+                    {% if vestido.entregado_en %}<div class="col-12 text-primary"><i class="bi bi-bag-check me-1"></i>Entregado {{ vestido.entregado_en|date:"d/m/Y H:i" }}</div>{% endif %}
+                </div>
+                {% if vestido.descripcion_especial %}
+                <div class="mt-2 small text-muted border-top pt-2">{{ vestido.descripcion_especial }}</div>
+                {% endif %}
+                <div class="mt-3 d-flex gap-2 flex-wrap">
+                    {% if vestido.estado not in 'LLEGO_A_TIENDA,RESERVADO,ENTREGADO,CANCELADO,DEVUELTO' %}
+                    <button class="btn btn-sm btn-outline-success" onclick="registrarLlegada({{ vestido.id }})">
+                        <i class="bi bi-box-arrow-in-down me-1"></i>Llegó a tienda
+                    </button>
+                    {% endif %}
+                    {% if vestido.estado == 'RESERVADO' or vestido.estado == 'LLEGO_A_TIENDA' %}
+                    <button class="btn btn-sm btn-success" onclick="registrarEntrega({{ vestido.id }})">
+                        <i class="bi bi-bag-check me-1"></i>Entregar
+                    </button>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="text-muted text-center py-3">
+                    <i class="bi bi-bag fs-2 d-block mb-2 opacity-25"></i>
+                    Sin vestido asignado.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── Columna derecha: Pagos y Pedidos ── -->
+    <div class="col-12 col-lg-7">
+
+        <!-- Resumen financiero -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row text-center g-0">
+                    <div class="col-4 border-end">
+                        <div class="small text-muted">Total</div>
+                        <div class="fw-bold">${{ total_precio|floatformat:2 }}</div>
+                    </div>
+                    <div class="col-4 border-end">
+                        <div class="small text-muted">Pagado</div>
+                        <div class="fw-bold text-success">${{ total_pagado|floatformat:2 }}</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="small text-muted">Saldo</div>
+                        <div class="fw-bold {% if saldo_total > 0 %}text-danger{% else %}text-success{% endif %}">
+                            ${{ saldo_total|floatformat:2 }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pedidos -->
+        {% if pedidos %}
+        <div class="card mb-4">
+            <div class="card-header fw-bold"><i class="bi bi-receipt me-1"></i>Pedidos</div>
+            <div class="list-group list-group-flush">
+                {% for pedido in pedidos %}
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fw-bold small">{{ pedido.numero_ticket }}</span>
+                            <span class="badge bg-light text-dark ms-1 small">{{ pedido.get_estado_display }}</span>
+                            <div class="small text-muted">
+                                {% if pedido.modelo %}{{ pedido.modelo.nombre }}{% endif %}
+                                {% if pedido.color %} · {{ pedido.color.nombre }}{% endif %}
+                                {% if pedido.talla %} · T:{{ pedido.talla }}{% endif %}
+                            </div>
+                        </div>
+                        <div class="text-end small">
+                            <div>${{ pedido.precio|floatformat:2 }}</div>
+                            <div class="text-muted">Abonado: ${{ pedido.total_pagado|floatformat:2 }}</div>
+                            {% if pedido.saldo_pendiente > 0 %}
+                            <div class="text-danger">Saldo: ${{ pedido.saldo_pendiente|floatformat:2 }}</div>
+                            {% else %}
+                            <div class="text-success">Liquidado</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+<!-- ── Modal: Editar/Registrar Medidas ── -->
+<div class="modal fade" id="modalMedidas" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalMedidasTitle">
+                    {% if medidas_vigentes %}Editar medidas{% else %}Registrar medidas{% endif %}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3" id="medidasFormGrid">
+                    {% for campo, label in medidas_campos %}
+                    <div class="col-6 col-md-4">
+                        <label class="form-label small fw-bold">{{ label }}</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" step="0.1" min="0" max="250" class="form-control medida-input"
+                                   data-campo="{{ campo }}"
+                                   id="mf_{{ campo }}"
+                                   placeholder="0.0">
+                            <span class="input-group-text">cm</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Notas</label>
+                        <textarea class="form-control form-control-sm" id="mf_notas" rows="2" placeholder="Observaciones de la toma de medidas..."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="mf_nueva_version">
+                            <label class="form-check-label small" for="mf_nueva_version">
+                                Crear nueva versión (guarda historial de la versión anterior)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnGuardarMedidas">
+                    <i class="bi bi-check-lg me-1"></i>Guardar medidas
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Modal: Historial de Medidas ── -->
+<div class="modal fade" id="modalHistorialMedidas" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Historial de medidas — {{ dama.nombre }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="historialMedidasBody">
+                <div class="text-center py-4 text-muted">Cargando...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const DAMA_ID = {{ dama.id }};
+const CSRF_TOKEN = '{{ csrf_token }}';
+const MEDIDAS_VIGENTES = {{ medidas_vigentes_json|default:'null'|safe }};
+
+// ── Campos de medidas (en orden de captura) ──
+const CAMPOS_MEDIDAS = [
+    ['busto','Busto'], ['cintura','Cintura'], ['cadera','Cadera'],
+    ['largo_aproximado','Largo aprox.'], ['hombro','Hombro'], ['brazo','Brazo'],
+    ['espalda','Ancho espalda'], ['talle_delantero','Talle del.'], ['talle_trasero','Talle tras.'],
+    ['bajo_busto','Bajo busto'], ['largo_talle','Largo talle'], ['hombro_pezon','Hombro-pezón'],
+    ['hombro_bajo_busto','Hombro-bajo busto'], ['altura_busto','Altura busto'], ['separacion_busto','Separación busto'],
+];
+
+// ── Abrir modal de medidas con datos precargados ──
+document.getElementById('btnEditarMedidas').addEventListener('click', function() {
+    // Precargar campos si hay medidas vigentes
+    CAMPOS_MEDIDAS.forEach(([campo]) => {
+        const input = document.getElementById('mf_' + campo);
+        if (input) {
+            input.value = (MEDIDAS_VIGENTES && MEDIDAS_VIGENTES[campo] !== null) ? MEDIDAS_VIGENTES[campo] : '';
+        }
+    });
+    const notasInput = document.getElementById('mf_notas');
+    if (notasInput) notasInput.value = (MEDIDAS_VIGENTES && MEDIDAS_VIGENTES.notas) ? MEDIDAS_VIGENTES.notas : '';
+    document.getElementById('mf_nueva_version').checked = false;
+    new bootstrap.Modal(document.getElementById('modalMedidas')).show();
+});
+
+// ── Guardar medidas ──
+document.getElementById('btnGuardarMedidas').addEventListener('click', function() {
+    const payload = { nueva_version: document.getElementById('mf_nueva_version').checked };
+    CAMPOS_MEDIDAS.forEach(([campo]) => {
+        const val = document.getElementById('mf_' + campo)?.value;
+        if (val !== '' && val !== null && val !== undefined) payload[campo] = parseFloat(val);
+    });
+    payload.notas = document.getElementById('mf_notas').value || '';
+
+    const btn = this;
+    btn.disabled = true;
+
+    fetch(`/api/dama/${DAMA_ID}/medidas/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            bootstrap.Modal.getInstance(document.getElementById('modalMedidas')).hide();
+            // Reload para refrescar la vista de medidas
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .finally(() => btn.disabled = false);
+});
+
+// ── Ver historial ──
+const btnHistorial = document.getElementById('btnVerHistorial');
+if (btnHistorial) {
+    btnHistorial.addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('modalHistorialMedidas'));
+        document.getElementById('historialMedidasBody').innerHTML = '<div class="text-center py-4 text-muted">Cargando...</div>';
+        modal.show();
+
+        fetch(`/api/dama/${DAMA_ID}/medidas/historial/`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.historial.length) {
+                    document.getElementById('historialMedidasBody').innerHTML = '<p class="text-muted text-center">Sin historial registrado.</p>';
+                    return;
+                }
+                const rows = data.historial.map(m => {
+                    const tag = m.vigente ? '<span class="badge bg-success me-1">Vigente</span>' : '<span class="badge bg-secondary me-1">Histórica</span>';
+                    const campos = ['busto','cintura','cadera','largo_aproximado','hombro','talla'].map(c =>
+                        m[c] !== null ? `<span class="me-2 small text-muted">${c}: <strong>${m[c]}</strong> cm</span>` : ''
+                    ).join('');
+                    return `<div class="border rounded p-3 mb-2">${tag}<span class="small text-muted">${m.fecha_medicion}</span><div class="mt-1">${campos}</div>${m.notas ? `<div class="small text-muted mt-1">${m.notas}</div>` : ''}</div>`;
+                }).join('');
+                document.getElementById('historialMedidasBody').innerHTML = rows;
+            });
+    });
+}
+
+// ── Llegada a tienda ──
+function registrarLlegada(vestidoId) {
+    if (!confirm('¿Confirmar llegada del vestido a tienda? Se registrará una entrada de inventario.')) return;
+    fetch(`/api/vestido/${vestidoId}/llegada/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
+        body: JSON.stringify({})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') window.location.reload();
+        else alert('Error: ' + data.message);
+    });
+}
+
+// ── Entrega ──
+function registrarEntrega(vestidoId) {
+    if (!confirm('¿Confirmar entrega del vestido a la dama?')) return;
+    fetch(`/api/vestido/${vestidoId}/entregar/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
+        body: JSON.stringify({})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ok') window.location.reload();
+        else alert('Error: ' + data.message);
+    });
+}
+</script>
+{% endblock %}

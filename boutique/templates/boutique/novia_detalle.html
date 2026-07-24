@@ -152,6 +152,9 @@
                                 <td class="small">{{ d.telefono|default:"-" }}<br>Talla: {{ d.talla|default:"-" }}</td>
                                 <td class="small">{{ d.modelo_especial|default:"-" }}<br>{{ d.color_especial|default:"" }}</td>
                                 <td class="pe-4 text-end">
+                                    <a class="btn btn-sm btn-link text-info" href="{% url 'dama_detalle' d.pk %}" title="Ver expediente">
+                                        <i class="bi bi-person-badge"></i>
+                                    </a>
                                     <button class="btn btn-sm btn-link text-primary" onclick="generarPedido({{ d.id }}, false)">Pedido</button>
                                     <button class="btn btn-sm btn-link text-secondary" onclick="abrirEditarDama({{ d.id }}, '{{ d.nombre|escapejs }}', '{{ d.telefono|escapejs }}', '{{ d.talla|escapejs }}', '{{ d.modelo_especial|escapejs }}', '{{ d.color_especial|escapejs }}', '{{ d.tela_especial|escapejs }}', '{{ d.notas_ajustes|escapejs }}')">
                                         <i class="bi bi-pencil"></i>

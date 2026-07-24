@@ -929,6 +929,23 @@ def api_venta_rapida(request):
                         observaciones=request.POST.get('m_notas') or request.POST.get('medidas_notas', '')
                     )
 
+                # Auto-crear VestidoDama si hay una dama asignada
+                if dama_obj:
+                    from .models import VestidoDama as VD
+                    tipo_vd_map = {'HECHURA': 'HECHURA', 'PEDIDO_EXTERNO': 'ESPECIAL', 'DAMA_HONOR': 'CATALOGO'}
+                    VD.objects.create(
+                        dama=dama_obj,
+                        pedido=pedido,
+                        tipo=tipo_vd_map.get(tipo_op, 'ESPECIAL'),
+                        modelo=pedido.modelo,
+                        talla=talla or dama_obj.talla or '',
+                        color=color,
+                        tela=tela_obj,
+                        precio=precio,
+                        estado='PEDIDO',
+                        creado_por=request.active_profile,
+                    )
+
                 ticket = registrar_cobro(
                     origen_tipo='pedido', origen_obj=pedido,
                     monto=anticipo, metodo=metodo, usuario=request.active_profile,

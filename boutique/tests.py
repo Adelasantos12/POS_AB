@@ -36,8 +36,8 @@ class POSAPITest(TestCase):
         self.user = User.objects.create_user(username='staff', password='pass')
         vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
         self.user.groups.add(vendedor_group)
-        self.categoria = Categoria.objects.create(nombre='Vestido')
-        self.color = Color.objects.create(nombre='Rojo')
+        self.categoria, _ = Categoria.objects.get_or_create(nombre='Vestido')
+        self.color, _ = Color.objects.get_or_create(nombre='Rojo')
         self.client.login(username='staff', password='pass')
 
         # Simular selección de perfil activo

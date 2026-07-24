@@ -16,8 +16,9 @@ import calendar
 from django.conf import settings
 
 from .models import (
-    Color, Tela, Novia, Dama, CitaAgenda, 
-    Producto, Modelo, registrar_auditoria, Pedido, Apartado
+    Color, Tela, Novia, Dama, CitaAgenda,
+    Producto, Modelo, registrar_auditoria, Pedido, Apartado,
+    MedidasDama, VestidoDama, MovimientoVestido,
 )
 from .middleware import profile_permission_required
 from .utils import safe_decimal
@@ -879,6 +880,27 @@ def api_crear_pedido_completo(request):
             observaciones=m_notas
         )
 
+        # 4.5 Crear VestidoDama si el pedido pertenece a una dama
+        if dama:
+            tipo_map = {
+                'HECHURA': 'HECHURA', 'PEDIDO_EXTERNO': 'ESPECIAL',
+                'ESTANDAR_GRUPO': 'CATALOGO', 'SOBRE_PEDIDO': 'ESPECIAL',
+            }
+            VestidoDama.objects.create(
+                dama=dama,
+                pedido=pedido,
+                tipo=tipo_map.get(pedido.tipo_pedido, 'ESPECIAL'),
+                modelo=modelo_obj,
+                numero_modelo=data.get('numero_modelo', ''),
+                descripcion_especial=data.get('descripcion_especial', ''),
+                talla=data.get('talla', dama.talla or ''),
+                color=color_obj,
+                tela=pedido.tela,
+                precio=precio,
+                estado='PEDIDO',
+                creado_por=request.active_profile,
+            )
+
         # 5. Registrar Cobro (Genera Ticket y MovimientoCaja)
         ticket = None
         if anticipo > 0:
@@ -1032,3 +1054,254 @@ def resumen_nocturno(request):
         'citas_por_dia': citas_por_dia,
         'hoy': hoy
     })
+
+
+# ============================================================
+# EXPEDIENTE DE DAMA: DETALLE, MEDIDAS Y VESTIDO
+# ============================================================
+
+MEDIDAS_CAMPOS = [
+    ('busto', 'Busto'), ('cintura', 'Cintura'), ('cadera', 'Cadera'),
+    ('largo_aproximado', 'Largo aprox.'), ('hombro', 'Hombro'), ('brazo', 'Brazo'),
+    ('espalda', 'Ancho espalda'), ('talle_delantero', 'Talle del.'), ('talle_trasero', 'Talle tras.'),
+    ('bajo_busto', 'Bajo busto'), ('largo_talle', 'Largo talle'), ('hombro_pezon', 'Hombro-pezón'),
+    ('hombro_bajo_busto', 'Hombro-bajo busto'), ('altura_busto', 'Altura busto'),
+    ('separacion_busto', 'Separación busto'),
+]
+
+
+@login_required
+@profile_permission_required(['Vendedor', 'Agenda', 'Admin', 'CEO'])
+def dama_detalle(request, pk):
+    """Ficha completa de una dama: medidas vigentes, vestido asignado, pagos, saldo."""
+    import json as _json
+    dama = get_object_or_404(Dama, pk=pk, activo=True)
+    medidas_vigentes = dama.medidas_registradas.filter(vigente=True).first()
+    vestido = dama.vestidos.first() if dama.vestidos.exists() else None
+    pedidos = dama.pedidos.order_by('-fecha_creacion').select_related(
+        'modelo', 'color', 'tela', 'cliente'
+    )
+    total_precio = sum(p.precio for p in pedidos)
+    total_pagado = sum(p.total_pagado for p in pedidos)
+    saldo_total = total_precio - total_pagado
+
+    medidas_vigentes_json = _json.dumps(medidas_vigentes.to_dict()) if medidas_vigentes else 'null'
+
+    return render(request, 'boutique/dama_detalle.html', {
+        'dama': dama,
+        'novia': dama.novia,
+        'medidas_vigentes': medidas_vigentes,
+        'medidas_vigentes_json': medidas_vigentes_json,
+        'medidas_campos': MEDIDAS_CAMPOS,
+        'vestido': vestido,
+        'pedidos': pedidos,
+        'total_precio': total_precio,
+        'total_pagado': total_pagado,
+        'saldo_total': saldo_total,
+    })
+
+
+@login_required
+def api_medidas_dama(request, pk):
+    """GET: medidas vigentes. POST: crea versión (archiva la anterior)."""
+    dama = get_object_or_404(Dama, pk=pk)
+
+    if request.method == 'GET':
+        m = dama.medidas_registradas.filter(vigente=True).first()
+        return JsonResponse({'medidas': m.to_dict() if m else None})
+
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        campos = [
+            'busto', 'cintura', 'cadera', 'largo_aproximado', 'hombro', 'brazo',
+            'espalda', 'talle_delantero', 'talle_trasero', 'altura_busto',
+            'separacion_busto', 'bajo_busto', 'largo_talle', 'hombro_pezon',
+            'hombro_bajo_busto',
+        ]
+        with transaction.atomic():
+            # Archivar versión anterior
+            anterior = dama.medidas_registradas.filter(vigente=True).first()
+            nueva_version = data.get('nueva_version', False)
+
+            if anterior and not nueva_version:
+                # Actualizar in-place la versión vigente
+                for campo in campos:
+                    if campo in data:
+                        setattr(anterior, campo, safe_decimal(data[campo], None))
+                anterior.notas = data.get('notas', anterior.notas)
+                anterior.modificado_por = request.active_profile
+                anterior.save()
+                return JsonResponse({'status': 'ok', 'accion': 'actualizada', 'medidas': anterior.to_dict()})
+            else:
+                # Crear nueva versión; la anterior queda como histórica
+                if anterior:
+                    anterior.vigente = False
+                    anterior.save(update_fields=['vigente'])
+                kwargs = {
+                    'dama': dama,
+                    'vigente': True,
+                    'notas': data.get('notas', ''),
+                    'registrado_por': request.active_profile,
+                    'modificado_por': request.active_profile,
+                }
+                for campo in campos:
+                    if campo in data:
+                        kwargs[campo] = safe_decimal(data[campo], None)
+                nueva = MedidasDama.objects.create(**kwargs)
+                return JsonResponse({'status': 'ok', 'accion': 'creada', 'medidas': nueva.to_dict()})
+
+    return JsonResponse({'status': 'error', 'message': 'Método no permitido'}, status=405)
+
+
+@login_required
+def api_medidas_dama_historial(request, pk):
+    """Devuelve todas las versiones de medidas de una dama, de más reciente a más antigua."""
+    dama = get_object_or_404(Dama, pk=pk)
+    historial = [m.to_dict() for m in dama.medidas_registradas.all()]
+    return JsonResponse({'historial': historial, 'total': len(historial)})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Vendedor', 'Agenda'])
+def api_crear_vestido_dama(request, pk):
+    """Crea un VestidoDama para la dama (normalmente llamado al crear el pedido)."""
+    dama = get_object_or_404(Dama, pk=pk)
+    data = json.loads(request.body)
+    try:
+        from .models import Modelo as ModeloObj, Color as ColorObj, Tela as TelaObj
+        modelo_obj = None
+        if data.get('modelo_id'):
+            modelo_obj = ModeloObj.objects.filter(pk=data['modelo_id']).first()
+        elif data.get('modelo_nombre'):
+            modelo_obj, _ = ModeloObj.objects.get_or_create(nombre=data['modelo_nombre'])
+
+        color_obj = None
+        if data.get('color_id'):
+            color_obj = ColorObj.objects.filter(pk=data['color_id']).first()
+        elif data.get('color_nombre'):
+            color_obj, _ = ColorObj.objects.get_or_create(nombre=data['color_nombre'])
+
+        tela_obj = None
+        if data.get('tela_id'):
+            tela_obj = TelaObj.objects.filter(pk=data['tela_id']).first()
+        elif data.get('tela_nombre'):
+            tela_obj, _ = TelaObj.objects.get_or_create(nombre=data['tela_nombre'])
+
+        pedido = None
+        if data.get('pedido_id'):
+            pedido = Pedido.objects.filter(pk=data['pedido_id']).first()
+
+        tipo_map = {
+            'HECHURA': 'HECHURA', 'PEDIDO_EXTERNO': 'ESPECIAL',
+            'ESTANDAR_GRUPO': 'CATALOGO', 'SOBRE_PEDIDO': 'ESPECIAL',
+        }
+        tipo = tipo_map.get(pedido.tipo_pedido if pedido else '', data.get('tipo', 'ESPECIAL'))
+
+        vestido = VestidoDama.objects.create(
+            dama=dama,
+            pedido=pedido,
+            tipo=tipo,
+            modelo=modelo_obj,
+            numero_modelo=data.get('numero_modelo', ''),
+            descripcion_especial=data.get('descripcion_especial', ''),
+            talla=data.get('talla', dama.talla or ''),
+            color=color_obj,
+            tela=tela_obj,
+            precio=safe_decimal(data.get('precio', 0)),
+            costo=safe_decimal(data.get('costo', 0)),
+            estado='HECHURA' if tipo == 'HECHURA' else 'PEDIDO',
+            creado_por=request.active_profile,
+        )
+        return JsonResponse({'status': 'ok', 'vestido': vestido.to_dict()})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Vendedor', 'Agenda', 'Admin'])
+def api_vestido_llegada(request, pk):
+    """Registra la llegada física del vestido a tienda (crea MovimientoVestido ENTRADA + RESERVA)."""
+    vestido = get_object_or_404(VestidoDama, pk=pk)
+
+    # Idempotencia: si ya llegó, no crear doble entrada
+    if vestido.movimientos_vestido.filter(tipo='ENTRADA').exists():
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Ya existe una entrada registrada para este vestido. No se permite doble entrada.'
+        }, status=400)
+
+    data = json.loads(request.body) if request.body else {}
+    notas = data.get('notas', '')
+
+    with transaction.atomic():
+        MovimientoVestido.objects.create(
+            vestido=vestido,
+            tipo='ENTRADA',
+            cantidad=1,
+            usuario=request.active_profile,
+            notas=notas or 'Llegada a tienda',
+        )
+        MovimientoVestido.objects.create(
+            vestido=vestido,
+            tipo='RESERVA',
+            cantidad=1,
+            usuario=request.active_profile,
+            notas=f'Reservado para {vestido.dama.nombre}',
+        )
+        vestido.estado = 'RESERVADO'
+        vestido.llego_en = timezone.now()
+        vestido.llego_por = request.active_profile
+        vestido.save(update_fields=['estado', 'llego_en', 'llego_por'])
+
+        # Si hay un pedido asociado, marcarlo como llegado a tienda
+        if vestido.pedido:
+            vestido.pedido.llego_a_tienda_en = timezone.now()
+            vestido.pedido.llego_a_tienda_por = request.active_profile
+            vestido.pedido.estado = 'POR_RECOGER'
+            vestido.pedido.save(update_fields=['llego_a_tienda_en', 'llego_a_tienda_por', 'estado'])
+
+    return JsonResponse({'status': 'ok', 'vestido': vestido.to_dict()})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Vendedor', 'Caja'])
+def api_vestido_entregar(request, pk):
+    """Registra la entrega del vestido a la dama (MovimientoVestido SALIDA)."""
+    vestido = get_object_or_404(VestidoDama, pk=pk)
+
+    if vestido.estado == 'ENTREGADO':
+        return JsonResponse({'status': 'error', 'message': 'El vestido ya fue entregado.'}, status=400)
+
+    if not vestido.movimientos_vestido.filter(tipo='ENTRADA').exists():
+        return JsonResponse({
+            'status': 'error',
+            'message': 'El vestido no ha llegado a tienda todavía. Registra la llegada primero.'
+        }, status=400)
+
+    if vestido.movimientos_vestido.filter(tipo='SALIDA').exists():
+        return JsonResponse({'status': 'error', 'message': 'Ya existe una salida para este vestido.'}, status=400)
+
+    data = json.loads(request.body) if request.body else {}
+
+    with transaction.atomic():
+        MovimientoVestido.objects.create(
+            vestido=vestido,
+            tipo='SALIDA',
+            cantidad=1,
+            usuario=request.active_profile,
+            notas=data.get('notas', 'Entrega a dama'),
+        )
+        vestido.estado = 'ENTREGADO'
+        vestido.entregado_en = timezone.now()
+        vestido.entregado_por = request.active_profile
+        vestido.save(update_fields=['estado', 'entregado_en', 'entregado_por'])
+
+        if vestido.pedido:
+            vestido.pedido.estado = 'ENTREGADO'
+            vestido.pedido.fecha_entrega_real = timezone.now().date()
+            vestido.pedido.save(update_fields=['estado', 'fecha_entrega_real'])
+
+    return JsonResponse({'status': 'ok', 'vestido': vestido.to_dict()})

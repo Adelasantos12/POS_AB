@@ -392,6 +392,47 @@ class Ticket(models.Model):
                     'precio_unitario': float(item.precio_unitario),
                     'subtotal': float(item.subtotal if hasattr(item, 'subtotal') else item.cantidad * item.precio_unitario)
                 })
+        elif hasattr(obj, 'vestido_dama'):
+            # Pedido con VestidoDama asignado: generar item sintético desde el vestido
+            try:
+                vd = obj.vestido_dama
+                modelo_val = vd.modelo.nombre if vd.modelo else (obj.modelo.nombre if obj.modelo else '')
+                color_val = vd.color.nombre if vd.color else (obj.color.nombre if obj.color else '')
+                tela_val = vd.tela.nombre if vd.tela else (obj.tela.nombre if obj.tela else '')
+                precio_val = float(vd.precio) if vd.precio else float(getattr(obj, 'precio', 0))
+                items_data.append({
+                    'descripcion': vd.descripcion_especial or f"{vd.get_tipo_display()} {modelo_val}".strip(),
+                    'modelo': modelo_val,
+                    'numero_modelo': vd.numero_modelo,
+                    'tipo': vd.get_tipo_display(),
+                    'codigo': vd.codigo,
+                    'color': color_val,
+                    'tela': tela_val,
+                    'sku': vd.codigo,
+                    'talla': vd.talla or getattr(obj, 'talla', ''),
+                    'cantidad': 1,
+                    'precio_unitario': precio_val,
+                    'subtotal': precio_val,
+                })
+            except Exception:
+                pass
+        if not items_data and hasattr(obj, 'precio'):
+            # Pedido sin VestidoDama ni items: generar ítem sintético desde el pedido
+            modelo_val = obj.modelo.nombre if obj.modelo else ''
+            color_val = obj.color.nombre if obj.color else ''
+            tela_val = obj.tela.nombre if obj.tela else ''
+            precio_val = float(obj.precio)
+            items_data.append({
+                'descripcion': f"Vestido {modelo_val} {color_val}".strip() or 'Pedido',
+                'modelo': modelo_val,
+                'color': color_val,
+                'tela': tela_val,
+                'sku': getattr(obj, 'numero_ticket', ''),
+                'talla': getattr(obj, 'talla', ''),
+                'cantidad': 1,
+                'precio_unitario': precio_val,
+                'subtotal': precio_val,
+            })
 
         # Historial de abonos
         abonos = []
@@ -447,6 +488,15 @@ class Ticket(models.Model):
         elif getattr(obj, 'fecha_prometida', None):
             fecha_entrega = str(obj.fecha_prometida)
 
+        # VestidoDama (si existe en el pedido)
+        vestido_data = {}
+        if hasattr(obj, 'vestido_dama'):
+            try:
+                vd = obj.vestido_dama
+                vestido_data = vd.to_dict()
+            except Exception:
+                pass
+
         snapshot = {
             'folio': self.folio,
             'tipo': self.tipo,
@@ -459,6 +509,7 @@ class Ticket(models.Model):
             'novia_nombre': novia_nombre,
             'dama_nombre': dama_nombre,
             'medidas': medidas_dict,
+            'vestido': vestido_data,
             'total': float(self.total),
             'total_pagado': float(self.total_pagado),
             'total_pagado_acumulado': total_pagado_acumulado,
@@ -1389,3 +1440,206 @@ class PagoServicio(models.Model):
 
     def __str__(self):
         return f"${self.monto} - {self.servicio}"
+
+
+# ============================================================
+# MEDIDAS POR DAMA (expediente editable con historial)
+# ============================================================
+
+class MedidasDama(models.Model):
+    """Versión de medidas vinculada directamente a una Dama, con historial."""
+    dama = models.ForeignKey(Dama, on_delete=models.CASCADE, related_name='medidas_registradas')
+    vigente = models.BooleanField(default=True, db_index=True)
+
+    # Medidas corporales (cm)
+    busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    cintura = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    cadera = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    largo_aproximado = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    hombro = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    brazo = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    espalda = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    talle_delantero = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    talle_trasero = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    altura_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    separacion_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    bajo_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    largo_talle = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    hombro_pezon = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    hombro_bajo_busto = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    notas = models.TextField(blank=True)
+
+    fecha_medicion = models.DateField(auto_now_add=True)
+    fecha_modificacion = models.DateTimeField(auto_now=True)
+    registrado_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='medidas_dama_registradas'
+    )
+    modificado_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='medidas_dama_modificadas'
+    )
+
+    class Meta:
+        ordering = ['-fecha_medicion', '-fecha_modificacion']
+
+    def __str__(self):
+        estado = 'vigente' if self.vigente else 'histórica'
+        return f"Medidas {estado} — {self.dama.nombre} ({self.fecha_medicion})"
+
+    def to_dict(self):
+        campos = [
+            'busto', 'cintura', 'cadera', 'largo_aproximado', 'hombro', 'brazo',
+            'espalda', 'talle_delantero', 'talle_trasero', 'altura_busto',
+            'separacion_busto', 'bajo_busto', 'largo_talle', 'hombro_pezon',
+            'hombro_bajo_busto',
+        ]
+        return {
+            'id': self.pk,
+            'vigente': self.vigente,
+            'notas': self.notas,
+            'fecha_medicion': str(self.fecha_medicion),
+            'fecha_modificacion': self.fecha_modificacion.isoformat(),
+            'registrado_por': self.registrado_por.get_full_name() or self.registrado_por.username if self.registrado_por else None,
+            'modificado_por': self.modificado_por.get_full_name() or self.modificado_por.username if self.modificado_por else None,
+            **{campo: float(getattr(self, campo)) if getattr(self, campo) is not None else None for campo in campos},
+        }
+
+
+# ============================================================
+# VESTIDO DE DAMA (trazabilidad completa)
+# ============================================================
+
+class VestidoDama(models.Model):
+    """Artículo identificable asignado a una dama: catálogo, especial o hecho a la medida."""
+    TIPOS = [
+        ('CATALOGO', 'De catálogo'),
+        ('ESPECIAL', 'Modelo especial'),
+        ('HECHURA', 'Hecho a la medida'),
+    ]
+    ESTADOS = [
+        ('PENDIENTE_FABRICACION', 'Pendiente de fabricación'),
+        ('PEDIDO', 'Pedido / Solicitado'),
+        ('EN_TRANSITO', 'En tránsito'),
+        ('LLEGO_A_TIENDA', 'Llegó a tienda'),
+        ('RESERVADO', 'Reservado para la dama'),
+        ('ENTREGADO', 'Entregado'),
+        ('CANCELADO', 'Cancelado'),
+        ('DEVUELTO', 'Devuelto'),
+    ]
+
+    codigo = models.CharField(max_length=30, unique=True, db_index=True)
+    dama = models.ForeignKey(Dama, on_delete=models.CASCADE, related_name='vestidos')
+    pedido = models.OneToOneField(
+        Pedido, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vestido_dama'
+    )
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='ESPECIAL')
+    modelo = models.ForeignKey(Modelo, on_delete=models.SET_NULL, null=True, blank=True)
+    numero_modelo = models.CharField(max_length=100, blank=True)
+    descripcion_especial = models.TextField(blank=True)
+    talla = models.CharField(max_length=10, blank=True)
+    color = models.ForeignKey(Color, on_delete=models.SET_NULL, null=True, blank=True)
+    tela = models.ForeignKey(Tela, on_delete=models.SET_NULL, null=True, blank=True)
+    foto_referencia = models.ImageField(upload_to='vestidos/', null=True, blank=True)
+    precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    costo = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    estado = models.CharField(max_length=30, choices=ESTADOS, default='PEDIDO', db_index=True)
+
+    # Cuando entra físicamente al inventario se puede vincular a un Producto
+    producto = models.OneToOneField(
+        Producto, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vestido_dama'
+    )
+
+    llego_en = models.DateTimeField(null=True, blank=True)
+    llego_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vestidos_recibidos'
+    )
+    entregado_en = models.DateTimeField(null=True, blank=True)
+    entregado_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vestidos_entregados'
+    )
+    creado_por = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='vestidos_creados'
+    )
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-fecha_creacion']
+
+    def save(self, *args, **kwargs):
+        if not self.codigo:
+            self.codigo = Secuencia.siguiente('VD')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.codigo} — {self.dama.nombre}"
+
+    @property
+    def existencia_fisica(self):
+        entradas = sum(
+            m.cantidad for m in self.movimientos_vestido.filter(tipo__in=['ENTRADA', 'DEVOLUCION'])
+        )
+        salidas = sum(
+            m.cantidad for m in self.movimientos_vestido.filter(tipo__in=['SALIDA', 'MERMA'])
+        )
+        return entradas - salidas
+
+    @property
+    def disponible(self):
+        reservas = sum(m.cantidad for m in self.movimientos_vestido.filter(tipo='RESERVA'))
+        liberaciones = sum(m.cantidad for m in self.movimientos_vestido.filter(tipo='LIBERACION_RESERVA'))
+        return self.existencia_fisica - max(0, reservas - liberaciones)
+
+    def to_dict(self):
+        return {
+            'id': self.pk,
+            'codigo': self.codigo,
+            'tipo': self.tipo,
+            'tipo_display': self.get_tipo_display(),
+            'modelo': self.modelo.nombre if self.modelo else '',
+            'numero_modelo': self.numero_modelo,
+            'descripcion_especial': self.descripcion_especial,
+            'talla': self.talla,
+            'color': self.color.nombre if self.color else '',
+            'tela': self.tela.nombre if self.tela else '',
+            'precio': float(self.precio),
+            'costo': float(self.costo),
+            'estado': self.estado,
+            'estado_display': self.get_estado_display(),
+            'existencia_fisica': self.existencia_fisica,
+            'disponible': self.disponible,
+            'llego_en': self.llego_en.isoformat() if self.llego_en else None,
+            'entregado_en': self.entregado_en.isoformat() if self.entregado_en else None,
+        }
+
+
+class MovimientoVestido(models.Model):
+    """Registro de cada evento de inventario/ciclo de vida de un VestidoDama."""
+    TIPOS = [
+        ('ENTRADA', 'Entrada — llegó a tienda'),
+        ('RESERVA', 'Reserva — asignado a dama'),
+        ('SALIDA', 'Salida — vendido o entregado'),
+        ('LIBERACION_RESERVA', 'Liberación de reserva'),
+        ('DEVOLUCION', 'Devolución'),
+        ('MERMA', 'Merma o baja por daño'),
+    ]
+
+    vestido = models.ForeignKey(VestidoDama, on_delete=models.CASCADE, related_name='movimientos_vestido')
+    tipo = models.CharField(max_length=25, choices=TIPOS)
+    cantidad = models.PositiveIntegerField(default=1)
+    fecha = models.DateTimeField(auto_now_add=True)
+    usuario = models.ForeignKey('auth.User', on_delete=models.PROTECT)
+    notas = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} — {self.vestido.codigo} ({self.fecha.strftime('%d/%m/%Y')})"
