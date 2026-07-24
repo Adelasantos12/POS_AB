@@ -87,10 +87,12 @@ def crear_imagen_etiqueta(producto):
     sku_text    = producto.sku or ""
     precio_text = f"${producto.precio_venta:,.0f}" if producto.precio_venta else "$---"
     talla_text  = f"T: {producto.talla}" if producto.talla else ""
+    color_text  = producto.color.nombre.upper() if getattr(producto, 'color', None) else ""
 
     # Fuentes
     f_price = _font(52, bold=True)
     f_talla = _font(28, bold=False)
+    f_color = _font(22, bold=True)
     f_sku   = _font(20, bold=False)
 
     # Altura disponible para el barcode (sin franja SKU ni márgenes)
@@ -133,12 +135,16 @@ def crear_imagen_etiqueta(producto):
             f_price = _font(38, bold=True)
             price_w = draw.textlength(precio_text, font=f_price)
 
-        mid_h = 56 + (32 if talla_text else 0)
+        mid_h = 56 + (32 if talla_text else 0) + (28 if color_text else 0)
         price_y = MARGIN_Y + max(0, (bc_zone_h - mid_h) // 2)
         draw.text((right_x, price_y), precio_text, fill='black', font=f_price)
 
+        next_y = price_y + 58
         if talla_text:
-            draw.text((right_x, price_y + 58), talla_text, fill='#444444', font=f_talla)
+            draw.text((right_x, next_y), talla_text, fill='#444444', font=f_talla)
+            next_y += 32
+        if color_text:
+            draw.text((right_x, next_y), color_text, fill='black', font=f_color)
 
     # ── Franja inferior: SKU ─────────────────────────────────────────────────
     sku_y = LABEL_H - MARGIN_Y - SKU_STRIP_H + 3

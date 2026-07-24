@@ -80,7 +80,7 @@
             padding-top: 0.2mm;
         }
 
-        /* ── Zona derecha: precio + talla ── */
+        /* ── Zona derecha: precio + talla + color ── */
         .right-zone {
             flex: 1;
             display: flex;
@@ -104,6 +104,17 @@
             margin-top: 0.4mm;
         }
 
+        .color-tag {
+            font-size: 5.5pt;
+            color: #000;
+            font-weight: bold;
+            white-space: nowrap;
+            line-height: 1.2;
+            margin-top: 0.3mm;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
         /* ── Print ── */
         @page {
             size: 62mm 20mm;
@@ -116,9 +127,10 @@
                 border: none;
             }
             .no-print { display: none !important; }
+            .qty-controls { display: none !important; }
         }
 
-        /* ── Header ── */
+        /* ── Header / controles ── */
         .no-print {
             background: #1e293b;
             color: white;
@@ -142,16 +154,50 @@
             color: #94a3b8;
             font-size: 11px;
         }
+
+        /* ── Selector de cantidad (solo en pantalla) ── */
+        .qty-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: #f0f4ff;
+            border: 1px dashed #94a3b8;
+            border-top: none;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: #334155;
+            width: 62mm;
+            margin: 0 auto;
+        }
+        .qty-controls input {
+            width: 42px;
+            text-align: center;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 12px;
+        }
+        .qty-controls label { margin: 0; }
     </style>
 </head>
 <body>
     <div class="no-print">
-        Presiona Ctrl+P · Etiqueta <strong>62 mm × 20 mm</strong> (cinta continua DK-22243) · Márgenes en 0.
-        <button onclick="window.print()">Imprimir Ahora</button>
-        <small>En el diálogo de impresión selecciona la impresora Brother QL-800 y el tamaño 62×20 mm.</small>
+        Etiqueta <strong>62 mm × 20 mm</strong> (cinta continua DK-22243) · Márgenes en 0.
+        <button onclick="imprimirConCantidades()">🖨️ Imprimir</button>
+        <small>Ajusta las cantidades de cada modelo antes de imprimir · Brother QL-800</small>
     </div>
 
     {% for p in productos %}
+    <!-- Selector de cantidad (solo visible en pantalla) -->
+    <div class="qty-controls" id="ctrl-{{ p.pk }}">
+        <label>{{ p.sku }}{% if p.color %} · {{ p.color.nombre }}{% endif %}{% if p.talla %} · T:{{ p.talla }}{% endif %}</label>
+        <input type="number" min="1" max="50" value="1" id="qty-{{ p.pk }}" title="Cantidad de etiquetas">
+        <span>copias</span>
+    </div>
+
+    <!-- Etiqueta real (se duplica via JS según cantidad) -->
+    <template id="tpl-{{ p.pk }}">
     <div class="etiqueta">
         <!-- Zona izquierda: barcode + SKU -->
         <div class="left-zone">
@@ -167,14 +213,47 @@
             {% endif %}
         </div>
 
-        <!-- Zona derecha: precio + talla -->
+        <!-- Zona derecha: precio + talla + color -->
         <div class="right-zone">
             <div class="precio">${{ p.precio_venta|floatformat:0 }}</div>
-            {% if p.talla %}
-            <div class="talla">T: {{ p.talla }}</div>
-            {% endif %}
+            {% if p.talla %}<div class="talla">T: {{ p.talla }}</div>{% endif %}
+            {% if p.color %}<div class="color-tag">{{ p.color.nombre }}</div>{% endif %}
         </div>
     </div>
+    </template>
     {% endfor %}
+
+    <!-- Contenedor donde se inyectan las etiquetas reales -->
+    <div id="etiquetas-container"></div>
+
+    <script>
+    const PRODUCTO_IDS = [{% for p in productos %}{{ p.pk }},{% endfor %}];
+
+    function renderizarPreview() {
+        const container = document.getElementById('etiquetas-container');
+        container.innerHTML = '';
+        PRODUCTO_IDS.forEach(pid => {
+            const qty = parseInt(document.getElementById(`qty-${pid}`)?.value || 1, 10);
+            const tpl = document.getElementById(`tpl-${pid}`);
+            if (!tpl) return;
+            for (let i = 0; i < qty; i++) {
+                container.appendChild(tpl.content.cloneNode(true));
+            }
+        });
+    }
+
+    function imprimirConCantidades() {
+        renderizarPreview();
+        window.print();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        renderizarPreview();
+        PRODUCTO_IDS.forEach(pid => {
+            const input = document.getElementById(`qty-${pid}`);
+            if (input) input.addEventListener('change', renderizarPreview);
+        });
+    });
+    </script>
 </body>
 </html>

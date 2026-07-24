@@ -1551,17 +1551,22 @@ def api_imprimir_etiquetas_lote(request):
     from .services.printer_service import imprimir_etiqueta_brother
     
     data = json.loads(request.body)
-    producto_ids = data.get('productos', [])
-    cantidad_cada = int(data.get('cantidad', 1))
-    
+    raw_productos = data.get('productos', [])
+    # Accept [{id, cantidad}, ...] or [id, ...] (backward-compat)
+    if raw_productos and isinstance(raw_productos[0], dict):
+        producto_entries = [(int(e['id']), int(e.get('cantidad', 1))) for e in raw_productos]
+    else:
+        cantidad_cada = int(data.get('cantidad', 1))
+        producto_entries = [(int(pid), cantidad_cada) for pid in raw_productos]
+
     resultados = []
     exitosos = 0
     fallidos = 0
-    
-    for pid in producto_ids:
+
+    for pid, cantidad in producto_entries:
         try:
             producto = Producto.objects.get(pk=pid)
-            resultado = imprimir_etiqueta_brother(producto, cantidad_cada)
+            resultado = imprimir_etiqueta_brother(producto, cantidad)
             resultados.append({
                 'sku': producto.sku,
                 'success': resultado['success'],
@@ -1722,8 +1727,9 @@ def api_producto_regularizar(request, pk):
 @profile_permission_required('Admin')
 def api_eliminar_producto(request, pk):
     """Elimina un producto (solo Admin)"""
+    from django.db import ProtectedError
     producto = get_object_or_404(Producto, pk=pk)
-    
+
     registrar_auditoria(
         usuario=request.active_profile,
         accion='ELIMINACION_PRODUCTO',
@@ -1731,9 +1737,15 @@ def api_eliminar_producto(request, pk):
         entidad=producto,
         request=request
     )
-    
-    producto.delete()
-    return JsonResponse({'status': 'ok'})
+
+    try:
+        producto.delete()
+        return JsonResponse({'status': 'ok'})
+    except ProtectedError:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'No se puede eliminar: el producto tiene ventas o pedidos relacionados.'
+        }, status=400)
 
 
 @require_POST

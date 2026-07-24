@@ -554,14 +554,20 @@
             method: 'POST',
             headers: { 'X-CSRFToken': csrfToken }
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok && r.status === 403) {
+                throw new Error('Sin permiso para eliminar. Verifica que el perfil activo sea Admin.');
+            }
+            return r.json();
+        })
         .then(res => {
             if (res.status === 'ok') {
                 document.getElementById(`row-${id}`).remove();
             } else {
-                alert('Error: ' + res.message);
+                alert('No se pudo eliminar: ' + (res.message || 'Error desconocido.'));
             }
-        });
+        })
+        .catch(err => alert('Error al eliminar: ' + err.message));
     }
 
     function fillFormWithAiData(attrs) {
