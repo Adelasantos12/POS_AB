@@ -495,7 +495,9 @@ def novias_list(request):
             Q(nombre__icontains=q) | Q(telefono__icontains=q)
         )
     
-    novias = novias.order_by('fecha_boda').prefetch_related('pedidos', 'damas')
+    novias = novias.order_by('fecha_boda').prefetch_related(
+        'pedidos', 'pedidos__pagos_pedido', 'damas'
+    )
     
     return render(request, 'boutique/novias_list.html', {
         'novias': novias,
@@ -508,7 +510,9 @@ def novia_detalle(request, pk):
     """Detalle de una novia con su grupo y pedidos"""
     novia = get_object_or_404(Novia, pk=pk, activo=True)
     damas = novia.damas.filter(activo=True)
-    pedidos = novia.pedidos.all().order_by('-fecha_creacion')
+    pedidos = novia.pedidos.all().order_by('-fecha_creacion').select_related(
+        'modelo', 'color', 'tela', 'cliente'
+    ).prefetch_related('pagos_pedido')
     citas = novia.citas.all().order_by('fecha', 'hora_inicio')
     
     # Apartados vinculados
@@ -966,7 +970,9 @@ def pedidos_en_puerta(request):
         ~Q(tipo_pedido='')  # todos los tipos
     ).exclude(
         estado__in=['ENTREGADO', 'CANCELADO']
-    ).select_related('novia', 'dama', 'color', 'tela', 'modelo', 'cliente')
+    ).select_related(
+        'novia', 'dama', 'color', 'tela', 'modelo', 'cliente'
+    ).prefetch_related('pagos_pedido')
 
     if q:
         pedidos_qs = pedidos_qs.filter(
@@ -1072,12 +1078,17 @@ def dama_detalle(request, pk):
     import json as _json
     dama = get_object_or_404(Dama, pk=pk, activo=True)
     medidas_vigentes = dama.medidas_registradas.filter(vigente=True).first()
-    vestido = dama.vestidos.first() if dama.vestidos.exists() else None
+    vestido = dama.vestidos.first()  # None si no existe, evita EXISTS + SELECT doble
     pedidos = dama.pedidos.order_by('-fecha_creacion').select_related(
         'modelo', 'color', 'tela', 'cliente'
+    ).prefetch_related('pagos_pedido')
+    from django.db.models import Sum as _Sum
+    agg = dama.pedidos.aggregate(
+        total_precio=_Sum('precio'),
+        total_pagado=_Sum('pagos_pedido__monto'),
     )
-    total_precio = sum(p.precio for p in pedidos)
-    total_pagado = sum(p.total_pagado for p in pedidos)
+    total_precio = agg['total_precio'] or 0
+    total_pagado = agg['total_pagado'] or 0
     saldo_total = total_precio - total_pagado
 
     medidas_vigentes_json = _json.dumps(medidas_vigentes.to_dict()) if medidas_vigentes else 'null'

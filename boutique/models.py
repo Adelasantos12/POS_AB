@@ -329,7 +329,7 @@ class Ticket(models.Model):
     cambio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     # Datos del Cliente al momento
-    cliente_nombre = models.CharField(max_length=200, blank=True)
+    cliente_nombre = models.CharField(max_length=200, blank=True, db_index=True)
     cliente_telefono = models.CharField(max_length=20, blank=True)
 
     # Snapshot completo en JSON para máxima fidelidad histórica
@@ -722,8 +722,8 @@ class Apartado(models.Model):
 
     notas = models.TextField(blank=True)
 
-    estado = models.CharField(max_length=20, choices=ESTADOS, default='VIGENTE')
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='VIGENTE', db_index=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True, db_index=True)
     fecha_vencimiento = models.DateField(null=True, blank=True)
 
     # Totales
@@ -905,12 +905,12 @@ class MovimientoInventario(models.Model):
 class Novia(models.Model):
     """Perfil de novia - cabeza de grupo"""
     nombre = models.CharField(max_length=200)
-    activo = models.BooleanField(default=True)
+    activo = models.BooleanField(default=True, db_index=True)
     telefono = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
-    
+
     # Fechas importantes
-    fecha_boda = models.DateField()
+    fecha_boda = models.DateField(db_index=True)
     fecha_prueba = models.DateField(null=True, blank=True, help_text="Día de prueba/ajustes")
     fecha_entrega = models.DateField(null=True, blank=True, help_text="Día de entrega")
     fecha_limite = models.DateField(null=True, blank=True, help_text="Fecha límite (antes de boda)")
@@ -1362,11 +1362,14 @@ class PagoApartado(models.Model):
     notas = models.CharField(max_length=200, blank=True)
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
         super().save(*args, **kwargs)
-        # Actualizar anticipo del apartado
-        apartado = self.apartado
-        apartado.anticipo = sum(p.monto for p in apartado.pagos_apartado.all())
-        apartado.save()
+        if is_new:
+            # Incrementar anticipo y decrementar saldo en una sola query (sin re-fetch de pagos)
+            Apartado.objects.filter(pk=self.apartado_id).update(
+                anticipo=F('anticipo') + self.monto,
+                saldo=F('saldo') - self.monto,
+            )
 
     def __str__(self):
         return f"${self.monto} - Apartado {self.apartado.id}"
@@ -1389,16 +1392,24 @@ class PagoPedido(models.Model):
     notas = models.CharField(max_length=200, blank=True)
     
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
         super().save(*args, **kwargs)
-        # Actualizar anticipo y estado de pago del pedido
-        pedido = self.pedido
-        total_pagado = pedido.total_pagado  # property que suma pagos_pedido
-        pedido.anticipo = total_pagado
+        if is_new:
+            # Actualizar anticipo con F() para evitar re-fetch de todos los pagos
+            Pedido.objects.filter(pk=self.pedido_id).update(
+                anticipo=F('anticipo') + self.monto
+            )
+        # Recalcular estado_pago (necesita total actualizado)
+        pedido = Pedido.objects.only('precio', 'anticipo', 'estado_pago').get(pk=self.pedido_id)
+        total_pagado = pedido.anticipo
         if total_pagado >= pedido.precio:
-            pedido.estado_pago = 'LIQUIDADO'
+            estado_pago = 'LIQUIDADO'
         elif total_pagado > 0:
-            pedido.estado_pago = 'PARCIAL' if total_pagado > Decimal(str(pedido.precio)) * Decimal('0.3') else 'APARTADO'
-        pedido.save(update_fields=['anticipo', 'estado_pago'])
+            estado_pago = 'PARCIAL' if total_pagado > Decimal(str(pedido.precio)) * Decimal('0.3') else 'APARTADO'
+        else:
+            estado_pago = pedido.estado_pago
+        if estado_pago != pedido.estado_pago:
+            Pedido.objects.filter(pk=self.pedido_id).update(estado_pago=estado_pago)
     
     def __str__(self):
         return f"${self.monto} - {self.pedido.numero_ticket}"
@@ -1533,10 +1544,13 @@ class PagoServicio(models.Model):
     notas = models.CharField(max_length=200, blank=True)
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
         super().save(*args, **kwargs)
-        srv = self.servicio
-        srv.anticipo = sum(p.monto for p in srv.pagos_servicio.all())
-        srv.save(update_fields=['anticipo'])
+        if is_new:
+            from .models import Servicio
+            Servicio.objects.filter(pk=self.servicio_id).update(
+                anticipo=F('anticipo') + self.monto
+            )
 
     def __str__(self):
         return f"${self.monto} - {self.servicio}"

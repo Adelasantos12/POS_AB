@@ -447,19 +447,27 @@ def cierre_caja(request):
         )
         return redirect('index')
 
-    # Calcular esperados desde Movimientos de Caja
+    # Calcular esperados con una sola query de aggregate
+    from django.db.models import Sum as _Sum, Q as _Q, Count as _Count
     movs = corte.movimientos.all()
 
-    efectivo_movs = sum(m.monto for m in movs if m.metodo_pago == 'EFECTIVO')
-    tarjeta_movs = sum(m.monto for m in movs if m.metodo_pago == 'TARJETA')
-    transf_movs = sum(m.monto for m in movs if m.metodo_pago == 'TRANSFERENCIA')
+    # Un aggregate en lugar de iterar 3–4 veces en Python
+    totales = movs.aggregate(
+        efectivo=_Sum('monto', filter=_Q(metodo_pago='EFECTIVO')),
+        tarjeta=_Sum('monto', filter=_Q(metodo_pago='TARJETA')),
+        transferencia=_Sum('monto', filter=_Q(metodo_pago='TRANSFERENCIA')),
+        total_tickets=_Count('id', filter=_Q(ticket_folio__isnull=False)),
+    )
+    efectivo_movs = totales['efectivo'] or 0
+    tarjeta_movs = totales['tarjeta'] or 0
+    transf_movs = totales['transferencia'] or 0
 
     corte.efectivo_esperado = safe_decimal(corte.monto_apertura) + safe_decimal(efectivo_movs)
     corte.tarjeta_esperada = tarjeta_movs
     corte.transferencia_esperada = transf_movs
     corte.save()
 
-    # Resumen por tipo para la vista
+    # Resumen por tipo: una pasada en Python sobre queryset ya evaluado
     resumen_tipos = {}
     for m in movs:
         resumen_tipos[m.tipo] = resumen_tipos.get(m.tipo, 0) + m.monto
@@ -470,7 +478,7 @@ def cierre_caja(request):
         'tarjeta_movs': tarjeta_movs,
         'transf_movs': transf_movs,
         'resumen_tipos': resumen_tipos,
-        'total_tickets': movs.filter(ticket_folio__isnull=False).count()
+        'total_tickets': totales['total_tickets'] or 0,
     })
 
 

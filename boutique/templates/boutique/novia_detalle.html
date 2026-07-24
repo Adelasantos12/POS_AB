@@ -281,13 +281,15 @@
                             </div>
                         </div>
 
-                        {% with last_pa=p.pagos_pedido.last %}
-                        {% if last_pa %}
+                        {% with pagos_list=p.pagos_pedido.all %}
+                        {% if pagos_list %}
+                        {% with last_pa=pagos_list|last %}
                         <div class="mb-3 small border-start ps-3 py-1" style="background: #fdfdfd;">
                             <div class="text-muted" style="font-size: 0.7rem;">Último pago:</div>
                             <div class="fw-medium">${{ last_pa.monto }} - {{ last_pa.get_metodo_display }}</div>
                             <div class="text-muted" style="font-size: 0.7rem;">{{ last_pa.fecha|date:"d/m/Y" }}</div>
                         </div>
+                        {% endwith %}
                         {% endif %}
                         {% endwith %}
 
