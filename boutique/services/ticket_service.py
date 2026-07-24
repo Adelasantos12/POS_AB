@@ -125,7 +125,19 @@ def generate_pdf_ticket(ticket_id):
         p.setFont("Helvetica", 8)
         y -= 0.18 * inch
 
-    # ── Notas / Especificaciones ─────────────────────────────
+    # ── Notas de operación (POS directo) ────────────────────
+    notas_op = snapshot.get('notas_operacion', '')
+    if notas_op:
+        p.setFont("Helvetica-Bold", 8)
+        p.drawString(0.2 * inch, y, "Notas:")
+        y -= 0.13 * inch
+        p.setFont("Helvetica", 7)
+        for chunk in [notas_op[i:i+45] for i in range(0, min(len(notas_op), 180), 45)]:
+            p.drawString(0.25 * inch, y, chunk)
+            y -= 0.12 * inch
+        p.setFont("Helvetica", 8)
+
+    # ── Notas / Especificaciones de pedido ───────────────────
     notas_entrega = snapshot.get('notas_entrega', '')
     if notas_entrega:
         p.setFont("Helvetica-Bold", 8)
@@ -392,7 +404,15 @@ def generate_escpos_data(ticket_id):
         d.text(f"ENTREGA ESTIMADA: {fecha_entrega}\n")
         d.set(bold=False)
 
-    # ── Notas / Especificaciones ─────────────────────────────
+    # ── Notas de operación (POS directo) ────────────────────
+    notas_op = snapshot.get('notas_operacion', '')
+    if notas_op:
+        d.set(bold=True)
+        d.text("Notas:\n")
+        d.set(bold=False)
+        d.text(f"{notas_op[:200]}\n")
+
+    # ── Notas / Especificaciones de pedido ───────────────────
     notas_entrega = snapshot.get('notas_entrega', '')
     if notas_entrega:
         d.set(bold=True)

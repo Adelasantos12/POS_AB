@@ -579,12 +579,19 @@
                         Cerrar
                     </button>
                     <button class="btn btn-primary" onclick="imprimirUltimaVenta(1)" style="border-radius: 100px;">
-                        <i class="bi bi-printer me-1"></i>Imprimir Ticket
+                        <i class="bi bi-printer me-1"></i>Ticket (PDF)
                     </button>
-                    <button class="btn btn-outline-primary" onclick="imprimirUltimaVenta(2)" style="border-radius: 100px;" title="Imprime dos copias: una para ti y una para la clienta">
-                        <i class="bi bi-printer-fill me-1"></i>Doble (×2)
+                    <button class="btn btn-outline-primary" onclick="imprimirUltimaVenta(2)" style="border-radius: 100px;" title="Abre el PDF dos veces: una para ti, una para la clienta">
+                        <i class="bi bi-printer-fill me-1"></i>PDF ×2
+                    </button>
+                    <button class="btn btn-success" onclick="imprimirTermica(1)" style="border-radius: 100px;" title="Envía directo a la impresora térmica (requiere Agente local corriendo)">
+                        <i class="bi bi-receipt me-1"></i>Térmica
+                    </button>
+                    <button class="btn btn-outline-success" onclick="imprimirTermica(2)" style="border-radius: 100px;" title="Imprime 2 copias en la térmica">
+                        <i class="bi bi-receipt me-1"></i>Térmica ×2
                     </button>
                 </div>
+                <div id="termicaStatus" class="mt-2 small" style="display:none;"></div>
             </div>
         </div>
     </div>
@@ -1027,6 +1034,7 @@
                 document.getElementById('initialPayment').value = '';
                 document.getElementById('isApartado').checked = false;
                 posLimpiarCliente();
+                document.getElementById('termicaStatus').style.display = 'none';
             } else if (data.status === 'caja_cerrada') {
                 new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();
             } else if (data.field === 'cliente_nombre') {
@@ -1725,8 +1733,55 @@
             return;
         }
         for (let i = 0; i < copias; i++) {
-            // Pequeño delay entre ventanas para que el navegador las abra sin bloquearlas
             setTimeout(() => window.open(`/api/tickets/${lastFolio}/pdf/`, '_blank'), i * 400);
+        }
+    }
+
+    const AGENTE_URL = 'http://localhost:19191/imprimir';
+
+    async function imprimirTermica(copias) {
+        copias = copias || 1;
+        if (!lastFolio) { alert('Sin folio registrado.'); return; }
+
+        const statusEl = document.getElementById('termicaStatus');
+        statusEl.style.display = 'block';
+        statusEl.className = 'mt-2 small text-muted';
+        statusEl.textContent = 'Obteniendo datos del ticket…';
+
+        try {
+            // 1. Bajar bytes ESC/POS del servidor Django
+            const resp = await fetch(`/api/tickets/${lastFolio}/escpos/`);
+            if (!resp.ok) throw new Error(`El servidor respondió ${resp.status}`);
+            const buffer = await resp.arrayBuffer();
+
+            // 2. Enviar al agente local N veces
+            for (let i = 0; i < copias; i++) {
+                statusEl.textContent = copias > 1
+                    ? `Imprimiendo copia ${i + 1} de ${copias}…`
+                    : 'Enviando a la impresora…';
+                const r = await fetch(AGENTE_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: buffer,
+                });
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.error || `El agente respondió ${r.status}`);
+                }
+                if (i < copias - 1) await new Promise(res => setTimeout(res, 600));
+            }
+
+            statusEl.className = 'mt-2 small text-success';
+            statusEl.textContent = `✓ ${copias === 1 ? 'Ticket enviado' : copias + ' copias enviadas'} a la impresora térmica.`;
+        } catch (err) {
+            statusEl.className = 'mt-2 small text-danger';
+            if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+                statusEl.innerHTML =
+                    '⚠ El agente de impresión no está corriendo.<br>' +
+                    '<code style="font-size:10px">cd herramientas && python agente_impresora.py --modo ethernet --ip &lt;IP&gt;</code>';
+            } else {
+                statusEl.textContent = '✗ ' + err.message;
+            }
         }
     }
 </script>
