@@ -43,9 +43,11 @@ def generate_pdf_ticket(ticket_id):
             pass  # Si falla, continuar sin logo
 
     # ── Encabezado ──────────────────────────────────────────
-    p.setFont("Helvetica-Bold", 11)
+    p.setFillColorRGB(0.616, 0.090, 0.302)  # #9D174D brand rose
+    p.setFont("Helvetica-Bold", 14)
     p.drawCentredString(width / 2, y, config.nombre_comercial)
-    y -= 0.2 * inch
+    y -= 0.25 * inch
+    p.setFillColorRGB(0, 0, 0)
     p.setFont("Helvetica", 8)
     if config.razon_social:
         p.drawCentredString(width / 2, y, config.razon_social)
@@ -353,9 +355,9 @@ def generate_escpos_data(ticket_id):
     d = Dummy()
 
     # ── Encabezado ──────────────────────────────────────────
-    d.set(align='center', bold=True)
-    d.text(f"{config.nombre_comercial}\n")
-    d.set(align='center', bold=False)
+    d.set(align='center', bold=True, width=2, height=2)
+    d.text(f"{config.nombre_comercial[:15]}\n")
+    d.set(align='center', bold=False, width=1, height=1)
     if config.razon_social:
         d.text(f"{config.razon_social}\n")
     if config.direccion:

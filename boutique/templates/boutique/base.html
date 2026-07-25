@@ -20,9 +20,9 @@
     <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap" rel="stylesheet"></noscript>
     <style>
         :root {
-            /* Fintech Clarity Palette */
-            --primary: #2563EB;
-            --primary-hover: #1D4ED8;
+            /* Adelé Boutique Palette */
+            --primary: #9D174D;
+            --primary-hover: #831843;
             --secondary: #0F172A;
             --bg-page: #F8FAFC;
             --bg-surface: #FFFFFF;
@@ -30,22 +30,66 @@
             --text-primary: #0F172A;
             --text-secondary: #64748B;
             --border-default: #E2E8F0;
-            --border-focus: #2563EB;
+            --border-focus: #9D174D;
             --success: #10B981;
             --error: #EF4444;
             --warning: #F59E0B;
             --info: #3B82F6;
+        }
+
+        /* ── Modo oscuro ──────────────────────────────────── */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-page:        #0F0A0D;
+                --bg-surface:     #1C1319;
+                --bg-subtle:      #2A1E24;
+                --text-primary:   #F9F1F5;
+                --text-secondary: #A8899A;
+                --border-default: #3A2832;
+                --border-focus:   #C4175E;
+                --primary:        #C4175E;
+                --primary-hover:  #9D174D;
+            }
+        }
+        :root[data-theme="dark"] {
+            --bg-page:        #0F0A0D;
+            --bg-surface:     #1C1319;
+            --bg-subtle:      #2A1E24;
+            --text-primary:   #F9F1F5;
+            --text-secondary: #A8899A;
+            --border-default: #3A2832;
+            --border-focus:   #C4175E;
+            --primary:        #C4175E;
+            --primary-hover:  #9D174D;
+        }
+        :root[data-theme="light"] {
+            --bg-page:        #F8FAFC;
+            --bg-surface:     #FFFFFF;
+            --bg-subtle:      #F1F5F9;
+            --text-primary:   #0F172A;
+            --text-secondary: #64748B;
+            --border-default: #E2E8F0;
+            --border-focus:   #9D174D;
+            --primary:        #9D174D;
+            --primary-hover:  #831843;
         }
         
         * {
             font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
         }
         
-        h1, h2, h3, h4, h5, h6, .heading {
+        h1, h2, h3, h4, h5, h6,
+        .heading, .card-title, .modal-title,
+        .offcanvas-title {
             font-family: 'Manrope', sans-serif;
             font-weight: 800;
             letter-spacing: -0.025em;
-            color: var(--secondary);
+            color: var(--text-primary);
+        }
+        /* Subtitles and data labels get IBM Plex 500 */
+        .form-label, .nav-label, small.label {
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-weight: 500;
         }
         
         body {
@@ -114,42 +158,52 @@
             min-height: 100vh;
         }
         
-        /* Buttons - Pill Shaped */
+        /* Buttons */
         .btn-primary {
             background-color: var(--primary);
             border: none;
-            border-radius: 100px;
+            border-radius: 100px;  /* pill: CTA principal */
             padding: 0.75rem 2rem;
             font-weight: 600;
             transition: all 0.2s ease;
         }
-        
+
         .btn-primary:hover {
             background-color: var(--primary-hover);
             transform: translateY(-1px);
         }
-        
+
         .btn-outline-primary {
             color: var(--primary);
-            border: 2px solid var(--primary);
-            border-radius: 100px;
+            border: 1.5px solid var(--primary);
+            border-radius: 10px;   /* moderado: acción secundaria */
             padding: 0.75rem 2rem;
             font-weight: 600;
             background: transparent;
         }
-        
+
         .btn-outline-primary:hover {
             background-color: var(--primary);
             color: white;
         }
-        
-        .btn-outline-danger {
-            border-radius: 100px;
+
+        .btn-outline-secondary,
+        .btn-outline-success,
+        .btn-outline-warning,
+        .btn-outline-info {
+            border-radius: 10px;
         }
-        
+
+        .btn-outline-danger {
+            border-radius: 8px;
+        }
+
         .btn-sm {
             padding: 0.5rem 1.25rem;
+            border-radius: 8px;
         }
+        /* Allow explicit pill to override btn-sm radius */
+        .btn-sm.rounded-pill { border-radius: 100px !important; }
 
         .btn-xs {
             padding: 0.25rem 0.5rem;
@@ -242,7 +296,7 @@
         .profile-avatar {
             width: 40px;
             height: 40px;
-            background: linear-gradient(135deg, var(--primary), #60A5FA);
+            background: linear-gradient(135deg, var(--primary), #F9A8D4);
             color: white;
             border-radius: 50%;
             display: flex;
@@ -543,6 +597,9 @@
                     <i class="bi bi-lock-fill me-1"></i>Cerrar
                 </a>
             </div>
+            <button class="btn btn-xs btn-outline-secondary w-100 mt-2" onclick="toggleTheme()" id="themeToggle" title="Alternar modo oscuro/claro">
+                <i class="bi bi-moon-fill" id="themeIcon"></i> <span id="themeLabel">Modo oscuro</span>
+            </button>
         </div>
     </nav>
     {% endif %}
@@ -555,5 +612,34 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     {% include 'boutique/includes/modal_abrir_caja.html' %}
     {% block extra_js %}{% endblock %}
+    <script>
+    (function() {
+        const saved = localStorage.getItem('adele-theme');
+        if (saved) document.documentElement.setAttribute('data-theme', saved);
+        function updateToggleUI() {
+            const current = document.documentElement.getAttribute('data-theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            const icon = document.getElementById('themeIcon');
+            const label = document.getElementById('themeLabel');
+            if (!icon) return;
+            if (current === 'dark') {
+                icon.className = 'bi bi-sun-fill';
+                if (label) label.textContent = 'Modo claro';
+            } else {
+                icon.className = 'bi bi-moon-fill';
+                if (label) label.textContent = 'Modo oscuro';
+            }
+        }
+        window.toggleTheme = function() {
+            const current = document.documentElement.getAttribute('data-theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('adele-theme', next);
+            updateToggleUI();
+        };
+        document.addEventListener('DOMContentLoaded', updateToggleUI);
+    })();
+    </script>
 </body>
 </html>
