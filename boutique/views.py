@@ -637,14 +637,31 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
     except Exception:
         return []
     creados = []
-    for srv in servicios_data:
-        costo = safe_decimal(srv.get('costo', 0))
+    meta_map = {}
+    for srv_data in servicios_data:
+        precio_unit = safe_decimal(srv_data.get('precio_unitario', 0) or 0)
+        cantidad = int(srv_data.get('cantidad', 1) or 1)
+        costo = safe_decimal(srv_data.get('costo', 0) or 0)
+        if costo <= 0:
+            costo = precio_unit * cantidad
         if costo <= 0:
             continue
-        nota = srv.get('nota', '').strip()
+        if precio_unit <= 0:
+            precio_unit = costo / cantidad if cantidad else costo
+        nota = srv_data.get('nota', '').strip()
+        prenda = srv_data.get('prenda', '').strip()
+        tipo_raw = srv_data.get('tipo', 'AJUSTE')
+        _LINEA_TO_SRV = {
+            'BASTILLA': 'BASTILLA', 'TIRANTE': 'TIRANTE', 'MANGA': 'MANGA',
+            'CINTURA': 'TALLE', 'BUSTO': 'PECHO', 'CIERRE': 'CREMALLERA',
+            'HOMBRO': 'AJUSTE', 'COSTADO': 'AJUSTE', 'PIERNA': 'BASTILLA',
+        }
+        tipo_srv = _LINEA_TO_SRV.get(tipo_raw, tipo_raw if tipo_raw in [
+            'BASTILLA','TALLE','TIRANTE','CREMALLERA','PECHO','CADERA',
+            'MANGA','APLIQUE','BORDADO','AJUSTE','OTRO'] else 'AJUSTE')
         s = Servicio.objects.create(
-            tipo=srv.get('tipo', 'AJUSTE'),
-            descripcion=nota or srv.get('tipo', 'Servicio adicional'),
+            tipo=tipo_srv,
+            descripcion=nota or prenda or tipo_raw,
             cliente=cliente_obj,
             costo=costo,
             anticipo=costo,
@@ -653,18 +670,29 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
             venta=venta,
         )
         creados.append(s)
+        meta_map[s.pk] = {
+            'cantidad': cantidad,
+            'precio_unitario': float(precio_unit),
+            'nota': nota,
+            'prenda': prenda,
+            'tipo_raw': tipo_raw,
+        }
     if creados and ticket:
         snapshot = ticket.snapshot_json or {}
         items = snapshot.get('items', [])
         for s in creados:
+            meta = meta_map[s.pk]
             label = s.get_tipo_display()
-            if s.descripcion and s.descripcion != s.tipo:
-                label = f"{label} — {s.descripcion[:40]}"
+            if meta['prenda']:
+                label = f"{label} — {meta['prenda']}"
+            if meta['nota']:
+                label = f"{label} ({meta['nota'][:30]})"
             items.append({
                 'descripcion': label,
-                'color': '', 'talla': '', 'cantidad': 1,
-                'precio_unitario': float(s.costo),
+                'cantidad': meta['cantidad'],
+                'precio_unitario': meta['precio_unitario'],
                 'subtotal': float(s.costo),
+                'es_servicio': True,
             })
         snapshot['items'] = items
         snapshot['total'] = float(ticket.total) + sum(float(s.costo) for s in creados)
@@ -2014,6 +2042,13 @@ def api_crear_servicio(request):
                     defaults={'nombre': cliente_nombre_input}
                 )
 
+            # Resolve novia if provided
+            novia = None
+            novia_id = data.get('novia_id')
+            if novia_id:
+                from .models import Novia
+                novia = Novia.objects.filter(pk=novia_id).first()
+
             # Costo: sum from lineas when provided, else explicit field
             if lineas_data:
                 costo = sum(
@@ -2023,11 +2058,23 @@ def api_crear_servicio(request):
             else:
                 costo = safe_decimal(data.get('costo', 0))
 
+            # Derive service tipo from first linea type when not explicitly provided
+            _LINEA_TO_SRV = {
+                'BASTILLA': 'BASTILLA', 'TIRANTE': 'TIRANTE', 'MANGA': 'MANGA',
+                'CINTURA': 'TALLE', 'BUSTO': 'PECHO', 'CIERRE': 'CREMALLERA',
+                'HOMBRO': 'AJUSTE', 'COSTADO': 'AJUSTE', 'PIERNA': 'BASTILLA',
+            }
+            tipo = data.get('tipo') or (
+                _LINEA_TO_SRV.get(lineas_data[0].get('tipo', ''), 'AJUSTE')
+                if lineas_data else 'AJUSTE'
+            )
+
             # Create Servicio — anticipo starts at 0; PagoServicio updates it
             srv = Servicio.objects.create(
-                tipo=data.get('tipo', 'AJUSTE'),
+                tipo=tipo,
                 descripcion=data.get('descripcion', ''),
                 cliente=cliente,
+                novia=novia,
                 costo=costo,
                 fecha_prometida=data.get('fecha_prometida') or None,
                 notas=data.get('notas', ''),
