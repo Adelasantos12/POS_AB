@@ -32,6 +32,9 @@
                 <button class="btn btn-outline-secondary btn-sm" onclick="verificarImpresora()" data-testid="btn-verificar-impresora">
                     <i class="bi bi-printer me-1"></i>Impresora
                 </button>
+                <button class="btn btn-outline-primary btn-sm" onclick="abrirServicioRapido({cliente_nombre: (document.getElementById('posClienteNombre')?.value||'').trim(), cliente_telefono: (document.getElementById('posClienteTelefono')?.value||'').trim()})" data-testid="btn-servicio-rapido">
+                    <i class="bi bi-scissors me-1"></i>Servicio
+                </button>
                 <button class="btn btn-warning btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#ventaRapidaModal" data-testid="btn-venta-rapida">
                     <i class="bi bi-lightning-charge-fill me-1"></i>Venta Rápida
                 </button>
@@ -1249,23 +1252,24 @@
 
     // ── Servicios adicionales ────────────────────────────────────────────────
     const TIPOS_SERVICIO = [
-        ['BASTILLA',   'Bastilla'],
-        ['TALLE',      'Ajuste de talle'],
-        ['TIRANTE',    'Tirante'],
-        ['CREMALLERA', 'Cremallera'],
-        ['PECHO',      'Ajuste de pecho'],
-        ['CADERA',     'Ajuste de cadera'],
-        ['MANGA',      'Manga'],
-        ['APLIQUE',    'Aplique / Adorno'],
-        ['BORDADO',    'Bordado'],
-        ['AJUSTE',     'Ajuste general'],
-        ['OTRO',       'Otro servicio'],
+        ['BASTILLA', 'Bastilla / Ruedo'],
+        ['TIRANTE',  'Tirante'],
+        ['HOMBRO',   'Hombro'],
+        ['MANGA',    'Manga'],
+        ['CINTURA',  'Cintura / Talle'],
+        ['BUSTO',    'Busto / Pecho'],
+        ['CIERRE',   'Cremallera / Cierre'],
+        ['COSTADO',  'Costado'],
+        ['APLIQUE',  'Aplique / Adorno'],
+        ['OTRO',     'Otro ajuste'],
     ];
 
     function getSrvTotal() {
         let t = 0;
-        document.querySelectorAll('#vr_servicios_list .srv-costo').forEach(i => {
-            t += parseFloat(i.value) || 0;
+        document.querySelectorAll('#vr_servicios_list .srv-row').forEach(row => {
+            const cant = parseFloat(row.querySelector('.srv-cant')?.value) || 1;
+            const precio = parseFloat(row.querySelector('.srv-costo')?.value) || 0;
+            t += cant * precio;
         });
         return t;
     }
@@ -1273,31 +1277,59 @@
     document.getElementById('btnAddServicio').addEventListener('click', function() {
         const div = document.createElement('div');
         div.className = 'card card-body p-2 mb-2 srv-row';
+        div.style.cssText = 'background: var(--bg-subtle);';
         div.innerHTML = `
-            <div class="d-flex gap-2 align-items-center mb-1">
-                <select class="form-select form-select-sm srv-tipo flex-grow-1">
-                    ${TIPOS_SERVICIO.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
-                </select>
-                <div class="input-group input-group-sm" style="max-width:130px;">
-                    <span class="input-group-text">$</span>
-                    <input type="number" class="form-control srv-costo" placeholder="0" min="0" step="0.01" oninput="vrBuildResumen()">
+            <div class="d-flex gap-2 align-items-start">
+                <div class="flex-grow-1">
+                    <div class="d-flex gap-2 mb-2">
+                        <select class="form-select form-select-sm srv-tipo" style="min-width:130px;">
+                            ${TIPOS_SERVICIO.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
+                        </select>
+                        <input type="text" class="form-control form-control-sm srv-prenda" placeholder="Prenda (vestido, falda…)">
+                    </div>
+                    <div class="d-flex gap-2 align-items-center mb-1">
+                        <div class="input-group input-group-sm" style="max-width:85px;">
+                            <span class="input-group-text">×</span>
+                            <input type="number" class="form-control srv-cant" value="1" min="1" max="99" oninput="vrBuildResumen()">
+                        </div>
+                        <div class="input-group input-group-sm" style="max-width:120px;">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control srv-costo" placeholder="0.00" min="0" step="0.01" oninput="vrBuildResumen()">
+                        </div>
+                        <span class="srv-subtotal small fw-bold" style="color:var(--primary);">$0.00</span>
+                    </div>
+                    <input type="text" class="form-control form-control-sm srv-nota" placeholder="Detalles: dobladillo 3 cm, tirante derecho…">
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.srv-row').remove(); vrBuildResumen()">
                     <i class="bi bi-x"></i>
                 </button>
-            </div>
-            <input type="text" class="form-control form-control-sm srv-nota" placeholder="Ej: dobladillo 3 cm, tirante derecho, ajuste cintura...">`;
+            </div>`;
         document.getElementById('vr_servicios_list').appendChild(div);
+        // Update subtotal display on input
+        const updateSub = () => {
+            const c = parseFloat(div.querySelector('.srv-cant').value) || 1;
+            const p = parseFloat(div.querySelector('.srv-costo').value) || 0;
+            div.querySelector('.srv-subtotal').textContent = '$' + (c*p).toLocaleString('es-MX',{minimumFractionDigits:2});
+        };
+        div.querySelector('.srv-cant').addEventListener('input', updateSub);
+        div.querySelector('.srv-costo').addEventListener('input', updateSub);
         div.querySelector('.srv-costo').focus();
     });
 
     function vrGetServiciosData() {
         const servicios = [];
         document.querySelectorAll('#vr_servicios_list .srv-row').forEach(row => {
-            const costo = parseFloat(row.querySelector('.srv-costo').value) || 0;
-            const tipo = row.querySelector('.srv-tipo').value;
-            const nota = (row.querySelector('.srv-nota').value || '').trim();
-            if (costo > 0) servicios.push({ tipo, nota, costo });
+            const cant = parseInt(row.querySelector('.srv-cant')?.value) || 1;
+            const precio = parseFloat(row.querySelector('.srv-costo').value) || 0;
+            if (precio <= 0) return;
+            servicios.push({
+                tipo: row.querySelector('.srv-tipo').value,
+                prenda: (row.querySelector('.srv-prenda')?.value || '').trim(),
+                cantidad: cant,
+                precio_unitario: precio,
+                costo: cant * precio,
+                nota: (row.querySelector('.srv-nota').value || '').trim(),
+            });
         });
         return servicios;
     }

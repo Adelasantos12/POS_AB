@@ -1,0 +1,323 @@
+<!-- ───────────────────────────────────────────────────────────────
+     Modal Servicio Rápido — mini-panel universal de servicios/ajustes
+     Abre con: window.abrirServicioRapido({cliente_nombre, cliente_telefono, cliente_id, novia_id, onSuccess})
+     Envía a: /api/servicio/crear/
+─────────────────────────────────────────────────────────────── -->
+<div class="modal fade" id="servicioRapidoModal" tabindex="-1" aria-labelledby="servicioRapidoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius: 14px; border-color: var(--border-default);">
+
+      <div class="modal-header" style="background: var(--bg-subtle); border-bottom: 1px solid var(--border-default);">
+        <h5 class="modal-title fw-bold" id="servicioRapidoModalLabel">
+          <i class="bi bi-scissors me-2" style="color: var(--primary);"></i>Servicio / Ajuste Rápido
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Cliente -->
+        <div class="row g-2 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold small">Cliente <span class="text-danger">*</span></label>
+            <input type="text" id="srv_cliente_nombre" class="form-control form-control-sm" placeholder="Nombre del cliente">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold small">Teléfono</label>
+            <input type="tel" id="srv_cliente_telefono" class="form-control form-control-sm" placeholder="10 dígitos">
+          </div>
+        </div>
+
+        <!-- Líneas de servicio -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold small">Líneas de servicio <span class="text-danger">*</span></span>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="srv_btn_agregar_linea" style="font-size: 0.75rem;">
+            <i class="bi bi-plus-lg me-1"></i>Agregar línea
+          </button>
+        </div>
+
+        <div id="srv_lineas_list" class="mb-3"></div>
+
+        <!-- Totales y pago -->
+        <div class="row g-2 mb-3" style="border-top: 1px solid var(--border-default); padding-top: 0.75rem;">
+          <div class="col-sm-4">
+            <label class="form-label fw-semibold small">Método de pago</label>
+            <select id="srv_metodo_pago" class="form-select form-select-sm">
+              <option value="EFECTIVO">Efectivo</option>
+              <option value="TARJETA">Tarjeta</option>
+              <option value="TRANSFERENCIA">Transferencia</option>
+              <option value="MIXTO">Mixto</option>
+            </select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-semibold small">Anticipo ($)</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">$</span>
+              <input type="number" id="srv_anticipo" class="form-control" value="0" min="0" step="0.01" placeholder="0.00">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="srv_btn_cobrar_todo" title="Cobrar todo">
+                <i class="bi bi-check2-all"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-sm-4 d-flex align-items-end">
+            <div class="w-100 text-end p-2 rounded" style="background: var(--bg-subtle); border: 1px solid var(--border-default);">
+              <div class="small text-muted">Total</div>
+              <div id="srv_total_display" class="fw-bold fs-5" style="color: var(--primary);">$0.00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fecha prometida y notas -->
+        <div class="row g-2">
+          <div class="col-sm-5">
+            <label class="form-label fw-semibold small">Fecha prometida</label>
+            <input type="date" id="srv_fecha_prometida" class="form-control form-control-sm">
+          </div>
+          <div class="col-sm-7">
+            <label class="form-label fw-semibold small">Notas generales</label>
+            <input type="text" id="srv_notas" class="form-control form-control-sm" placeholder="Indicaciones adicionales…">
+          </div>
+        </div>
+
+        <div id="srv_error_msg" class="alert alert-danger py-2 mt-3 d-none small"></div>
+
+      </div><!-- /modal-body -->
+
+      <div class="modal-footer" style="background: var(--bg-subtle); border-top: 1px solid var(--border-default);">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm fw-bold" id="srv_btn_guardar"
+                style="background: var(--primary); color: #fff; border: none; min-width: 120px;">
+          <i class="bi bi-check-lg me-1"></i>Guardar Servicio
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // ── Catálogo de tipos de línea ───────────────────────────────
+    const SRV_TIPOS_LINEA = [
+        ['BASTILLA', 'Bastilla / Ruedo'],
+        ['TIRANTE',  'Tirante'],
+        ['HOMBRO',   'Hombro'],
+        ['MANGA',    'Manga'],
+        ['CINTURA',  'Cintura / Talle'],
+        ['BUSTO',    'Busto / Pecho'],
+        ['CIERRE',   'Cremallera / Cierre'],
+        ['COSTADO',  'Costado'],
+        ['PIERNA',   'Pierna'],
+        ['OTRO',     'Otro ajuste'],
+    ];
+
+    const CSRF_TOKEN = '{{ csrf_token }}';
+
+    // ── Estado interno ───────────────────────────────────────────
+    let _srvOpts = {};
+
+    // ── Helpers ──────────────────────────────────────────────────
+    function fmt(n) {
+        return '$' + (parseFloat(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+    }
+
+    function buildTipoOptions() {
+        return SRV_TIPOS_LINEA.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    }
+
+    function updateTotal() {
+        let total = 0;
+        document.querySelectorAll('#srv_lineas_list .srv-linea-row').forEach(function (row) {
+            const cant = parseFloat(row.querySelector('.srv-linea-cant').value) || 1;
+            const precio = parseFloat(row.querySelector('.srv-linea-precio').value) || 0;
+            const sub = cant * precio;
+            row.querySelector('.srv-linea-subtotal').textContent = fmt(sub);
+            total += sub;
+        });
+        document.getElementById('srv_total_display').textContent = fmt(total);
+        return total;
+    }
+
+    function addLinea() {
+        const list = document.getElementById('srv_lineas_list');
+        const row = document.createElement('div');
+        row.className = 'card card-body p-2 mb-2 srv-linea-row';
+        row.style.cssText = 'background: var(--bg-subtle); border-color: var(--border-default);';
+        row.innerHTML =
+            '<div class="d-flex gap-2 align-items-start">' +
+                '<div class="flex-grow-1">' +
+                    '<div class="d-flex gap-2 mb-2">' +
+                        '<select class="form-select form-select-sm srv-linea-tipo" style="min-width:140px;">' +
+                            buildTipoOptions() +
+                        '</select>' +
+                        '<input type="text" class="form-control form-control-sm srv-linea-prenda" placeholder="Prenda (vestido, falda…)">' +
+                    '</div>' +
+                    '<div class="d-flex gap-2 align-items-center mb-2">' +
+                        '<div class="input-group input-group-sm" style="max-width:85px;">' +
+                            '<span class="input-group-text">×</span>' +
+                            '<input type="number" class="form-control srv-linea-cant" value="1" min="1" max="99">' +
+                        '</div>' +
+                        '<div class="input-group input-group-sm" style="max-width:120px;">' +
+                            '<span class="input-group-text">$</span>' +
+                            '<input type="number" class="form-control srv-linea-precio" placeholder="0.00" min="0" step="0.01">' +
+                        '</div>' +
+                        '<span class="srv-linea-subtotal small fw-bold" style="color: var(--primary);">$0.00</span>' +
+                    '</div>' +
+                    '<input type="text" class="form-control form-control-sm srv-linea-nota" placeholder="Detalle: dobladillo 3 cm, tirante derecho…">' +
+                '</div>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger srv-linea-del" title="Eliminar línea">' +
+                    '<i class="bi bi-x"></i>' +
+                '</button>' +
+            '</div>';
+
+        row.querySelector('.srv-linea-cant').addEventListener('input', updateTotal);
+        row.querySelector('.srv-linea-precio').addEventListener('input', updateTotal);
+        row.querySelector('.srv-linea-del').addEventListener('click', function () {
+            row.remove();
+            updateTotal();
+        });
+
+        list.appendChild(row);
+        row.querySelector('.srv-linea-precio').focus();
+        updateTotal();
+    }
+
+    function resetModal() {
+        document.getElementById('srv_lineas_list').innerHTML = '';
+        document.getElementById('srv_anticipo').value = '0';
+        document.getElementById('srv_fecha_prometida').value = '';
+        document.getElementById('srv_notas').value = '';
+        document.getElementById('srv_metodo_pago').value = 'EFECTIVO';
+        document.getElementById('srv_total_display').textContent = '$0.00';
+        document.getElementById('srv_error_msg').classList.add('d-none');
+        document.getElementById('srv_btn_guardar').disabled = false;
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('srv_error_msg');
+        el.textContent = msg;
+        el.classList.remove('d-none');
+    }
+
+    // ── API pública ──────────────────────────────────────────────
+    window.abrirServicioRapido = function (opts) {
+        opts = opts || {};
+        _srvOpts = opts;
+
+        resetModal();
+
+        // Pre-fill cliente
+        document.getElementById('srv_cliente_nombre').value = opts.cliente_nombre || '';
+        document.getElementById('srv_cliente_telefono').value = opts.cliente_telefono || '';
+
+        // Agregar primera línea vacía automáticamente
+        addLinea();
+
+        var modal = new bootstrap.Modal(document.getElementById('servicioRapidoModal'));
+        modal.show();
+    };
+
+    // ── Botón "Agregar línea" ────────────────────────────────────
+    document.getElementById('srv_btn_agregar_linea').addEventListener('click', addLinea);
+
+    // ── Botón "Cobrar todo" ──────────────────────────────────────
+    document.getElementById('srv_btn_cobrar_todo').addEventListener('click', function () {
+        var total = updateTotal();
+        document.getElementById('srv_anticipo').value = total.toFixed(2);
+    });
+
+    // ── Botón "Guardar Servicio" ─────────────────────────────────
+    document.getElementById('srv_btn_guardar').addEventListener('click', function () {
+        document.getElementById('srv_error_msg').classList.add('d-none');
+        const btnGuardar = document.getElementById('srv_btn_guardar');
+
+        const clienteNombre = document.getElementById('srv_cliente_nombre').value.trim();
+        if (!clienteNombre && !_srvOpts.cliente_id) {
+            showError('El nombre del cliente es obligatorio.');
+            return;
+        }
+
+        // Collect lineas
+        const lineas = [];
+        let hasValidLine = false;
+        document.querySelectorAll('#srv_lineas_list .srv-linea-row').forEach(function (row) {
+            const cant = parseInt(row.querySelector('.srv-linea-cant').value) || 1;
+            const precio = parseFloat(row.querySelector('.srv-linea-precio').value) || 0;
+            if (precio <= 0) return;
+            hasValidLine = true;
+            lineas.push({
+                tipo:            row.querySelector('.srv-linea-tipo').value,
+                prenda:          (row.querySelector('.srv-linea-prenda').value || '').trim(),
+                cantidad:        cant,
+                precio_unitario: precio,
+                descripcion:     (row.querySelector('.srv-linea-nota').value || '').trim(),
+            });
+        });
+
+        if (!hasValidLine) {
+            showError('Agrega al menos una línea con precio mayor a cero.');
+            return;
+        }
+
+        const anticipo = parseFloat(document.getElementById('srv_anticipo').value) || 0;
+        const payload = {
+            cliente_nombre:    clienteNombre,
+            cliente_telefono:  document.getElementById('srv_cliente_telefono').value.trim(),
+            cliente_id:        _srvOpts.cliente_id || null,
+            novia_id:          _srvOpts.novia_id || null,
+            lineas:            lineas,
+            metodo_pago:       document.getElementById('srv_metodo_pago').value,
+            anticipo:          anticipo,
+            fecha_prometida:   document.getElementById('srv_fecha_prometida').value || null,
+            notas:             document.getElementById('srv_notas').value.trim(),
+        };
+
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando…';
+
+        fetch('/api/servicio/crear/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN,
+            },
+            body: JSON.stringify(payload),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.status === 'ok') {
+                // Close modal
+                var modalEl = document.getElementById('servicioRapidoModal');
+                var bsModal = bootstrap.Modal.getInstance(modalEl);
+                if (bsModal) bsModal.hide();
+
+                // Success notification
+                if (anticipo > 0 && data.folio) {
+                    setTimeout(function () {
+                        alert('Servicio registrado. Folio: ' + data.folio);
+                    }, 300);
+                }
+
+                // Callback or reload
+                if (typeof _srvOpts.onSuccess === 'function') {
+                    _srvOpts.onSuccess(data);
+                } else if (window.location.pathname.indexOf('/servicios') !== -1) {
+                    window.location.reload();
+                }
+            } else {
+                showError(data.message || 'Error al guardar el servicio.');
+                btnGuardar.disabled = false;
+                btnGuardar.innerHTML = '<i class="bi bi-check-lg me-1"></i>Guardar Servicio';
+            }
+        })
+        .catch(function (err) {
+            showError('Error de conexión. Intenta de nuevo.');
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = '<i class="bi bi-check-lg me-1"></i>Guardar Servicio';
+        });
+    });
+
+})();
+</script>
