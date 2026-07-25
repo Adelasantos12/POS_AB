@@ -69,11 +69,70 @@
         <div class="card shadow-sm border-0" style="border-radius: 16px;">
             <div class="card-body p-4">
                 <h5 class="card-title mb-4 fw-bold"><i class="bi bi-cart3 me-2"></i>Carrito</h5>
-                <div id="cartItems" class="mb-4" style="min-height: 200px;" data-testid="cart-items">
+                <div id="cartItems" class="mb-2" style="min-height: 100px;" data-testid="cart-items">
                     <p class="text-muted text-center py-4">
                         <i class="bi bi-cart fs-1 d-block mb-2 opacity-25"></i>
                         El carrito está vacío
                     </p>
+                </div>
+
+                <!-- ── Líneas de servicio en este ticket ── -->
+                <div id="cartSrvList" class="mb-1"></div>
+
+                <!-- Botón + formulario inline para agregar servicio al ticket -->
+                <div class="mb-3">
+                    <button type="button" class="btn btn-xs btn-outline-primary w-100" id="btnAddSrvToCart">
+                        <i class="bi bi-scissors me-1"></i>+ Ajuste / servicio al ticket
+                    </button>
+                    <div id="cartSrvForm" class="d-none mt-2 border rounded-3 p-3" style="background: var(--bg-subtle);">
+                        <div class="fw-semibold small mb-2" style="color:var(--primary);">
+                            <i class="bi bi-scissors me-1"></i>Servicio adicional
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-7">
+                                <select class="form-select form-select-sm" id="csf_tipo">
+                                    <option value="BASTILLA">Bastilla / Ruedo</option>
+                                    <option value="TIRANTE">Tirante</option>
+                                    <option value="HOMBRO">Hombro</option>
+                                    <option value="MANGA">Manga</option>
+                                    <option value="CINTURA">Cintura / Talle</option>
+                                    <option value="BUSTO">Busto / Pecho</option>
+                                    <option value="CIERRE">Cremallera / Cierre</option>
+                                    <option value="COSTADO">Costado</option>
+                                    <option value="PIERNA">Pierna</option>
+                                    <option value="APLIQUE">Aplique / Adorno</option>
+                                    <option value="OTRO">Otro ajuste</option>
+                                </select>
+                            </div>
+                            <div class="col-5">
+                                <input type="text" class="form-control form-control-sm" id="csf_prenda"
+                                       placeholder="Prenda (vestido…)">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 align-items-center mb-2">
+                            <div class="input-group input-group-sm" style="max-width:82px;">
+                                <span class="input-group-text">×</span>
+                                <input type="number" class="form-control" id="csf_cant" value="1"
+                                       min="1" max="99" oninput="csfActualizarSub()">
+                            </div>
+                            <div class="input-group input-group-sm flex-grow-1">
+                                <span class="input-group-text">$</span>
+                                <input type="number" class="form-control" id="csf_precio"
+                                       placeholder="0.00" min="0" step="0.01" oninput="csfActualizarSub()">
+                            </div>
+                            <span class="small fw-bold text-nowrap" id="csf_sub"
+                                  style="color:var(--primary); min-width:54px;">$0.00</span>
+                        </div>
+                        <input type="text" class="form-control form-control-sm mb-2" id="csf_nota"
+                               placeholder="Detalles: dobladillo 3 cm, lado derecho…">
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="csfAgregar()">
+                                <i class="bi bi-plus-lg me-1"></i>Agregar al ticket
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    onclick="csfCancelar()">Cancelar</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="d-flex justify-content-between mb-2">
@@ -606,6 +665,7 @@
 {% block extra_js %}
 <script>
     let cart = [];
+    let cartServices = [];  // service lines added to the current sale
     let lastSaleId = null;
     let duplicateCheckTimeout = null;
     const csrfToken = '{{ csrf_token }}';
@@ -723,36 +783,118 @@
         renderCart();
     }
 
+    function removeSrvFromCart(idx) {
+        cartServices.splice(idx, 1);
+        renderCartServices();
+        updateCartTotals();
+    }
+
     function renderCart() {
         const container = document.getElementById('cartItems');
         if (cart.length === 0) {
-            container.innerHTML = '<p class="text-muted text-center py-4"><i class="bi bi-cart fs-1 d-block mb-2 opacity-25"></i>El carrito está vacío</p>';
-            document.getElementById('cartSubtotal').textContent = '$0.00';
-            document.getElementById('cartTotal').textContent = '$0.00';
-            return;
+            container.innerHTML = '<p class="text-muted text-center py-3 mb-0"><i class="bi bi-cart fs-1 d-block mb-1 opacity-25"></i>Sin productos — agrega uno o un servicio</p>';
+        } else {
+            let html = '';
+            cart.forEach(item => {
+                const subtotal = item.price * item.qty;
+                html += `
+                    <div class="cart-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-semibold">${item.name}</div>
+                            <small class="text-muted">$${item.price.toLocaleString()} × ${item.qty}</small>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold">$${subtotal.toLocaleString()}</span>
+                            <button class="btn btn-sm btn-outline-danger" onclick="removeFromCart(${item.id})" style="border-radius:50%;">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                    </div>`;
+            });
+            container.innerHTML = html;
         }
+        renderCartServices();
+        updateCartTotals();
+    }
+
+    function renderCartServices() {
+        const container = document.getElementById('cartSrvList');
+        if (!container) return;
+        if (cartServices.length === 0) { container.innerHTML = ''; return; }
         let html = '';
-        let total = 0;
-        cart.forEach(item => {
-            const subtotal = item.price * item.qty;
-            total += subtotal;
+        cartServices.forEach((srv, idx) => {
+            const sub = srv.cantidad * srv.precio;
+            const label = srv.tipoLabel + (srv.prenda ? ' — ' + srv.prenda : '');
             html += `
                 <div class="cart-item d-flex justify-content-between align-items-center">
                     <div>
-                        <div class="fw-semibold">${item.name}</div>
-                        <small class="text-muted">$${item.price.toLocaleString()} x ${item.qty}</small>
+                        <div class="fw-semibold" style="font-size:0.9rem;">
+                            <i class="bi bi-scissors me-1" style="color:var(--primary);"></i>${label}
+                        </div>
+                        ${srv.nota ? `<small class="text-muted">${srv.nota}</small><br>` : ''}
+                        <small class="text-muted">$${srv.precio.toLocaleString('es-MX',{minimumFractionDigits:2})} × ${srv.cantidad}</small>
                     </div>
                     <div class="d-flex align-items-center gap-2">
-                        <span class="fw-bold">$${subtotal.toLocaleString()}</span>
-                        <button class="btn btn-sm btn-outline-danger" onclick="removeFromCart(${item.id})" style="border-radius: 50%;">
+                        <span class="fw-bold">$${sub.toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeSrvFromCart(${idx})" style="border-radius:50%;">
                             <i class="bi bi-x"></i>
                         </button>
                     </div>
                 </div>`;
         });
         container.innerHTML = html;
+    }
+
+    function updateCartTotals() {
+        const prodTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+        const srvTotal  = cartServices.reduce((s, srv) => s + srv.cantidad * srv.precio, 0);
+        const total = prodTotal + srvTotal;
         document.getElementById('cartSubtotal').textContent = '$' + total.toLocaleString();
-        document.getElementById('cartTotal').textContent = '$' + total.toLocaleString();
+        document.getElementById('cartTotal').textContent    = '$' + total.toLocaleString();
+    }
+
+    // ── Cart service form ──────────────────────────────────
+    document.getElementById('btnAddSrvToCart').addEventListener('click', function() {
+        const form = document.getElementById('cartSrvForm');
+        form.classList.remove('d-none');
+        document.getElementById('csf_precio').focus();
+        this.classList.add('d-none');
+    });
+
+    function csfActualizarSub() {
+        const c = parseFloat(document.getElementById('csf_cant').value) || 1;
+        const p = parseFloat(document.getElementById('csf_precio').value) || 0;
+        document.getElementById('csf_sub').textContent =
+            '$' + (c * p).toLocaleString('es-MX', {minimumFractionDigits: 2});
+    }
+
+    function csfAgregar() {
+        const precio = parseFloat(document.getElementById('csf_precio').value) || 0;
+        if (precio <= 0) {
+            document.getElementById('csf_precio').focus();
+            return;
+        }
+        const tipoEl  = document.getElementById('csf_tipo');
+        const tipo      = tipoEl.value;
+        const tipoLabel = tipoEl.options[tipoEl.selectedIndex].text;
+        const prenda  = document.getElementById('csf_prenda').value.trim();
+        const cantidad = parseInt(document.getElementById('csf_cant').value) || 1;
+        const nota    = document.getElementById('csf_nota').value.trim();
+        cartServices.push({ tipo, tipoLabel, prenda, cantidad, precio, nota });
+        // Reset form
+        document.getElementById('csf_precio').value = '';
+        document.getElementById('csf_prenda').value = '';
+        document.getElementById('csf_nota').value   = '';
+        document.getElementById('csf_cant').value   = '1';
+        document.getElementById('csf_sub').textContent = '$0.00';
+        csfCancelar();
+        renderCartServices();
+        updateCartTotals();
+    }
+
+    function csfCancelar() {
+        document.getElementById('cartSrvForm').classList.add('d-none');
+        document.getElementById('btnAddSrvToCart').classList.remove('d-none');
     }
 
     // Offline Logic
@@ -967,12 +1109,14 @@
 
     // ── Checkout ──────────────────────────────────────────────────────────────
     document.getElementById('btnCheckout').addEventListener('click', function() {
-        if (cart.length === 0) {
+        if (cart.length === 0 && cartServices.length === 0) {
             alert('El carrito está vacío');
             return;
         }
         const items = cart.map(i => ({id: i.id, cantidad: i.qty}));
-        const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+        const prodTotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+        const srvTotal  = cartServices.reduce((s, srv) => s + srv.cantidad * srv.precio, 0);
+        const total = prodTotal + srvTotal;
         const initialPayment = parseFloat(document.getElementById('initialPayment').value) || total;
         const method = document.getElementById('paymentMethod').value;
         const esApartado = document.getElementById('isApartado').checked;
@@ -1005,6 +1149,7 @@
             sin_registro: sinRegistro,
             notas_operacion: notasOp,
             cliente_id: posClienteId,
+            servicios_extra: cartServices.length ? cartServices : undefined,
         };
 
         if (!isOnline()) {
@@ -1035,10 +1180,12 @@
                 }
                 new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
                 cart = [];
+                cartServices = [];
                 renderCart();
                 document.getElementById('initialPayment').value = '';
                 document.getElementById('isApartado').checked = false;
                 posLimpiarCliente();
+                csfCancelar();
                 document.getElementById('termicaStatus').style.display = 'none';
             } else if (data.status === 'caja_cerrada') {
                 new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();

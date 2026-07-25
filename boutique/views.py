@@ -629,7 +629,7 @@ def api_liquidar_pedido(request, pk):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
-def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, ticket):
+def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, ticket, adjust_total=True):
     """Crea servicios adicionales vinculados a una venta y los añade al snapshot del ticket."""
     from .models import Servicio
     try:
@@ -695,7 +695,8 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
                 'es_servicio': True,
             })
         snapshot['items'] = items
-        snapshot['total'] = float(ticket.total) + sum(float(s.costo) for s in creados)
+        if adjust_total:
+            snapshot['total'] = float(ticket.total) + sum(float(s.costo) for s in creados)
         ticket.snapshot_json = snapshot
         ticket.save(update_fields=['snapshot_json'])
     return creados
@@ -1321,6 +1322,19 @@ def api_registrar_venta(request):
                 if update_fields or notas_operacion:
                     ticket.snapshot_json = snap
                     ticket.save(update_fields=update_fields + ['snapshot_json'])
+
+                # Servicios extra bundled en la misma venta (ya incluidos en total del frontend)
+                servicios_extra = data.get('servicios_extra') or []
+                if servicios_extra:
+                    import json as _json
+                    _parse_servicios_bundled(
+                        _json.dumps(servicios_extra),
+                        cliente_obj,
+                        request.active_profile,
+                        venta,
+                        ticket,
+                        adjust_total=False,
+                    )
 
                 registrar_auditoria(
                     usuario=request.active_profile,
