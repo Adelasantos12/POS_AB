@@ -641,9 +641,10 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
         costo = safe_decimal(srv.get('costo', 0))
         if costo <= 0:
             continue
+        nota = srv.get('nota', '').strip()
         s = Servicio.objects.create(
             tipo=srv.get('tipo', 'AJUSTE'),
-            descripcion=srv.get('descripcion') or srv.get('tipo', 'Servicio adicional'),
+            descripcion=nota or srv.get('tipo', 'Servicio adicional'),
             cliente=cliente_obj,
             costo=costo,
             anticipo=costo,
@@ -656,8 +657,11 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
         snapshot = ticket.snapshot_json or {}
         items = snapshot.get('items', [])
         for s in creados:
+            label = s.get_tipo_display()
+            if s.descripcion and s.descripcion != s.tipo:
+                label = f"{label} — {s.descripcion[:40]}"
             items.append({
-                'descripcion': f"{s.get_tipo_display()}: {s.descripcion[:40]}",
+                'descripcion': label,
                 'color': '', 'talla': '', 'cantidad': 1,
                 'precio_unitario': float(s.costo),
                 'subtotal': float(s.costo),

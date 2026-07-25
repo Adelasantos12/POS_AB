@@ -460,9 +460,10 @@ def generate_escpos_data(ticket_id):
         if item.get('talla'):  detail_parts.append(f"T:{item['talla']}")
         if detail_parts:
             d.text(f"   {'  '.join(detail_parts)[:46]}\n")
-        if item.get('precio_unitario') and item.get('cantidad', 1) > 1:
-            d.text(f"  ${item['precio_unitario']:.2f} c/u\n")
-        d.text(f"      ${item['subtotal']:>22.2f}\n")
+        if item.get('cantidad', 1) > 1 and item.get('precio_unitario'):
+            d.text(f"  ${item['precio_unitario']:.2f} c/u  ${item['subtotal']:>12.2f}\n")
+        else:
+            d.text(f"  ${item['subtotal']:>30.2f}\n")
 
     d.text("-" * 32 + "\n")
 

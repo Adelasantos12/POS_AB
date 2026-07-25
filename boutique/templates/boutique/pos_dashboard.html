@@ -1270,16 +1270,21 @@
 
     document.getElementById('btnAddServicio').addEventListener('click', function() {
         const div = document.createElement('div');
-        div.className = 'input-group input-group-sm mb-2 srv-row';
+        div.className = 'card card-body p-2 mb-2 srv-row';
         div.innerHTML = `
-            <select class="form-select form-select-sm srv-tipo" style="max-width:180px;">
-                ${TIPOS_SERVICIO.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
-            </select>
-            <span class="input-group-text">$</span>
-            <input type="number" class="form-control srv-costo" placeholder="0" min="0" step="0.01" oninput="vrBuildResumen()">
-            <button type="button" class="btn btn-outline-danger" onclick="this.closest('.srv-row').remove(); vrBuildResumen()">
-                <i class="bi bi-x"></i>
-            </button>`;
+            <div class="d-flex gap-2 align-items-center mb-1">
+                <select class="form-select form-select-sm srv-tipo flex-grow-1">
+                    ${TIPOS_SERVICIO.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}
+                </select>
+                <div class="input-group input-group-sm" style="max-width:130px;">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control srv-costo" placeholder="0" min="0" step="0.01" oninput="vrBuildResumen()">
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.srv-row').remove(); vrBuildResumen()">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+            <input type="text" class="form-control form-control-sm srv-nota" placeholder="Nota (opcional — aparece en ticket)">`;
         document.getElementById('vr_servicios_list').appendChild(div);
         div.querySelector('.srv-costo').focus();
     });
@@ -1289,7 +1294,8 @@
         document.querySelectorAll('#vr_servicios_list .srv-row').forEach(row => {
             const costo = parseFloat(row.querySelector('.srv-costo').value) || 0;
             const tipo = row.querySelector('.srv-tipo').value;
-            if (costo > 0) servicios.push({ tipo, descripcion: tipo, costo });
+            const nota = (row.querySelector('.srv-nota').value || '').trim();
+            if (costo > 0) servicios.push({ tipo, nota, costo });
         });
         return servicios;
     }
