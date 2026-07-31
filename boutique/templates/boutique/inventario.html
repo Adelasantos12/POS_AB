@@ -659,10 +659,15 @@
             headers: { 'X-CSRFToken': csrfToken }
         })
         .then(r => {
-            if (!r.ok && r.status === 403) {
+            if (r.status === 403) {
                 throw new Error('Sin permiso para eliminar. Verifica que el perfil activo sea Admin.');
             }
-            return r.json();
+            // Parsear JSON de forma segura; si la respuesta no es JSON (ej. página de error
+            // del servidor) se retorna un objeto de error genérico en lugar de lanzar excepción.
+            return r.json().catch(() => ({
+                status: 'error',
+                message: `Error del servidor (${r.status}). Intenta de nuevo.`
+            }));
         })
         .then(res => {
             if (res.status === 'ok') {

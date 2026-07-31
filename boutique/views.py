@@ -1879,25 +1879,26 @@ def api_producto_regularizar(request, pk):
 @profile_permission_required('Admin')
 def api_eliminar_producto(request, pk):
     """Elimina un producto (solo Admin)"""
-    from django.db import ProtectedError
+    from django.db import ProtectedError, IntegrityError
     producto = get_object_or_404(Producto, pk=pk)
-
-    registrar_auditoria(
-        usuario=request.active_profile,
-        accion='ELIMINACION_PRODUCTO',
-        detalles=f'Producto {producto.sku} eliminado',
-        entidad=producto,
-        request=request
-    )
+    sku = producto.sku  # capturar antes de borrar
 
     try:
         producto.delete()
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='ELIMINACION_PRODUCTO',
+            detalles=f'Producto {sku} eliminado',
+            request=request
+        )
         return JsonResponse({'status': 'ok'})
-    except ProtectedError:
+    except (ProtectedError, IntegrityError):
         return JsonResponse({
             'status': 'error',
-            'message': 'No se puede eliminar: el producto tiene ventas o pedidos relacionados.'
+            'message': 'No se puede eliminar: el producto tiene ventas, movimientos o pedidos relacionados.'
         }, status=400)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
 @require_POST
