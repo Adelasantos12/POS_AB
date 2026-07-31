@@ -1701,6 +1701,8 @@ def inventario_view(request):
     """Vista de gestión de inventario"""
     q = request.GET.get('q', '')
     productos = Producto.objects.filter(
+        activo=True
+    ).filter(
         Q(sku__icontains=q) |
         Q(rasgo1__icontains=q) |
         Q(rasgo2__icontains=q)
@@ -1984,10 +1986,16 @@ def api_eliminar_producto(request, pk):
         )
         return JsonResponse({'status': 'ok'})
     except ProtectedError:
-        return JsonResponse({
-            'status': 'error',
-            'message': 'No se puede eliminar: el producto tiene ventas, movimientos o pedidos relacionados.'
-        }, status=400)
+        # Tiene historial — archivar en lugar de borrar
+        producto.activo = False
+        producto.save(update_fields=['activo'])
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='ARCHIVO_PRODUCTO',
+            detalles=f'Producto {sku} archivado (tiene historial de ventas/movimientos)',
+            request=request
+        )
+        return JsonResponse({'status': 'ok', 'archived': True})
     except IntegrityError as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     except Exception as e:

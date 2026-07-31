@@ -310,6 +310,9 @@ class Producto(models.Model):
     rasgo1 = models.CharField(max_length=100, blank=True, help_text="Ej: Manga Larga, Escote V")
     rasgo2 = models.CharField(max_length=100, blank=True, help_text="Ej: Seda, Estilo Sirena")
 
+    activo = models.BooleanField(default=True, db_index=True,
+        help_text="Desactivar oculta el producto del inventario sin borrar el historial")
+
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
     class Meta:
