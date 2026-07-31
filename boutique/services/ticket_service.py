@@ -307,8 +307,10 @@ def generate_pdf_ticket(ticket_id):
 
     # ── QR ───────────────────────────────────────────────────
     try:
+        _base = (config.site_url or '').rstrip('/')
+        _qr_data = f"{_base}/scan/{ticket.folio}/" if _base else ticket.folio
         qr = qrcode.QRCode(version=1, box_size=2, border=1)
-        qr.add_data(ticket.folio)
+        qr.add_data(_qr_data)
         qr.make(fit=True)
         img_qr = qr.make_image(fill='black', back_color='white')
         qr_buf = BytesIO()
@@ -501,7 +503,9 @@ def generate_escpos_data(ticket_id):
     d.text("Sin ticket no se entrega el pedido.\n\n")
 
     try:
-        d.qr(ticket.folio, size=8)
+        _base = (config.site_url or '').rstrip('/')
+        _qr_data = f"{_base}/scan/{ticket.folio}/" if _base else ticket.folio
+        d.qr(_qr_data, size=8)
     except Exception:
         pass
     d.text("\n")

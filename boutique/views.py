@@ -258,6 +258,96 @@ def health_check(request):
     return JsonResponse({'status': 'ok', 'timestamp': timezone.now().isoformat()})
 
 
+def scan_ticket(request, folio):
+    """
+    Página pública (sin login) para escanear el QR del ticket.
+    Muestra al personal los detalles del pedido: prenda, foto, estado, saldo.
+    """
+    from .models import ConfiguracionTienda
+    ticket = get_object_or_404(Ticket, folio=folio)
+    config = ConfiguracionTienda.get_solo()
+    snap = ticket.snapshot_json or {}
+
+    # ── Foto(s) del producto ─────────────────────────────────────
+    fotos = []
+    try:
+        if ticket.venta:
+            for item in ticket.venta.items.select_related('producto').all():
+                p = item.producto
+                if p and p.foto:
+                    fotos.append({'url': p.foto.url, 'descripcion': str(p)})
+        elif ticket.apartado:
+            for item in ticket.apartado.items.select_related('producto').all():
+                p = item.producto
+                if p and p.foto:
+                    fotos.append({'url': p.foto.url, 'descripcion': str(p)})
+        elif ticket.pedido:
+            ped = ticket.pedido
+            if ped.modelo and ped.modelo.foto_principal:
+                fotos.append({'url': ped.modelo.foto_principal.url, 'descripcion': str(ped.modelo)})
+    except Exception:
+        pass
+
+    # ── Estado y saldo en vivo ───────────────────────────────────
+    estado_display = None
+    estado_css = 'neutral'
+    saldo = None
+    fecha_entrega = None
+    detalles_extra = {}
+
+    try:
+        if ticket.venta:
+            v = ticket.venta
+            estado_display = 'Entregado' if v.estado == 'ENTREGADO' else 'Completado'
+            estado_css = 'ok'
+            saldo = 0
+        elif ticket.apartado:
+            ap = ticket.apartado
+            estado_display = ap.get_estado_display()
+            saldo = float(ap.saldo)
+            fecha_entrega = ap.fecha_vencimiento
+            estado_css = 'warn' if saldo > 0 else 'ok'
+            if ap.estado == 'CANCELADO':
+                estado_css = 'cancel'
+        elif ticket.pedido:
+            ped = ticket.pedido
+            estado_display = ped.get_estado_display()
+            saldo = float(ped.saldo_pendiente)
+            fecha_entrega = ped.fecha_entrega_estimada if hasattr(ped, 'fecha_entrega_estimada') else None
+            estado_css = 'ok' if ped.estado in ('LISTO', 'ENTREGADO') else ('cancel' if ped.estado == 'CANCELADO' else 'progress')
+            if saldo > 0 and ped.estado == 'LISTO':
+                estado_css = 'warn'
+            if ped.modelo:
+                detalles_extra['Modelo'] = str(ped.modelo)
+            if ped.color:
+                detalles_extra['Color'] = str(ped.color)
+            if ped.talla:
+                detalles_extra['Talla'] = ped.talla
+        elif ticket.servicio:
+            srv = ticket.servicio
+            estado_display = srv.get_estado_display()
+            saldo = float(srv.costo - srv.anticipo)
+            estado_css = 'ok' if srv.estado == 'ENTREGADO' else 'progress'
+    except Exception:
+        pass
+
+    context = {
+        'ticket': ticket,
+        'config': config,
+        'snap': snap,
+        'fotos': fotos,
+        'estado_display': estado_display,
+        'estado_css': estado_css,
+        'saldo': saldo,
+        'fecha_entrega': fecha_entrega,
+        'detalles_extra': detalles_extra,
+        'items': snap.get('items', []),
+        'cliente_nombre': ticket.cliente_nombre or snap.get('cliente', ''),
+        'cliente_telefono': ticket.cliente_telefono or snap.get('cliente_telefono', ''),
+    }
+    return render(request, 'boutique/scan_ticket.html', context)
+
+
 # ============================================================
 # VISTAS DE AUTENTICACIÓN Y PERFILES
 # ============================================================

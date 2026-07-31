@@ -77,6 +77,11 @@ class ConfiguracionTienda(models.Model):
         verbose_name="Color secundario (hex)",
         help_text="Ej: #F9A8D4 — gradientes y fondos suaves",
     )
+    site_url = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name="URL del sitio",
+        help_text="Ej: https://pos.adeleboutique.com — se usa en el QR del ticket para llevar a la página de detalle del pedido",
+    )
 
     class Meta:
         verbose_name = "Configuración de la Tienda"

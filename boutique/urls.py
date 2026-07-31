@@ -5,6 +5,9 @@ from . import views_agenda
 from . import views_apartados
 
 urlpatterns = [
+    # ── Pública — sin login ──────────────────────────────────────
+    path('scan/<str:folio>/', views.scan_ticket, name='scan_ticket'),
+
     # Rutas principales
     path('', views.index, name='index'),
     path('health/', views.health_check, name='health_check'),
