@@ -8,7 +8,7 @@ y apuntar BoutiqueConfig.brand_config_module al nuevo módulo.
 IDENTITY = {
     # ── Presencia ──────────────────────────────────────────────────────
     "BRAND_NAME":          "Adelé Boutique",
-    "BRAND_TAGLINE":       "Alta moda nupcial · Cuernavaca",
+    "BRAND_TAGLINE":       "Alta moda | Guadalajara | Santa Tere",
     "BRAND_PROFILE_SLUG":  "adele_boutique",
     "BRAND_LOGO_PATH":     "brand/adele/logo.svg",   # opcional
 

@@ -666,7 +666,7 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
             costo=costo,
             anticipo=costo,
             estado='RECIBIDO',
-            creado_por=perfil.user if hasattr(perfil, 'user') else None,
+            creado_por=perfil,
             venta=venta,
         )
         creados.append(s)
@@ -1879,7 +1879,8 @@ def api_producto_regularizar(request, pk):
 @profile_permission_required('Admin')
 def api_eliminar_producto(request, pk):
     """Elimina un producto (solo Admin)"""
-    from django.db import ProtectedError, IntegrityError
+    from django.db.models.deletion import ProtectedError
+    from django.db import IntegrityError
     producto = get_object_or_404(Producto, pk=pk)
     sku = producto.sku  # capturar antes de borrar
 
@@ -1892,11 +1893,13 @@ def api_eliminar_producto(request, pk):
             request=request
         )
         return JsonResponse({'status': 'ok'})
-    except (ProtectedError, IntegrityError):
+    except ProtectedError:
         return JsonResponse({
             'status': 'error',
             'message': 'No se puede eliminar: el producto tiene ventas, movimientos o pedidos relacionados.'
         }, status=400)
+    except IntegrityError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 

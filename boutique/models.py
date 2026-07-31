@@ -63,7 +63,7 @@ class ConfiguracionTienda(models.Model):
     # ── Identidad de marca (IDENTITY SLOT) ────────────────────────────
     tagline = models.CharField(
         max_length=200, blank=True,
-        default="Alta moda nupcial · Cuernavaca",
+        default="Alta moda | Guadalajara | Santa Tere",
         verbose_name="Tagline",
         help_text="Ej: Alta moda nupcial · Cuernavaca",
     )
