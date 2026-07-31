@@ -305,20 +305,45 @@ def generate_pdf_ticket(ticket_id):
     p.drawCentredString(width / 2, y, "Sin ticket no se entrega el pedido.")
     y -= 0.18 * inch
 
-    # ── QR ───────────────────────────────────────────────────
+    # ── QR: Instagram (cliente) + Uso interno (boutique) ────
     try:
-        _base = (config.site_url or '').rstrip('/')
-        _qr_data = f"{_base}/scan/{ticket.folio}/" if _base else ticket.folio
-        qr = qrcode.QRCode(version=1, box_size=2, border=1)
-        qr.add_data(_qr_data)
-        qr.make(fit=True)
-        img_qr = qr.make_image(fill='black', back_color='white')
-        qr_buf = BytesIO()
-        img_qr.save(qr_buf, format='PNG')
-        qr_buf.seek(0)
         from reportlab.lib.utils import ImageReader
-        p.drawImage(ImageReader(qr_buf), (width - inch) / 2, y - inch, width=inch, height=inch)
-        y -= 1.15 * inch
+
+        _ig_url = "https://www.instagram.com/adele.boutique1?utm_source=qr"
+        qr_ig = qrcode.QRCode(version=1, box_size=2, border=1)
+        qr_ig.add_data(_ig_url)
+        qr_ig.make(fit=True)
+        buf_ig = BytesIO()
+        qr_ig.make_image(fill='black', back_color='white').save(buf_ig, format='PNG')
+        buf_ig.seek(0)
+
+        _base = (config.site_url or '').rstrip('/')
+        _qr_interno = f"{_base}/scan/{ticket.folio}/" if _base else ticket.folio
+        qr_int = qrcode.QRCode(version=1, box_size=2, border=1)
+        qr_int.add_data(_qr_interno)
+        qr_int.make(fit=True)
+        buf_int = BytesIO()
+        qr_int.make_image(fill='black', back_color='white').save(buf_int, format='PNG')
+        buf_int.seek(0)
+
+        qr_size = 1.2 * inch
+        gap = (width - 2 * qr_size) / 3
+        x_ig  = gap
+        x_int = gap * 2 + qr_size
+
+        p.setFont("Helvetica", 5.5)
+        p.drawCentredString(x_ig  + qr_size / 2, y, "Síguenos en IG")
+        p.drawCentredString(x_int + qr_size / 2, y, "Uso interno boutique")
+        y -= 0.1 * inch
+
+        p.drawImage(ImageReader(buf_ig),  x_ig,  y - qr_size, width=qr_size, height=qr_size)
+        p.drawImage(ImageReader(buf_int), x_int, y - qr_size, width=qr_size, height=qr_size)
+        y -= qr_size + 0.08 * inch
+
+        p.setFont("Helvetica-Oblique", 5.5)
+        p.drawCentredString(x_ig  + qr_size / 2, y, "@adele.boutique1")
+        p.drawCentredString(x_int + qr_size / 2, y, "Info del pedido")
+        y -= 0.15 * inch
     except Exception as e:
         print(f"Error generando QR: {e}")
 
@@ -502,10 +527,22 @@ def generate_escpos_data(ticket_id):
     d.set(bold=False)
     d.text("Sin ticket no se entrega el pedido.\n\n")
 
+    # ── QR Instagram (cliente) ───────────────────────────────
     try:
+        d.set(align='center', bold=False)
+        d.text("- Siguenos en Instagram -\n")
+        d.qr("https://www.instagram.com/adele.boutique1?utm_source=qr", size=6)
+        d.text("@adele.boutique1\n")
+    except Exception:
+        pass
+
+    # ── QR uso interno boutique ──────────────────────────────
+    try:
+        d.text("\n-- PARA USO INTERNO DE LA BOUTIQUE --\n")
         _base = (config.site_url or '').rstrip('/')
-        _qr_data = f"{_base}/scan/{ticket.folio}/" if _base else ticket.folio
-        d.qr(_qr_data, size=8)
+        _qr_interno = f"{_base}/scan/{ticket.folio}/" if _base else ticket.folio
+        d.qr(_qr_interno, size=7)
+        d.text("SKU · Pedido · Info interna\n")
     except Exception:
         pass
     d.text("\n")
