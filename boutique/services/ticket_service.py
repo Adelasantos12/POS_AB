@@ -45,9 +45,10 @@ def generate_pdf_ticket(ticket_id):
     # ── Encabezado ──────────────────────────────────────────
     r, g, b = config.receipt_rgb
     p.setFillColorRGB(r, g, b)
-    p.setFont("Helvetica-Bold", 14)
-    p.drawCentredString(width / 2, y, config.nombre_comercial)
-    y -= 0.25 * inch
+    if not config.logo:
+        p.setFont("Helvetica-Bold", 14)
+        p.drawCentredString(width / 2, y, config.nombre_comercial)
+        y -= 0.25 * inch
     p.setFillColorRGB(0, 0, 0)
     p.setFont("Helvetica", 8)
     if config.razon_social:
@@ -224,11 +225,14 @@ def generate_pdf_ticket(ticket_id):
     for item in items:
         desc = item['descripcion']
         p.drawString(0.2 * inch, y, str(item['cantidad']))
-        p.drawString(0.6 * inch, y, desc[:40])
+        p.drawString(0.6 * inch, y, desc[:25])
         p.drawRightString(width - 0.2 * inch, y, f"${item['subtotal']:.2f}")
         y -= 0.15 * inch
-        if len(desc) > 40:
-            p.drawString(0.6 * inch, y, desc[40:80])
+        if len(desc) > 25:
+            p.drawString(0.6 * inch, y, desc[25:55])
+            y -= 0.15 * inch
+        if len(desc) > 55:
+            p.drawString(0.6 * inch, y, desc[55:85])
             y -= 0.15 * inch
         # Detail line: SKU + modelo + color + talla
         detail_parts = []
