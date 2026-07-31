@@ -34,11 +34,11 @@ def generate_pdf_ticket(ticket_id):
                 logo_reader = ImageReader(img_buf)
                 img_buf.seek(0)
                 pil_img = PILImage.open(img_buf)
-            logo_w = 1.4 * inch
+            logo_w = min(2.4 * inch, width - 0.3 * inch)
             logo_h = logo_w * (pil_img.size[1] / pil_img.size[0])
             p.drawImage(logo_reader, (width - logo_w) / 2, y - logo_h,
                         width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
-            y -= logo_h + 0.08 * inch
+            y -= logo_h + 0.12 * inch
         except Exception as _logo_err:
             pass  # Si falla, continuar sin logo
 
