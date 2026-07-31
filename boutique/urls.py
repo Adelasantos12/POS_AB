@@ -5,6 +5,9 @@ from . import views_agenda
 from . import views_apartados
 
 urlpatterns = [
+    # ── Pública — sin login ──────────────────────────────────────
+    path('scan/<str:folio>/', views.scan_ticket, name='scan_ticket'),
+
     # Rutas principales
     path('', views.index, name='index'),
     path('health/', views.health_check, name='health_check'),
@@ -41,11 +44,14 @@ urlpatterns = [
     # Inventario
     path('inventario/', views.inventario_view, name='inventario_view'),
     path('inventario/pendientes/', views.pendientes_regularizacion, name='pendientes_regularizacion'),
+    path('inventario/subida-bloque/', views.subida_bloque, name='subida_bloque'),
+    path('api/subida-bloque/', views.api_subida_bloque, name='api_subida_bloque'),
     path('api/producto-editar/<int:pk>/', views.api_editar_producto, name='api_editar_producto'),
     path('api/producto-clonar-variante/<int:pk>/', views.api_clonar_variante, name='api_clonar_variante'),
     path('api/producto-variantes/<int:pk>/', views.api_get_variantes, name='api_get_variantes'),
     path('api/producto-regularizar/<int:pk>/', views.api_producto_regularizar, name='api_producto_regularizar'),
     path('api/producto-eliminar/<int:pk>/', views.api_eliminar_producto, name='api_eliminar_producto'),
+    path('api/producto-foto/<int:pk>/', views.api_foto_producto, name='api_foto_producto'),
     path('imprimir-etiquetas/', views.imprimir_etiquetas, name='imprimir_etiquetas'),
     
     # Impresión Brother QL-800
@@ -53,6 +59,7 @@ urlpatterns = [
     path('api/imprimir-etiquetas-lote/', views.api_imprimir_etiquetas_lote, name='api_imprimir_etiquetas_lote'),
     path('api/preview-etiqueta/<int:pk>/', views.api_preview_etiqueta, name='api_preview_etiqueta'),
     path('api/verificar-impresora/', views.api_verificar_impresora, name='api_verificar_impresora'),
+    path('api/regenerar-barcodes/', views.api_regenerar_barcodes, name='api_regenerar_barcodes'),
 
     # ============================================================
     # CATÁLOGOS
@@ -67,7 +74,11 @@ urlpatterns = [
     path('api/crear-tela/', views_agenda.api_crear_tela, name='api_crear_tela'),
     path('api/tela-editar/<int:pk>/', views_agenda.api_tela_editar, name='api_tela_editar'),
     path('api/tela-eliminar/<int:pk>/', views_agenda.api_tela_eliminar, name='api_tela_eliminar'),
-    
+    path('api/tallas/', views.api_listar_tallas, name='api_listar_tallas'),
+    path('api/crear-talla/', views.api_crear_talla, name='api_crear_talla'),
+    path('api/modelos/', views.api_listar_modelos, name='api_listar_modelos'),
+    path('api/crear-modelo/', views.api_crear_modelo_catalogo, name='api_crear_modelo_catalogo'),
+
     # ============================================================
     # AGENDA Y CALENDARIO
     # ============================================================
@@ -87,6 +98,12 @@ urlpatterns = [
     path('api/novia/<int:novia_id>/agregar-dama/', views_agenda.api_agregar_dama, name='api_agregar_dama'),
     path('api/dama/<int:pk>/editar/', views_agenda.api_editar_dama, name='api_editar_dama'),
     path('api/dama/<int:pk>/eliminar/', views_agenda.api_eliminar_dama, name='api_eliminar_dama'),
+    path('damas/<int:pk>/', views_agenda.dama_detalle, name='dama_detalle'),
+    path('api/dama/<int:pk>/medidas/', views_agenda.api_medidas_dama, name='api_medidas_dama'),
+    path('api/dama/<int:pk>/medidas/historial/', views_agenda.api_medidas_dama_historial, name='api_medidas_dama_historial'),
+    path('api/dama/<int:pk>/vestido/crear/', views_agenda.api_crear_vestido_dama, name='api_crear_vestido_dama'),
+    path('api/vestido/<int:pk>/llegada/', views_agenda.api_vestido_llegada, name='api_vestido_llegada'),
+    path('api/vestido/<int:pk>/entregar/', views_agenda.api_vestido_entregar, name='api_vestido_entregar'),
     path('api/pedido/crear/', views_agenda.api_crear_pedido, name='api_crear_pedido'),
     path('api/pedido/crear-completo/', views_agenda.api_crear_pedido_completo, name='api_crear_pedido_completo'),
     path('api/pedido/<int:pk>/liquidar/', views.api_liquidar_pedido, name='api_liquidar_pedido'),
@@ -94,6 +111,8 @@ urlpatterns = [
     path('api/pedido/<int:pedido_id>/medidas/', views.api_guardar_medidas, name='api_guardar_medidas'),
     path('api/pedido/<int:pedido_id>/medidas/reutilizar/', views.api_obtener_medidas_reutilizar, name='api_obtener_medidas_reutilizar'),
     path('api/entregar/<str:tipo>/<int:pk>/', views.api_entregar_item, name='api_entregar_item'),
+    path('api/llego-a-tienda/<str:tipo>/<int:pk>/', views.api_llego_a_tienda, name='api_llego_a_tienda'),
+    path('api/pedido/<int:pk>/estado/', views.api_cambiar_estado_pedido, name='api_cambiar_estado_pedido'),
 
     # Tickets e Impresión
     path('api/tickets/<str:folio>/detalle/', views.api_ticket_detalle, name='api_ticket_detalle'),
@@ -106,8 +125,20 @@ urlpatterns = [
     path('api/apartado/crear/', views_apartados.api_crear_apartado, name='api_crear_apartado'),
     path('api/apartado/editar/<int:pk>/', views_apartados.api_apartado_editar, name='api_apartado_editar'),
     
-    # Pedidos en puerta
+    # Servicios y ajustes
+    path('servicios/', views.servicios_list, name='servicios_list'),
+    path('api/servicio/crear/', views.api_crear_servicio, name='api_crear_servicio'),
+    path('api/servicio/<int:pk>/cobrar/', views.api_cobrar_servicio, name='api_cobrar_servicio'),
+    path('api/servicio/<int:pk>/estado/', views.api_cambiar_estado_servicio, name='api_cambiar_estado_servicio'),
+    path('api/servicio/<int:pk>/eliminar/', views.api_eliminar_servicio, name='api_eliminar_servicio'),
+
+    # Pedidos — módulo operativo
     path('pedidos/', views_agenda.pedidos_en_puerta, name='pedidos_en_puerta'),
+    path('pedidos/nuevo/', views_agenda.pedido_nuevo, name='pedido_nuevo'),
+    path('pedidos/<int:pk>/', views_agenda.pedido_detalle, name='pedido_detalle'),
+    path('api/pedido/nuevo/', views_agenda.api_pedido_nuevo, name='api_pedido_nuevo'),
+    path('api/pedido/<int:pk>/editar/', views_agenda.api_pedido_editar, name='api_pedido_editar'),
+    path('api/pedido-item/<int:pk>/estado/', views_agenda.api_pedido_item_estado, name='api_pedido_item_estado'),
     path('resumen-nocturno/', views_agenda.resumen_nocturno, name='resumen_nocturno'),
 
     # Dashboards y Analítica

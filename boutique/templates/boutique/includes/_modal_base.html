@@ -1,0 +1,52 @@
+{#
+  _modal_base.html — Componente base para modales de Adelé Boutique
+  ─────────────────────────────────────────────────────────────────
+  Uso (en cualquier template):
+
+    {% include 'boutique/includes/_modal_base.html' with
+        modal_id="miModal"
+        modal_size=""            {# "" | "modal-sm" | "modal-lg" | "modal-xl" #}
+        modal_title="Título"
+        modal_body_id="cuerpoModal"
+        modal_footer_id="footerModal"
+        modal_static=True        {# True → backdrop estático (no cierra al click fuera) #}
+    %}
+
+  Luego rellena el cuerpo con:
+    <div id="cuerpoModal" class="modal-body"> ... </div>
+    <div id="footerModal" class="modal-footer"> ... </div>
+
+  O usa los bloques inline directamente en el mismo archivo.
+  Para modales nuevos se recomienda la versión con tags explícitos:
+
+    <div class="modal fade" id="miModal" tabindex="-1"
+         data-bs-backdrop="static" data-bs-keyboard="false">
+      {% include 'boutique/includes/_modal_base.html' with ... %}
+    </div>
+
+  Tokens usados: --bg-surface, --border-default, --text-primary
+#}
+
+{% with size=modal_size|default:"" static=modal_static|default:False %}
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1"
+     {% if static %}data-bs-backdrop="static" data-bs-keyboard="false"{% endif %}
+     aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
+  <div class="modal-dialog {{ size }} modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow"
+         style="border-radius: 16px; background: var(--bg-surface);">
+
+      <div class="modal-header border-bottom"
+           style="border-color: var(--border-default) !important; padding: 1.25rem 1.5rem;">
+        <h5 class="modal-title" id="{{ modal_id }}Label"
+            style="color: var(--text-primary);">{{ modal_title }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"
+                aria-label="Cerrar"></button>
+      </div>
+
+      {% block modal_body %}{% endblock %}
+      {% block modal_footer %}{% endblock %}
+
+    </div>
+  </div>
+</div>
+{% endwith %}

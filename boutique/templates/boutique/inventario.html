@@ -7,23 +7,31 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="fw-bold">Inventario</h2>
-    <div>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <h2 class="fw-bold mb-0">Inventario</h2>
+    <div class="d-flex flex-wrap gap-2">
         {% if es_admin %}
-        <button class="btn btn-primary rounded-pill me-2" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
+        <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
             <i class="bi bi-plus-lg me-2"></i>Nuevo Producto
         </button>
-        <a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-success rounded-pill me-2">
+        <a href="{% url 'subida_bloque' %}" class="btn btn-outline-primary rounded-pill">
+            <i class="bi bi-table me-2"></i>Subida en Bloque
+        </a>
+        <a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-success rounded-pill">
             <i class="bi bi-file-earmark-spreadsheet me-2"></i>Exportar CSV
         </a>
         {% endif %}
-        <a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning rounded-pill me-2">
+        <a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning rounded-pill">
             <i class="bi bi-exclamation-triangle me-2"></i>Pendientes
         </a>
-        <button class="btn btn-outline-primary rounded-pill me-2" id="btnPrintSelected">
+        <button class="btn btn-outline-primary rounded-pill" id="btnPrintSelected">
             <i class="bi bi-printer me-2"></i>Imprimir Etiquetas
         </button>
+        {% if es_admin %}
+        <button class="btn btn-outline-secondary rounded-pill" onclick="regenerarBarcodes()" title="Genera códigos de barras para productos que no los tienen">
+            <i class="bi bi-upc-scan me-2"></i>Regenerar Barcodes
+        </button>
+        {% endif %}
     </div>
 </div>
 
@@ -49,12 +57,12 @@
             <thead class="bg-light">
                 <tr>
                     <th style="width: 40px; padding-left: 20px;"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                    <th style="width:56px;"></th>
                     <th>Producto</th>
                     <th>Rasgos</th>
                     <th>Talla/Color</th>
                     <th>Precio</th>
                     <th>Stock</th>
-                    <th>Barras</th>
                     {% if es_admin %}<th>Acciones</th>{% endif %}
                 </tr>
             </thead>
@@ -62,6 +70,24 @@
                 {% for p in productos %}
                 <tr id="row-{{ p.id }}">
                     <td style="padding-left: 20px;"><input type="checkbox" class="product-check form-check-input" value="{{ p.id }}"></td>
+                    <td>
+                        {% if p.foto %}
+                        <img src="{{ p.foto.url }}"
+                             style="width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;"
+                             onclick="window.open('{{ p.foto.url }}','_blank')"
+                             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"
+                             title="Ver foto">
+                        <div style="display:none;width:48px;height:48px;border-radius:8px;border:2px dashed #dee2e6;align-items:center;justify-content:center;color:#ccc;cursor:pointer;"
+                             onclick="subirFotoProducto({{ p.id }}, this)" title="Agregar foto">
+                            <i class="bi bi-camera" style="font-size:1.1rem;"></i>
+                        </div>
+                        {% else %}
+                        <div style="width:48px;height:48px;border-radius:8px;border:2px dashed #dee2e6;display:flex;align-items:center;justify-content:center;color:#ccc;cursor:pointer;"
+                             onclick="subirFotoProducto({{ p.id }}, this)" title="Agregar foto">
+                            <i class="bi bi-camera" style="font-size:1.1rem;"></i>
+                        </div>
+                        {% endif %}
+                    </td>
                     <td>
                         <div class="fw-bold">{{ p.categoria.nombre }}</div>
                         <small class="text-muted">{{ p.sku }}</small>
@@ -88,22 +114,9 @@
                         </span>
                         {% endif %}
                     </td>
-                    <td>
-                        {% if p.barcode_image %}
-                        <div class="d-flex flex-column align-items-center">
-                            <img src="{{ p.barcode_image.url }}" alt="barcode" style="max-height: 50px;">
-                            <code class="small text-dark fw-bold">{{ p.sku }}</code>
-                        </div>
-                        {% else %}
-                        <code class="small">{{ p.sku }}</code>
-                        {% endif %}
-                    </td>
                     {% if es_admin %}
                     <td>
-                        <button class="btn btn-sm btn-outline-primary border-0" onclick="imprimirEtiqueta({{ p.id }}, '{{ p.sku }}')" title="Imprimir etiqueta">
-                            <i class="bi bi-printer"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }})">
+                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteProduct({{ p.id }})">
@@ -155,46 +168,71 @@
 
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Categoría</label>
-                        <select name="categoria" class="form-select" required>
+                        <select name="categoria" id="np_categoria" class="form-select" required>
                             <option value="">Seleccione categoría...</option>
                             {% for c in categorias %}
-                                <option value="{{ c.nombre }}">{{ c.nombre }}</option>
+                                <option value="{{ c.nombre }}" data-id="{{ c.id }}">{{ c.nombre }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Color</label>
-                        <select name="color" class="form-select" required>
-                            <option value="">Seleccione color...</option>
-                            {% for c in colores %}
-                                <option value="{{ c.nombre }}">{{ c.nombre }}</option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group">
+                            <select name="color" id="np_color" class="form-select" required>
+                                <option value="">Seleccione color...</option>
+                                {% for c in colores %}
+                                    <option value="{{ c.nombre }}" data-id="{{ c.id }}">{{ c.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevoColor()" title="Agregar color">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Rasgo 1 (Modelo)</label>
-                            <input type="text" name="rasgo1" class="form-control" placeholder="Ej: Manga Larga" required>
+                            <label class="form-label small fw-bold">Modelo</label>
+                            <div class="input-group">
+                                <select name="rasgo1" id="np_modelo" class="form-select">
+                                    <option value="">Sin modelo...</option>
+                                    {% for m in modelos %}
+                                        <option value="{{ m.nombre }}" data-id="{{ m.id }}">{{ m.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevoModelo()" title="Agregar modelo">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold">Rasgo 2 (Tela)</label>
-                            <input type="text" name="rasgo2" class="form-control" placeholder="Ej: Seda" required>
+                            <label class="form-label small fw-bold">Tela</label>
+                            <div class="input-group">
+                                <select name="rasgo2" id="np_tela" class="form-select">
+                                    <option value="">Sin tela...</option>
+                                    {% for t in telas %}
+                                        <option value="{{ t.nombre }}" data-id="{{ t.id }}">{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevaTela()" title="Agregar tela">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-4 mb-3">
                             <label class="form-label small fw-bold">Talla</label>
-                            <select name="talla" class="form-select" required>
-                                <option value="XS">XS</option>
-                                <option value="S">S</option>
-                                <option value="M" selected>M</option>
-                                <option value="L">L</option>
-                                <option value="XL">XL</option>
-                                <option value="2XL">2XL</option>
-                                <option value="3XL">3XL</option>
-                                <option value="4XL">4XL</option>
-                                <option value="U">Unitalla</option>
-                            </select>
+                            <div class="input-group">
+                                <select name="talla" id="np_talla" class="form-select" required>
+                                    <option value="">Talla...</option>
+                                    {% for t in tallas %}
+                                        <option value="{{ t.nombre }}" data-id="{{ t.id }}" {% if t.nombre == 'M' %}selected{% endif %}>{{ t.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary" onclick="abrirNuevaTalla()" title="Agregar talla">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="col-4 mb-3">
                             <label class="form-label small fw-bold">Precio</label>
@@ -240,6 +278,13 @@
             <div class="modal-body p-4">
                 <form id="editForm">
                     <input type="hidden" id="edit_id">
+                    <!-- Foto actual del producto -->
+                    <div class="mb-3 text-center" id="editFotoContainer">
+                        <div id="editFotoPreview"></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mt-2 rounded-pill" id="editFotoBtn" onclick="subirFotoDesdeModal()">
+                            <i class="bi bi-camera me-1"></i><span id="editFotoBtnLabel">Agregar foto</span>
+                        </button>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Rasgo 1</label>
                         <input type="text" id="edit_rasgo1" class="form-control" style="border-radius: 10px;">
@@ -273,7 +318,7 @@
 
                     <!-- Formulario oculto para agregar variante -->
                     <div id="addVariantForm" class="d-none p-3 bg-light rounded-3 mb-3 border">
-                        <h7 class="fw-bold d-block mb-2">Nueva Variante</h7>
+                        <p class="fw-bold mb-2">Nueva Variante</p>
                         <div class="row g-2">
                             <div class="col-6">
                                 <label class="form-label small">Color</label>
@@ -305,8 +350,19 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
     const csrfToken = '{{ csrf_token }}';
+
+    // Generar códigos de barras en el navegador (sin archivos en el servidor)
+    document.querySelectorAll('.inv-barcode').forEach(el => {
+        try {
+            JsBarcode(el, el.dataset.value, {
+                format: 'CODE128', height: 36, width: 1.2,
+                displayValue: false, margin: 2, background: 'transparent'
+            });
+        } catch(_) {}
+    });
 
     document.getElementById('selectAll').addEventListener('change', function(e) {
         document.querySelectorAll('.product-check').forEach(cb => cb.checked = e.target.checked);
@@ -320,17 +376,89 @@
         window.open(url, '_blank');
     });
 
-    function openEditModal(id, r1, r2, precio, stock) {
+    function openEditModal(id, r1, r2, precio, stock, fotoUrl) {
         document.getElementById('edit_id').value = id;
         document.getElementById('edit_rasgo1').value = r1;
         document.getElementById('edit_rasgo2').value = r2;
         document.getElementById('edit_precio').value = precio;
         document.getElementById('edit_stock').value = stock;
 
+        // Show photo preview
+        const preview = document.getElementById('editFotoPreview');
+        const btnLabel = document.getElementById('editFotoBtnLabel');
+        preview.innerHTML = '';
+        if (fotoUrl) {
+            const img = document.createElement('img');
+            img.src = fotoUrl;
+            img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;';
+            img.title = 'Ver foto';
+            img.onclick = () => window.open(fotoUrl, '_blank');
+            img.onerror = () => {
+                img.style.display = 'none';
+                const ph = document.createElement('div');
+                ph.style.cssText = 'width:80px;height:80px;border-radius:8px;border:2px dashed #dee2e6;display:inline-flex;align-items:center;justify-content:center;color:#ccc;';
+                ph.innerHTML = '<i class="bi bi-camera" style="font-size:1.5rem;"></i>';
+                preview.appendChild(ph);
+            };
+            preview.appendChild(img);
+            btnLabel.textContent = 'Cambiar foto';
+        } else {
+            const ph = document.createElement('div');
+            ph.style.cssText = 'width:80px;height:80px;border-radius:8px;border:2px dashed #dee2e6;display:inline-flex;align-items:center;justify-content:center;color:#ccc;margin:0 auto;';
+            ph.innerHTML = '<i class="bi bi-camera" style="font-size:1.5rem;"></i>';
+            preview.appendChild(ph);
+            btnLabel.textContent = 'Agregar foto';
+        }
+
         loadVariants(id);
         hideAddVariantForm();
 
         new bootstrap.Modal(document.getElementById('editModal')).show();
+    }
+
+    function subirFotoDesdeModal() {
+        const pk = document.getElementById('edit_id').value;
+        if (!pk) return;
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/*';
+        input.onchange = async () => {
+            const foto = input.files[0]; if (!foto) return;
+            const fd = new FormData(); fd.append('foto', foto);
+            try {
+                const res = await fetch(`/api/producto-foto/${pk}/`, {
+                    method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: fd
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    const preview = document.getElementById('editFotoPreview');
+                    preview.innerHTML = '';
+                    const img = document.createElement('img');
+                    img.src = data.foto_url;
+                    img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                    img.title = 'Ver foto';
+                    img.onclick = () => window.open(data.foto_url, '_blank');
+                    img.onerror = () => { img.style.display = 'none'; };
+                    preview.appendChild(img);
+                    document.getElementById('editFotoBtnLabel').textContent = 'Cambiar foto';
+                    // Also update the table row photo cell
+                    const rowImg = document.querySelector(`#row-${pk} img[title="Ver foto"]`);
+                    const rowDiv = document.querySelector(`#row-${pk} div[title="Agregar foto"]`);
+                    if (rowImg) {
+                        rowImg.src = data.foto_url;
+                    } else if (rowDiv) {
+                        const newImg = document.createElement('img');
+                        newImg.src = data.foto_url;
+                        newImg.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                        newImg.title = 'Ver foto';
+                        newImg.onclick = () => window.open(data.foto_url, '_blank');
+                        newImg.onerror = () => { newImg.style.display = 'none'; rowDiv.style.display = 'flex'; };
+                        rowDiv.style.display = 'none';
+                        rowDiv.parentNode.insertBefore(newImg, rowDiv);
+                    }
+                }
+            } catch (_) { alert('Error al subir la foto'); }
+        };
+        input.click();
     }
 
     function loadVariants(id) {
@@ -415,6 +543,11 @@
         });
     }
 
+    function _selectedId(selectEl) {
+        const opt = selectEl.options[selectEl.selectedIndex];
+        return opt ? (opt.dataset.id || null) : null;
+    }
+
     function crearProducto() {
         const form = document.getElementById('formNuevoProducto');
         const formData = new FormData(form);
@@ -425,7 +558,15 @@
             formData.append('foto', aiImage.files[0]);
         }
 
-        formData.append('forzar_crear', 'true');
+        // Append FK IDs for controlled catalog fields so the backend can enforce uniqueness
+        const colorSel = document.getElementById('np_color');
+        const modeloSel = document.getElementById('np_modelo');
+        const telaSel = document.getElementById('np_tela');
+        const tallaSel = document.getElementById('np_talla');
+        if (colorSel && _selectedId(colorSel))  formData.append('color_id',  _selectedId(colorSel));
+        if (modeloSel && _selectedId(modeloSel)) formData.append('modelo_id', _selectedId(modeloSel));
+        if (telaSel && _selectedId(telaSel))   formData.append('tela_id',   _selectedId(telaSel));
+        if (tallaSel && _selectedId(tallaSel))  formData.append('talla_id',  _selectedId(tallaSel));
 
         fetch('{% url "api_validar_crear_producto" %}', {
             method: 'POST',
@@ -437,11 +578,77 @@
             if (res.status === 'ok') {
                 alert('Producto creado: ' + res.sku);
                 location.reload();
+            } else if (res.status === 'blocked') {
+                alert(res.message);
             } else {
                 alert('Error: ' + res.message);
             }
         })
         .catch(err => alert('Error al procesar la solicitud'));
+    }
+
+    // ── "Agregar nuevo" helpers ──────────────────────────────
+    function _agregarOpcion(selectId, id, nombre) {
+        const sel = document.getElementById(selectId);
+        if (!sel) return;
+        const opt = document.createElement('option');
+        opt.value = nombre;
+        opt.dataset.id = id;
+        opt.text = nombre;
+        opt.selected = true;
+        sel.appendChild(opt);
+    }
+
+    function abrirNuevoColor() {
+        const nombre = prompt('Nombre del nuevo color:');
+        if (!nombre) return;
+        fetch('{% url "api_crear_color" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_color', res.id, res.nombre);
+            else alert(res.message);
+        });
+    }
+
+    function abrirNuevoModelo() {
+        const nombre = prompt('Nombre del nuevo modelo:');
+        if (!nombre) return;
+        fetch('{% url "api_crear_modelo_catalogo" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_modelo', res.id, res.nombre);
+            else alert(res.message);
+        });
+    }
+
+    function abrirNuevaTela() {
+        const nombre = prompt('Nombre de la nueva tela:');
+        if (!nombre) return;
+        fetch('{% url "api_crear_tela" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_tela', res.id, res.nombre);
+            else alert(res.message);
+        });
+    }
+
+    function abrirNuevaTalla() {
+        const nombre = prompt('Nombre de la nueva talla (ej: 38, XS+, Petite):');
+        if (!nombre) return;
+        fetch('{% url "api_crear_talla" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({nombre})
+        }).then(r => r.json()).then(res => {
+            if (res.status === 'ok') _agregarOpcion('np_talla', res.id, res.nombre);
+            else alert(res.message);
+        });
     }
 
     function deleteProduct(id) {
@@ -451,14 +658,25 @@
             method: 'POST',
             headers: { 'X-CSRFToken': csrfToken }
         })
-        .then(r => r.json())
+        .then(r => {
+            if (r.status === 403) {
+                throw new Error('Sin permiso para eliminar. Verifica que el perfil activo sea Admin.');
+            }
+            // Parsear JSON de forma segura; si la respuesta no es JSON (ej. página de error
+            // del servidor) se retorna un objeto de error genérico en lugar de lanzar excepción.
+            return r.json().catch(() => ({
+                status: 'error',
+                message: `Error del servidor (${r.status}). Intenta de nuevo.`
+            }));
+        })
         .then(res => {
             if (res.status === 'ok') {
                 document.getElementById(`row-${id}`).remove();
             } else {
-                alert('Error: ' + res.message);
+                alert('No se pudo eliminar: ' + (res.message || 'Error desconocido.'));
             }
-        });
+        })
+        .catch(err => alert('Error al eliminar: ' + err.message));
     }
 
     function fillFormWithAiData(attrs) {
@@ -537,6 +755,35 @@
         });
     });
 
+    // ── Subir foto a producto existente ──────────────────────────────────────
+    function subirFotoProducto(pk, iconCell) {
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/*';
+        input.onchange = async () => {
+            const foto = input.files[0]; if (!foto) return;
+            const fd = new FormData(); fd.append('foto', foto);
+            try {
+                const res = await fetch(`/api/producto-foto/${pk}/`, {
+                    method: 'POST', headers: { 'X-CSRFToken': csrfToken }, body: fd
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    const img = document.createElement('img');
+                    img.src = data.foto_url;
+                    img.style.cssText = 'width:48px;height:48px;object-fit:cover;border-radius:8px;cursor:pointer;';
+                    img.title = 'Ver foto';
+                    img.onclick = () => window.open(data.foto_url, '_blank');
+                    img.onerror = () => { img.style.display = 'none'; iconCell.style.display = 'flex'; };
+                    // Remove stale errored img sibling if present
+                    const prevImg = iconCell.previousElementSibling;
+                    if (prevImg && prevImg.tagName === 'IMG') prevImg.remove();
+                    iconCell.replaceWith(img);
+                }
+            } catch (_) { alert('Error al subir la foto'); }
+        };
+        input.click();
+    }
+
     function imprimirEtiqueta(id, sku) {
         const cantidad = prompt(`¿Cuántas etiquetas de ${sku} deseas imprimir?`, '1');
         if (!cantidad) return;
@@ -557,6 +804,26 @@
         .catch(err => {
             alert('Error al conectar con la impresora');
         });
+    }
+
+    async function regenerarBarcodes() {
+        if (!confirm('¿Regenerar códigos de barras para todos los productos sin barcode?')) return;
+        const btn = event.target.closest('button');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+        try {
+            const res = await fetch('/api/regenerar-barcodes/', {
+                method: 'POST',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            });
+            const data = await res.json();
+            alert(data.message || 'Completado');
+            location.reload();
+        } catch(e) {
+            alert('Error al regenerar barcodes');
+        } finally {
+            btn.disabled = false;
+        }
     }
 </script>
 {% endblock %}

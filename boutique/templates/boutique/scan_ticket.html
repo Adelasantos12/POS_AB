@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>{{ ticket.folio }} — {{ config.nombre_comercial }}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --rose:   {{ tienda_config.color_primario|default:"#9D174D" }};
+  --gold:   #B8986A;
+  --ink:    #0F0F0F;
+  --soft:   #6B6560;
+  --bg:     #F8F6F2;
+  --card:   #FFFFFF;
+  --border: #EAE6DF;
+  --ok:     #059669;
+  --warn:   #D97706;
+  --cancel: #DC2626;
+  --prog:   #2563EB;
+}
+body{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:3rem;-webkit-font-smoothing:antialiased}
+.header{background:var(--ink);padding:1.5rem 1.25rem 1.25rem;text-align:center}
+.header-logo{max-height:64px;max-width:180px;object-fit:contain;filter:brightness(0) invert(1)}
+.header-brand{color:#fff;font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;margin-top:.5rem;opacity:.55}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;margin:1rem .875rem;overflow:hidden}
+.card-body{padding:1.25rem 1.25rem}
+.folio{font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:var(--soft);margin-bottom:.3rem}
+.folio-num{font-size:1.4rem;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.badge{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .75rem;border-radius:100px;font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-top:.6rem}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge.ok{background:#D1FAE5;color:#065F46}
+.badge.warn{background:#FEF3C7;color:#92400E}
+.badge.cancel{background:#FEE2E2;color:#991B1B}
+.badge.progress{background:#DBEAFE;color:#1E3A8A}
+.badge.neutral{background:#F3F4F6;color:#374151}
+.section-label{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:var(--soft);margin-bottom:.625rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)}
+.client-name{font-size:1.05rem;font-weight:700;color:var(--ink)}
+.client-tel{font-size:.85rem;color:var(--soft);margin-top:.2rem}
+.client-tel a{color:var(--rose);text-decoration:none;font-weight:600}
+
+/* Photos */
+.photos{display:flex;gap:.625rem;overflow-x:auto;padding:.125rem 0;scrollbar-width:none}
+.photos::-webkit-scrollbar{display:none}
+.photo-frame{flex:0 0 auto;width:140px;height:180px;border-radius:12px;overflow:hidden;background:var(--border)}
+.photo-frame img{width:100%;height:100%;object-fit:cover}
+.photo-empty{width:140px;height:180px;border-radius:12px;background:var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--soft);font-size:.75rem;text-align:center;gap:.375rem;padding:1rem}
+.photo-icon{font-size:2rem;opacity:.4}
+
+/* Details */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem}
+.detail-item .k{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+.detail-item .v{font-size:.9rem;font-weight:600;color:var(--ink);margin-top:.1rem}
+
+/* Items list */
+.item-row{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;padding:.625rem 0;border-bottom:1px solid var(--border)}
+.item-row:last-child{border-bottom:none}
+.item-desc{font-size:.875rem;color:var(--ink);flex:1}
+.item-qty{font-size:.75rem;color:var(--soft);margin-top:.15rem}
+.item-price{font-size:.875rem;font-weight:600;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+.srv-tag{font-size:.6rem;background:#F3F4F6;color:var(--soft);padding:.1rem .4rem;border-radius:4px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;margin-left:.3rem}
+
+/* Totals */
+.totals{margin-top:.75rem;border-top:2px solid var(--ink);padding-top:.875rem}
+.total-row{display:flex;justify-content:space-between;font-size:.875rem;margin-bottom:.35rem;font-variant-numeric:tabular-nums}
+.total-row.main{font-size:1rem;font-weight:700}
+.total-row.saldo{color:var(--warn);font-weight:700}
+.total-row.saldo.ok{color:var(--ok)}
+
+/* Date */
+.date-pill{display:inline-flex;align-items:center;gap:.4rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.4rem .75rem;font-size:.8rem;color:var(--soft)}
+.date-pill strong{color:var(--ink)}
+
+/* Footer */
+.footer{text-align:center;padding:1.5rem 1rem 0;font-size:.7rem;color:var(--soft)}
+.footer strong{color:var(--rose)}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  {% if config.logo %}
+    <img src="{{ config.logo.url }}" alt="{{ config.nombre_comercial }}" class="header-logo">
+  {% else %}
+    <div style="color:#fff;font-size:1.1rem;letter-spacing:.06em;font-weight:700;opacity:.9;">{{ config.nombre_comercial }}</div>
+  {% endif %}
+  {% if config.tagline %}
+    <div class="header-brand">{{ config.tagline }}</div>
+  {% endif %}
+</div>
+
+<!-- Folio y estado -->
+<div class="card">
+  <div class="card-body">
+    <div class="folio">Folio del pedido</div>
+    <div class="folio-num">{{ ticket.folio }}</div>
+    {% if estado_display %}
+      <div class="badge {{ estado_css }}">{{ estado_display }}</div>
+    {% endif %}
+    <div style="margin-top:.75rem;font-size:.75rem;color:var(--soft);">
+      {{ ticket.get_tipo_display }} · {{ ticket.fecha_hora|date:"d/m/Y H:i" }}
+    </div>
+  </div>
+</div>
+
+<!-- Cliente -->
+{% if cliente_nombre %}
+<div class="card">
+  <div class="card-body">
+    <div class="section-label">Cliente</div>
+    <div class="client-name">{{ cliente_nombre }}</div>
+    {% if cliente_telefono %}
+      <div class="client-tel">
+        <a href="tel:{{ cliente_telefono }}">{{ cliente_telefono }}</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Foto de la prenda -->
+<div class="card">
+  <div class="card-body">
+    <div class="section-label">Prenda{% if fotos|length > 1 %}s{% endif %}</div>
+    <div class="photos">
+      {% if fotos %}
+        {% for f in fotos %}
+          <div class="photo-frame">
+            <img src="{{ f.url }}" alt="{{ f.descripcion }}" loading="lazy">
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="photo-empty">
+          <span class="photo-icon">👗</span>
+          Sin foto registrada
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Detalles del producto (modelo, color, talla) -->
+{% if detalles_extra %}
+<div class="card">
+  <div class="card-body">
+    <div class="section-label">Detalle de la prenda</div>
+    <div class="detail-grid">
+      {% for key, val in detalles_extra.items %}
+        <div class="detail-item">
+          <div class="k">{{ key }}</div>
+          <div class="v">{{ val }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Artículos del ticket -->
+{% if items %}
+<div class="card">
+  <div class="card-body">
+    <div class="section-label">Artículos</div>
+    {% for it in items %}
+      <div class="item-row">
+        <div>
+          <div class="item-desc">
+            {{ it.descripcion }}
+            {% if it.es_servicio %}<span class="srv-tag">Servicio</span>{% endif %}
+          </div>
+          {% if it.cantidad and it.cantidad > 1 %}
+            <div class="item-qty">× {{ it.cantidad }}</div>
+          {% endif %}
+        </div>
+        <div class="item-price">${{ it.subtotal|floatformat:2 }}</div>
+      </div>
+    {% endfor %}
+
+    <div class="totals">
+      <div class="total-row main">
+        <span>Total</span>
+        <span>${{ snap.total|default:ticket.total|floatformat:2 }}</span>
+      </div>
+      {% if saldo is not None %}
+        {% if saldo > 0 %}
+          <div class="total-row saldo">
+            <span>Saldo pendiente</span>
+            <span>${{ saldo|floatformat:2 }}</span>
+          </div>
+        {% else %}
+          <div class="total-row saldo ok">
+            <span>Pagado en su totalidad</span>
+            <span>✓</span>
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Fecha de entrega -->
+{% if fecha_entrega %}
+<div class="card">
+  <div class="card-body">
+    <div class="section-label">Fecha de entrega</div>
+    <div class="date-pill">
+      📅 <strong>{{ fecha_entrega|date:"d \d\e F, Y" }}</strong>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="footer">
+  <strong>{{ config.nombre_comercial }}</strong><br>
+  {% if config.telefono_whatsapp %}{{ config.telefono_whatsapp }}{% endif %}
+  {% if config.direccion %}<br>{{ config.direccion }}{% endif %}
+</div>
+
+</body>
+</html>

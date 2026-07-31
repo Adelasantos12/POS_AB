@@ -77,9 +77,11 @@
                                     title="Editar Entrega">
                                 <i class="bi bi-calendar-event"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ a.folio }}')" title="Imprimir Ticket">
+                            {% with t_folio=a.tickets_asociados.first.folio|default:a.folio %}
+                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ t_folio }}')" title="Imprimir Ticket">
                                 <i class="bi bi-printer"></i>
                             </button>
+                            {% endwith %}
                         </div>
                     </td>
                 </tr>
