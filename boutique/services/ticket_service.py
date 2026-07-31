@@ -43,7 +43,8 @@ def generate_pdf_ticket(ticket_id):
             pass  # Si falla, continuar sin logo
 
     # ── Encabezado ──────────────────────────────────────────
-    p.setFillColorRGB(0.616, 0.090, 0.302)  # #9D174D brand rose
+    r, g, b = config.receipt_rgb
+    p.setFillColorRGB(r, g, b)
     p.setFont("Helvetica-Bold", 14)
     p.drawCentredString(width / 2, y, config.nombre_comercial)
     y -= 0.25 * inch

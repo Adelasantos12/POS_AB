@@ -18,9 +18,16 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap"
           rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap" rel="stylesheet"></noscript>
+    {# ── Token de identidad de marca — se sobreescribe con los valores de BD ── #}
+    <style>
+      :root {
+        --primary:       {{ tienda_config.color_primario|default:"#9D174D" }};
+        --primary-hover: {{ tienda_config.color_primario|default:"#9D174D" }};
+      }
+    </style>
     <style>
         :root {
-            /* Adelé Boutique Palette */
+            /* Paleta base — los valores de --primary se inyectan arriba desde BD */
             --primary: #9D174D;
             --primary-hover: #831843;
             --secondary: #0F172A;
@@ -418,7 +425,7 @@
     {% if request.active_profile %}
     <!-- Mobile Top Bar -->
     <div class="mobile-topbar">
-        <span class="logo" style="font-size: 1.25rem; margin-bottom: 0;">ByEasy</span>
+        <span class="logo" style="font-size: 1.25rem; margin-bottom: 0;">{{ tienda_config.nombre_comercial }}</span>
         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar" aria-controls="offcanvasSidebar">
             <i class="bi bi-list fs-5"></i>
         </button>
@@ -427,7 +434,7 @@
     <!-- Offcanvas Sidebar (mobile) -->
     <div class="offcanvas offcanvas-start offcanvas-sidebar" tabindex="-1" id="offcanvasSidebar">
         <div class="offcanvas-header border-bottom">
-            <span class="logo" style="font-size: 1.5rem; margin-bottom: 0;">ByEasy</span>
+            <span class="logo" style="font-size: 1.5rem; margin-bottom: 0;">{{ tienda_config.nombre_comercial }}</span>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
         </div>
         <div class="offcanvas-body p-3 d-flex flex-column">
@@ -476,7 +483,8 @@
 
     <!-- Sidebar Navigation (desktop) -->
     <nav class="sidebar" data-testid="sidebar-nav">
-        <div class="logo">ByEasy</div>
+        <div class="logo">{{ tienda_config.nombre_comercial }}</div>
+        {% if tienda_config.tagline %}<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);margin-top:-.5rem;margin-bottom:1rem;padding-left:.25rem;">{{ tienda_config.tagline }}</div>{% endif %}
         
         <ul class="nav flex-column flex-grow-1">
             {% with profile=request.active_profile %}

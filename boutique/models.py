@@ -60,12 +60,39 @@ class ConfiguracionTienda(models.Model):
     # Folios
     prefijo_sucursal = models.CharField(max_length=10, default="GDL", help_text="Ej: GDL")
 
+    # ── Identidad de marca (IDENTITY SLOT) ────────────────────────────
+    tagline = models.CharField(
+        max_length=200, blank=True,
+        default="Alta moda nupcial · Cuernavaca",
+        verbose_name="Tagline",
+        help_text="Ej: Alta moda nupcial · Cuernavaca",
+    )
+    color_primario = models.CharField(
+        max_length=7, default="#9D174D",
+        verbose_name="Color primario (hex)",
+        help_text="Ej: #9D174D — controla botones, acentos y encabezado del ticket",
+    )
+    color_secundario = models.CharField(
+        max_length=7, default="#F9A8D4",
+        verbose_name="Color secundario (hex)",
+        help_text="Ej: #F9A8D4 — gradientes y fondos suaves",
+    )
+
     class Meta:
         verbose_name = "Configuración de la Tienda"
         verbose_name_plural = "Configuración de la Tienda"
 
     def __str__(self):
         return self.nombre_comercial
+
+    @property
+    def receipt_rgb(self):
+        """Tupla RGB fraccional (para ReportLab) derivada de color_primario."""
+        try:
+            h = (self.color_primario or "#9D174D").lstrip('#')
+            return (int(h[0:2], 16) / 255, int(h[2:4], 16) / 255, int(h[4:6], 16) / 255)
+        except Exception:
+            return (0.616, 0.090, 0.302)
 
     @classmethod
     def get_solo(cls):
