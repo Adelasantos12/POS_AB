@@ -662,8 +662,6 @@
             if (r.status === 403) {
                 throw new Error('Sin permiso para eliminar. Verifica que el perfil activo sea Admin.');
             }
-            // Parsear JSON de forma segura; si la respuesta no es JSON (ej. página de error
-            // del servidor) se retorna un objeto de error genérico en lugar de lanzar excepción.
             return r.json().catch(() => ({
                 status: 'error',
                 message: `Error del servidor (${r.status}). Intenta de nuevo.`
@@ -672,6 +670,14 @@
         .then(res => {
             if (res.status === 'ok') {
                 document.getElementById(`row-${id}`).remove();
+                if (res.archived) {
+                    // Tenía historial, se archivó en lugar de borrarse
+                    const toast = document.createElement('div');
+                    toast.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:.6rem 1.2rem;border-radius:8px;font-size:.85rem;z-index:9999';
+                    toast.textContent = 'Producto archivado — ya no aparece en inventario';
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3500);
+                }
             } else {
                 alert('No se pudo eliminar: ' + (res.message || 'Error desconocido.'));
             }
