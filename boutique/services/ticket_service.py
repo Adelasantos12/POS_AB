@@ -7,6 +7,56 @@ from reportlab.lib.units import inch
 import qrcode
 
 
+def _get_live_financial_data(ticket):
+    """
+    Return (total_acum, saldo, abonos) from live DB records.
+    Falls back to snapshot_json if the linked object has been deleted.
+    """
+    from ..models import Apartado, Pedido, Servicio
+
+    snapshot = ticket.snapshot_json or {}
+    total_acum = None
+    saldo = None
+    abonos_live = None
+
+    try:
+        if ticket.apartado_id:
+            ap = Apartado.objects.get(pk=ticket.apartado_id)
+            total_acum = float(ap.anticipo)
+            saldo = float(ap.saldo)
+            abonos_live = [
+                {'fecha': p.fecha.isoformat(), 'monto': float(p.monto), 'metodo': p.metodo}
+                for p in ap.pagos_apartado.order_by('fecha', 'id')
+            ]
+        elif ticket.pedido_id:
+            ped = Pedido.objects.get(pk=ticket.pedido_id)
+            total_acum = float(ped.total_pagado)
+            saldo = float(ped.saldo_pendiente)
+            abonos_live = [
+                {'fecha': p.fecha.isoformat(), 'monto': float(p.monto), 'metodo': p.metodo}
+                for p in ped.pagos_pedido.order_by('fecha', 'id')
+            ]
+        elif ticket.servicio_id:
+            srv = Servicio.objects.get(pk=ticket.servicio_id)
+            total_acum = float(srv.total_pagado)
+            saldo = float(srv.saldo_pendiente)
+            abonos_live = [
+                {'fecha': p.fecha.isoformat(), 'monto': float(p.monto), 'metodo': p.metodo}
+                for p in srv.pagos_servicio.order_by('fecha', 'id')
+            ]
+    except Exception:
+        pass  # object deleted — fall back to snapshot
+
+    if total_acum is None:
+        total_acum = snapshot.get('total_pagado_acumulado', float(ticket.total_pagado))
+    if saldo is None:
+        saldo = snapshot.get('saldo_pendiente', float(ticket.total - ticket.total_pagado))
+    if abonos_live is None:
+        abonos_live = snapshot.get('abonos', [])
+
+    return total_acum, saldo, abonos_live
+
+
 def generate_pdf_ticket(ticket_id):
     """Genera un PDF de respaldo para el ticket con formato térmico 80mm"""
     ticket = Ticket.objects.get(id=ticket_id)
@@ -266,8 +316,7 @@ def generate_pdf_ticket(ticket_id):
     p.drawRightString(width - 0.2 * inch, y, f"${ticket.total_pagado:.2f}")
     y -= 0.15 * inch
 
-    total_acum = snapshot.get('total_pagado_acumulado', float(ticket.total_pagado))
-    saldo = snapshot.get('saldo_pendiente', float(ticket.total - ticket.total_pagado))
+    total_acum, saldo, abonos_live = _get_live_financial_data(ticket)
 
     p.drawString(0.6 * inch, y, "Total pagado acum.:")
     p.drawRightString(width - 0.2 * inch, y, f"${total_acum:.2f}")
@@ -285,7 +334,7 @@ def generate_pdf_ticket(ticket_id):
         y -= 0.15 * inch
 
     # ── Historial de pagos ───────────────────────────────────
-    abonos = snapshot.get('abonos', [])
+    abonos = abonos_live
     if len(abonos) > 1:
         p.setFont("Helvetica-Bold", 7)
         p.drawString(0.2 * inch, y, "Historial de pagos:")
@@ -507,8 +556,7 @@ def generate_escpos_data(ticket_id):
     d.set(bold=False)
     d.text(f"Pagado ahora: ${ticket.total_pagado:>18.2f}\n")
 
-    total_acum = snapshot.get('total_pagado_acumulado', float(ticket.total_pagado))
-    saldo = snapshot.get('saldo_pendiente', float(ticket.total - ticket.total_pagado))
+    total_acum, saldo, abonos_live = _get_live_financial_data(ticket)
     d.text(f"Total pagado: ${total_acum:>18.2f}\n")
     if saldo > 0:
         d.set(bold=True)
@@ -517,7 +565,7 @@ def generate_escpos_data(ticket_id):
         d.text("Liquida el saldo al recoger.\n")
 
     # ── Historial de pagos ───────────────────────────────────
-    abonos = snapshot.get('abonos', [])
+    abonos = abonos_live
     if len(abonos) > 1:
         d.text("Pagos anteriores:\n")
         for ab in abonos[-6:]:
