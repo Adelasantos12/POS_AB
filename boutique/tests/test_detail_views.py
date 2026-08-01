@@ -51,10 +51,11 @@ class PedidoStrCrashTest(TestCase):
         ConfiguracionTienda.get_solo()
         self.user = _make_vendedor('vend_str_test')
 
-    def test_str_with_null_novia_raises(self):
+    def test_str_with_null_novia_is_safe(self):
         """
-        REPRODUCE BUG: str(pedido) with novia=None raises AttributeError.
-        After the fix it must return a string (not raise).
+        str(pedido) with novia=None must not raise and must return a
+        non-empty string.  Previous code crashed with:
+          AttributeError: 'NoneType' object has no attribute 'nombre'
         """
         from boutique.models import Pedido
         pedido = Pedido.objects.create(
@@ -63,11 +64,10 @@ class PedidoStrCrashTest(TestCase):
             evento='Fiesta',
             creado_por=self.user,
         )
-        # Current code: raises AttributeError('NoneType' object has no attribute 'nombre')
-        # Fixed code: returns a non-empty string containing 'Sin novia' or similar
-        with self.assertRaises(AttributeError,
-                               msg="Expected AttributeError — fix is not yet applied"):
-            _ = str(pedido)
+        result = str(pedido)
+        self.assertIsInstance(result, str)
+        self.assertTrue(result, "str(pedido) must not be empty")
+        self.assertIn('Sin novia', result)
 
 
 class NoviaDetallePerfTest(TestCase):
