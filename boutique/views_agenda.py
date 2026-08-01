@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, Prefetch
 from django.utils import timezone
 from datetime import datetime, timedelta, date
 from decimal import Decimal
@@ -495,8 +495,17 @@ def novias_list(request):
             Q(nombre__icontains=q) | Q(telefono__icontains=q)
         )
     
+    # Prefetch with to_attr='pedidos_cache' so Novia._pedidos_list() reuses
+    # the loaded data without extra queries per semaforo_* property call.
     novias = novias.order_by('fecha_boda').prefetch_related(
-        'pedidos', 'pedidos__pagos_pedido', 'damas'
+        Prefetch(
+            'pedidos',
+            queryset=Pedido.objects.select_related(
+                'medidas', 'color', 'tela', 'modelo', 'cliente'
+            ).prefetch_related('pagos_pedido'),
+            to_attr='pedidos_cache',
+        ),
+        'damas',
     )
     
     return render(request, 'boutique/novias_list.html', {
@@ -508,20 +517,30 @@ def novias_list(request):
 @profile_permission_required(['Agenda', 'Vendedor'])
 def novia_detalle(request, pk):
     """Detalle de una novia con su grupo y pedidos"""
-    novia = get_object_or_404(Novia, pk=pk, activo=True)
-    damas = novia.damas.filter(activo=True)
-    pedidos = novia.pedidos.all().order_by('-fecha_creacion').select_related(
-        'modelo', 'color', 'tela', 'cliente'
-    ).prefetch_related('pagos_pedido')
+    # Prefetch into pedidos_cache so semaforo_* / total_pagado / resumen_*
+    # properties work in memory without extra per-property DB queries.
+    novia_qs = Novia.objects.prefetch_related(
+        Prefetch(
+            'pedidos',
+            queryset=Pedido.objects.select_related(
+                'medidas', 'modelo', 'color', 'tela', 'cliente'
+            ).prefetch_related('pagos_pedido').order_by('-fecha_creacion'),
+            to_attr='pedidos_cache',
+        ),
+        'damas',
+    )
+    novia = get_object_or_404(novia_qs, pk=pk, activo=True)
+
+    # Use in-memory cache; sort is already applied in the Prefetch queryset
+    pedidos = novia.pedidos_cache
+    damas = [d for d in novia.damas.all() if d.activo]
     citas = novia.citas.all().order_by('fecha', 'hora_inicio')
-    
+
     # Apartados vinculados
-    from boutique.models import Apartado
     apartados_vinculados = Apartado.objects.filter(novia=novia).order_by('-fecha_creacion')
 
-    # Resumen del grupo
     resumen = novia.resumen_grupo
-    
+
     return render(request, 'boutique/novia_detalle.html', {
         'novia': novia,
         'damas': damas,
