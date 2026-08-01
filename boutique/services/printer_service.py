@@ -1,223 +1,240 @@
 """
 Servicio de impresión de etiquetas Brother QL-800
-Para Adelé Boutique (Gdl) - ByEasy POS
+Adelé Boutique (Gdl) — ByEasy POS
+
+Cinta instalada : 62 mm continua (DK-22243 o similar)
+Largo de etiqueta: 20 mm  (el QL-800 corta según el alto de la imagen)
+
+Cálculo de píxeles a 300 DPI:
+  Cinta 62 mm  → 696 px de área imprimible
+  Alto  20 mm  → 236 px  (20 / 25.4 * 300 ≈ 236)
+
+Layout (696 × 236 px):
+  ┌──────────────────────────────────────────────┐
+  │ ████████████ barcode ████████████  $1,200    │
+  │                                   T: M       │
+  │  SKU-0042                                    │
+  └──────────────────────────────────────────────┘
 """
-import os
 import logging
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-# Configuración de la impresora Brother QL-800
+# ── Configuración ────────────────────────────────────────────────────────────
 BROTHER_PRINTER_MODEL = 'QL-800'
-BROTHER_LABEL_SIZE = '62'  # 62mm labels
-BROTHER_BACKEND = 'pyusb'  # USB connection
+BROTHER_LABEL_SIZE    = '62'      # cinta continua 62 mm (DK-22243); corta a LABEL_H
+BROTHER_BACKEND       = 'pyusb'
+
+# 62 mm tape at 300 DPI → 696 px printable width; 20 mm height → 236 px
+LABEL_W  = 696   # px
+LABEL_H  = 236   # px
+
+MARGIN_X = 20    # px lateral (~1.7 mm cada lado)
+MARGIN_Y = 10    # px superior/inferior
+
+SKU_STRIP_H = 30  # px — franja inferior para SKU
+
+
+# ── Detección de impresora ───────────────────────────────────────────────────
 
 def get_brother_printer():
-    """Detecta y retorna la impresora Brother QL-800 conectada por USB"""
+    """Detecta la primera Brother QL conectada por USB."""
     try:
         from brother_ql.backends.helpers import discover
-        from brother_ql.backends import backend_factory
-        
-        # Descubrir impresoras conectadas
-        available_devices = discover(backend_identifier=BROTHER_BACKEND)
-        
-        if not available_devices:
-            logger.warning("No se encontró impresora Brother QL conectada")
+        devices = discover(backend_identifier=BROTHER_BACKEND)
+        if not devices:
             return None, "No se encontró impresora Brother QL-800 conectada por USB"
-        
-        # Usar la primera impresora encontrada
-        printer_identifier = available_devices[0]['identifier']
-        logger.info(f"Impresora encontrada: {printer_identifier}")
-        
-        return printer_identifier, None
-        
+        printer_id = devices[0]['identifier']
+        logger.info(f"Impresora encontrada: {printer_id}")
+        return printer_id, None
     except ImportError:
-        return None, "Librería brother_ql no instalada. Ejecuta: pip install brother_ql"
+        return None, "Librería brother_ql no instalada."
     except Exception as e:
-        logger.error(f"Error al detectar impresora: {e}")
-        return None, f"Error al detectar impresora: {str(e)}"
+        logger.error(f"Error detectando impresora: {e}")
+        return None, f"Error: {e}"
 
 
-def crear_imagen_etiqueta(producto, width=696, height=271):
+# ── Helper de fuente ─────────────────────────────────────────────────────────
+
+def _font(size, bold=False):
+    """Carga fuente TTF del sistema; fallback a fuente por defecto."""
+    paths_bold   = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/System/Library/Fonts/Helvetica.ttc"]
+    paths_normal = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/System/Library/Fonts/Helvetica.ttc"]
+    for p in (paths_bold if bold else paths_normal):
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+# ── Diseño de etiqueta ───────────────────────────────────────────────────────
+
+def crear_imagen_etiqueta(producto):
     """
-    Crea una imagen de etiqueta para el producto
-    Tamaño optimizado para etiquetas Brother 62mm
+    Genera imagen landscape 566 × 165 px para DK-11204.
+
+    brother_ql rotate='auto' la rota a portrait (165 × 566) al enviarla
+    a la impresora, de modo que ocupe el ancho completo de la cinta.
     """
-    # Crear imagen blanca
-    img = Image.new('RGB', (width, height), color='white')
+    img  = Image.new('RGB', (LABEL_W, LABEL_H), color='white')
     draw = ImageDraw.Draw(img)
-    
-    # Intentar cargar fuentes del sistema
-    try:
-        font_grande = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
-        font_mediana = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-        font_pequeña = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
-    except:
-        font_grande = ImageFont.load_default()
-        font_mediana = ImageFont.load_default()
-        font_pequeña = ImageFont.load_default()
-    
-    # Dibujar contenido
-    y_pos = 15
-    
-    # Categoría
-    draw.text((20, y_pos), producto.categoria.nombre.upper(), fill='black', font=font_grande)
-    y_pos += 40
-    
-    # Rasgos
-    rasgo_texto = f"{producto.rasgo1}"
-    if producto.rasgo2:
-        rasgo_texto += f" | {producto.rasgo2}"
-    draw.text((20, y_pos), rasgo_texto, fill='black', font=font_mediana)
-    y_pos += 30
-    
-    # Color y Talla
-    draw.text((20, y_pos), f"Color: {producto.color.nombre}  |  Talla: {producto.talla}", fill='gray', font=font_pequeña)
-    y_pos += 25
-    
-    # Línea separadora
-    draw.line([(20, y_pos), (width - 20, y_pos)], fill='lightgray', width=1)
-    y_pos += 10
-    
-    # Precio
-    precio_texto = f"${producto.precio_venta:,.0f}"
-    draw.text((20, y_pos), precio_texto, fill='black', font=font_grande)
-    
-    # SKU a la derecha
-    draw.text((width - 200, y_pos + 5), f"SKU: {producto.sku}", fill='gray', font=font_pequeña)
-    y_pos += 45
-    
-    # Código de barras (si existe)
+
+    sku_text    = producto.sku or ""
+    precio_text = f"${producto.precio_venta:,.0f}" if producto.precio_venta else "$---"
+    talla_text  = f"T: {producto.talla}" if producto.talla else ""
+    color_text  = producto.color.nombre.upper() if getattr(producto, 'color', None) else ""
+
+    # Fuentes
+    f_price = _font(52, bold=True)
+    f_talla = _font(28, bold=False)
+    f_color = _font(22, bold=True)
+    f_sku   = _font(20, bold=False)
+
+    # Altura disponible para el barcode (sin franja SKU ni márgenes)
+    bc_zone_h = LABEL_H - 2 * MARGIN_Y - SKU_STRIP_H   # ≈ 129 px
+
+    barcode_placed = False
+    bc_w = 0
+
     if producto.barcode_image:
         try:
-            barcode_path = producto.barcode_image.path
-            barcode_img = Image.open(barcode_path)
-            barcode_img = barcode_img.resize((200, 50))
-            img.paste(barcode_img, (width - 220, y_pos))
-        except:
-            pass
-    
-    # Nombre de la tienda
-    draw.text((20, height - 30), "Adelé Boutique (Gdl)", fill='lightgray', font=font_pequeña)
-    
+            from PIL import Image as PilImage
+
+            try:
+                bc_img = PilImage.open(producto.barcode_image.path)
+            except Exception:
+                import urllib.request, tempfile, os
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                tmp.close()
+                urllib.request.urlretrieve(producto.barcode_image.url, tmp.name)
+                bc_img = PilImage.open(tmp.name)
+                os.unlink(tmp.name)
+
+            bc_h = bc_zone_h
+            bc_w = int(bc_img.width * bc_h / bc_img.height)
+            bc_w = min(bc_w, int((LABEL_W - 2 * MARGIN_X) * 0.60))
+            bc_img = bc_img.convert('RGB').resize((bc_w, bc_h), Image.LANCZOS)
+            img.paste(bc_img, (MARGIN_X, MARGIN_Y))
+            barcode_placed = True
+
+        except Exception as exc:
+            logger.warning(f"No se pudo cargar barcode para {producto.sku}: {exc}")
+
+    # ── Zona derecha: precio + talla ─────────────────────────────────────────
+    right_x = MARGIN_X + bc_w + 14 if barcode_placed else int(LABEL_W * 0.55)
+    right_w = LABEL_W - MARGIN_X - right_x
+
+    if right_w > 40:
+        price_w = draw.textlength(precio_text, font=f_price)
+        if price_w > right_w:
+            f_price = _font(38, bold=True)
+            price_w = draw.textlength(precio_text, font=f_price)
+
+        mid_h = 56 + (32 if talla_text else 0) + (28 if color_text else 0)
+        price_y = MARGIN_Y + max(0, (bc_zone_h - mid_h) // 2)
+        draw.text((right_x, price_y), precio_text, fill='black', font=f_price)
+
+        next_y = price_y + 58
+        if talla_text:
+            draw.text((right_x, next_y), talla_text, fill='#444444', font=f_talla)
+            next_y += 32
+        if color_text:
+            draw.text((right_x, next_y), color_text, fill='black', font=f_color)
+
+    # ── Franja inferior: SKU ─────────────────────────────────────────────────
+    sku_y = LABEL_H - MARGIN_Y - SKU_STRIP_H + 3
+    if sku_text:
+        if barcode_placed:
+            draw.text((MARGIN_X, sku_y), sku_text, fill='#666666', font=f_sku)
+        else:
+            f_sku_big = _font(26, bold=True)
+            sku_bw = draw.textlength(sku_text, font=f_sku_big)
+            draw.text(((LABEL_W - sku_bw) / 2, MARGIN_Y + 8), sku_text,
+                      fill='black', font=f_sku_big)
+
     return img
 
 
+# ── Impresión ─────────────────────────────────────────────────────────────────
+
 def imprimir_etiqueta_brother(producto, cantidad=1):
-    """
-    Imprime etiqueta(s) para un producto en la Brother QL-800
-    
-    Args:
-        producto: Instancia del modelo Producto
-        cantidad: Número de etiquetas a imprimir
-        
-    Returns:
-        dict: {success: bool, message: str}
-    """
+    """Imprime etiqueta(s) en la Brother QL-800 por USB."""
     try:
         from brother_ql.conversion import convert
         from brother_ql.backends.helpers import send
         from brother_ql.raster import BrotherQLRaster
-        
-        # Detectar impresora
+
         printer_id, error = get_brother_printer()
         if error:
             return {'success': False, 'message': error}
-        
-        # Crear imagen de etiqueta
+
         label_image = crear_imagen_etiqueta(producto)
-        
-        # Convertir a formato Brother
+
         qlr = BrotherQLRaster(BROTHER_PRINTER_MODEL)
-        
-        # Convertir imagen
         instructions = convert(
             qlr=qlr,
             images=[label_image],
             label=BROTHER_LABEL_SIZE,
-            rotate='auto',
+            rotate='0',           # imagen ya tiene el ancho correcto para cinta 62 mm
             threshold=70.0,
             dither=False,
             compress=False,
             red=False,
             dpi_600=False,
             hq=True,
-            cut=True
+            cut=True,
         )
-        
-        # Imprimir la cantidad solicitada
-        for i in range(cantidad):
+
+        for _ in range(cantidad):
             send(
                 instructions=instructions,
                 printer_identifier=printer_id,
                 backend_identifier=BROTHER_BACKEND,
-                blocking=True
+                blocking=True,
             )
-        
-        logger.info(f"Etiquetas impresas: {cantidad} para producto {producto.sku}")
-        return {
-            'success': True, 
-            'message': f'✅ {cantidad} etiqueta(s) impresa(s) para {producto.sku}'
-        }
-        
+
+        logger.info(f"Etiquetas impresas: {cantidad} × {producto.sku}")
+        return {'success': True, 'message': f'✅ {cantidad} etiqueta(s) impresa(s) para {producto.sku}'}
+
     except ImportError as e:
-        return {
-            'success': False,
-            'message': f'Librería no disponible: {str(e)}. Instala brother_ql.'
-        }
+        return {'success': False, 'message': f'Librería no disponible: {e}. Instala brother_ql.'}
     except Exception as e:
         logger.error(f"Error al imprimir etiqueta: {e}")
-        return {
-            'success': False,
-            'message': f'Error al imprimir: {str(e)}'
-        }
+        return {'success': False, 'message': f'Error al imprimir: {e}'}
 
+
+# ── Preview ───────────────────────────────────────────────────────────────────
 
 def generar_preview_etiqueta(producto):
-    """
-    Genera una imagen de preview de la etiqueta (sin imprimir)
-    Retorna la imagen en formato base64 para mostrar en el frontend
-    """
+    """Devuelve la etiqueta como imagen base64 para previsualizar en el navegador."""
     import base64
-    
     try:
         img = crear_imagen_etiqueta(producto)
-        
-        # Convertir a base64
-        buffer = BytesIO()
-        img.save(buffer, format='PNG')
-        buffer.seek(0)
-        img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        
-        return {
-            'success': True,
-            'image_base64': f'data:image/png;base64,{img_base64}'
-        }
-        
+        buf = BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        return {'success': True, 'image_base64': f'data:image/png;base64,{b64}'}
     except Exception as e:
         logger.error(f"Error al generar preview: {e}")
-        return {
-            'success': False,
-            'message': str(e)
-        }
+        return {'success': False, 'message': str(e)}
 
+
+# ── Estado ────────────────────────────────────────────────────────────────────
 
 def verificar_impresora():
-    """Verifica el estado de la impresora Brother"""
+    """Verifica si la Brother QL-800 está conectada."""
     printer_id, error = get_brother_printer()
-    
     if error:
-        return {
-            'conectada': False,
-            'mensaje': error,
-            'modelo': None
-        }
-    
+        return {'conectada': False, 'mensaje': error, 'modelo': None}
     return {
         'conectada': True,
-        'mensaje': f'Impresora Brother {BROTHER_PRINTER_MODEL} conectada',
+        'mensaje': f'Impresora Brother {BROTHER_PRINTER_MODEL} lista',
         'modelo': BROTHER_PRINTER_MODEL,
-        'identificador': printer_id
+        'identificador': printer_id,
     }

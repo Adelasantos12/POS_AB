@@ -11,5 +11,7 @@ openpyxl==3.1.2
 reportlab==4.0.7
 python-escpos==3.1
 brother-ql==0.9.4
-google-generativeai
+google-genai>=1.0,<2.0
 psycopg[binary]>=3.1
+cloudinary>=1.36.0
+django-cloudinary-storage>=0.3.0

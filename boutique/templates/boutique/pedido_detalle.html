@@ -1,0 +1,350 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Pedido {{ pedido.numero_ticket }} — Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a href="{% url 'pedidos_en_puerta' %}">Pedidos</a></li>
+                <li class="breadcrumb-item active">{{ pedido.numero_ticket }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title mb-0">{{ pedido.numero_ticket }}</h1>
+        <p class="page-subtitle">{{ pedido.get_tipo_pedido_display }} — {{ pedido.get_estado_display }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if pedido.ticket %}
+        <a href="{% url 'print_ticket_pdf' pedido.ticket.folio %}" class="btn btn-outline-secondary rounded-pill" target="_blank">
+            <i class="bi bi-printer me-1"></i>Imprimir
+        </a>
+        {% endif %}
+        <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalEditarPedido">
+            <i class="bi bi-pencil me-1"></i>Editar
+        </button>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Columna izquierda: info + ítems -->
+    <div class="col-lg-8">
+
+        <!-- Info general -->
+        <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Cliente</div>
+                        <div class="fw-bold">
+                            {% if pedido.cliente %}{{ pedido.cliente.nombre }}{% elif pedido.novia %}{{ pedido.novia.nombre }}{% else %}—{% endif %}
+                        </div>
+                        {% if pedido.cliente %}
+                        <div class="text-muted small">{{ pedido.cliente.telefono|default:"" }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Novia / Evento</div>
+                        {% if pedido.novia %}
+                        <a href="{% url 'novia_detalle' pedido.novia.pk %}" class="fw-bold text-decoration-none">{{ pedido.novia.nombre }}</a>
+                        {% else %}<div class="text-muted">—</div>{% endif %}
+                        {% if pedido.evento %}<div class="text-muted small">{{ pedido.evento }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Entrega estimada</div>
+                        <div class="{% if pedido.fecha_entrega_estimada and pedido.fecha_entrega_estimada < today and pedido.estado != 'ENTREGADO' %}text-danger fw-bold{% endif %}">
+                            {{ pedido.fecha_entrega_estimada|date:"d/m/Y"|default:"—" }}
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Fecha evento</div>
+                        <div>{{ pedido.fecha_evento|date:"d/m/Y"|default:"—" }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Estado</div>
+                        <select class="form-select form-select-sm" style="max-width:170px;" onchange="cambiarEstadoPedido({{ pedido.pk }}, this.value)">
+                            {% for code, label in PEDIDO_ESTADOS %}
+                            <option value="{{ code }}" {% if pedido.estado == code %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% if pedido.notas %}
+                    <div class="col-12">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Notas</div>
+                        <div class="small">{{ pedido.notas }}</div>
+                    </div>
+                    {% endif %}
+                    {% if pedido.notas_ajustes %}
+                    <div class="col-12">
+                        <div class="small text-muted fw-bold text-uppercase mb-1">Ajustes</div>
+                        <div class="small">{{ pedido.notas_ajustes }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Ítems del pedido -->
+        <div class="card shadow-sm border-0 mb-4" style="border-radius:15px; overflow:hidden;">
+            <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center py-3 px-4">
+                <h6 class="fw-bold mb-0">Ítems del pedido</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 small">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Código</th>
+                            <th>Tipo / Descripción</th>
+                            <th>Dama</th>
+                            <th>Talla / Color / Tela</th>
+                            <th class="text-end">Precio</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in pedido.items.all %}
+                        <tr>
+                            <td class="ps-4 text-muted">{{ item.codigo }}</td>
+                            <td>
+                                <div class="fw-bold">{{ item.get_tipo_display }}</div>
+                                <div class="text-muted">{{ item.modelo.nombre|default:"" }} {{ item.numero_modelo }}{% if item.descripcion_especial %} — {{ item.descripcion_especial|truncatechars:40 }}{% endif %}</div>
+                            </td>
+                            <td>{{ item.dama.nombre|default:"—" }}</td>
+                            <td>
+                                <span class="badge bg-light text-dark me-1">{{ item.talla|default:"—" }}</span>
+                                <span class="text-muted">{{ item.color.nombre|default:"" }}{% if item.tela %} / {{ item.tela.nombre }}{% endif %}</span>
+                            </td>
+                            <td class="text-end fw-bold">${{ item.precio }}</td>
+                            <td>
+                                <select class="form-select form-select-sm border-0 bg-transparent fw-bold"
+                                        style="font-size:0.7rem; width:auto;"
+                                        onchange="cambiarEstadoItem({{ item.pk }}, this.value)">
+                                    {% for code, label in ITEM_ESTADOS %}
+                                    <option value="{{ code }}" {% if item.estado == code %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                Sin ítems registrados (pedido creado en el flujo anterior).
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Medidas (si hay dama) -->
+        {% if medidas_vigentes %}
+        <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;">
+            <div class="card-header bg-white border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0">Medidas vigentes</h6>
+                {% if pedido.dama %}
+                <a href="{% url 'dama_detalle' pedido.dama.pk %}" class="btn btn-sm btn-outline-primary rounded-pill">
+                    <i class="bi bi-ruler me-1"></i>Ver expediente dama
+                </a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    {% with m=medidas_vigentes %}
+                    {% if m.busto %}<div class="col-6 col-md-3"><div class="small text-muted">Busto</div><div class="fw-bold">{{ m.busto }} cm</div></div>{% endif %}
+                    {% if m.cintura %}<div class="col-6 col-md-3"><div class="small text-muted">Cintura</div><div class="fw-bold">{{ m.cintura }} cm</div></div>{% endif %}
+                    {% if m.cadera %}<div class="col-6 col-md-3"><div class="small text-muted">Cadera</div><div class="fw-bold">{{ m.cadera }} cm</div></div>{% endif %}
+                    {% if m.largo_aproximado %}<div class="col-6 col-md-3"><div class="small text-muted">Largo aprox.</div><div class="fw-bold">{{ m.largo_aproximado }} cm</div></div>{% endif %}
+                    {% if m.hombro %}<div class="col-6 col-md-3"><div class="small text-muted">Hombro</div><div class="fw-bold">{{ m.hombro }} cm</div></div>{% endif %}
+                    {% if m.brazo %}<div class="col-6 col-md-3"><div class="small text-muted">Brazo</div><div class="fw-bold">{{ m.brazo }} cm</div></div>{% endif %}
+                    {% if m.espalda %}<div class="col-6 col-md-3"><div class="small text-muted">Espalda</div><div class="fw-bold">{{ m.espalda }} cm</div></div>{% endif %}
+                    {% if m.talle_delantero %}<div class="col-6 col-md-3"><div class="small text-muted">Talle del.</div><div class="fw-bold">{{ m.talle_delantero }} cm</div></div>{% endif %}
+                    {% if m.talle_trasero %}<div class="col-6 col-md-3"><div class="small text-muted">Talle tras.</div><div class="fw-bold">{{ m.talle_trasero }} cm</div></div>{% endif %}
+                    {% if m.bajo_busto %}<div class="col-6 col-md-3"><div class="small text-muted">Bajo busto</div><div class="fw-bold">{{ m.bajo_busto }} cm</div></div>{% endif %}
+                    {% if m.largo_talle %}<div class="col-6 col-md-3"><div class="small text-muted">Largo talle</div><div class="fw-bold">{{ m.largo_talle }} cm</div></div>{% endif %}
+                    {% if m.hombro_pezon %}<div class="col-6 col-md-3"><div class="small text-muted">Hombro-pezón</div><div class="fw-bold">{{ m.hombro_pezon }} cm</div></div>{% endif %}
+                    {% if m.hombro_bajo_busto %}<div class="col-6 col-md-3"><div class="small text-muted">Hombro-bajo busto</div><div class="fw-bold">{{ m.hombro_bajo_busto }} cm</div></div>{% endif %}
+                    {% endwith %}
+                </div>
+                {% if medidas_vigentes.notas %}
+                <div class="mt-2 small text-muted">{{ medidas_vigentes.notas }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% elif pedido.dama %}
+        <div class="card shadow-sm border-0 mb-4 border-warning" style="border-radius:15px;">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <span class="text-warning fw-bold"><i class="bi bi-exclamation-triangle me-2"></i>Sin medidas registradas para esta dama</span>
+                <a href="{% url 'dama_detalle' pedido.dama.pk %}" class="btn btn-sm btn-warning rounded-pill">Registrar medidas</a>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <!-- Columna derecha: finanzas + pagos -->
+    <div class="col-lg-4">
+
+        <!-- Resumen financiero -->
+        <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Total pedido</span>
+                    <span class="fw-bold">${{ pedido.precio }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Pagado</span>
+                    <span class="text-success fw-bold">${{ total_pagado }}</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <span class="fw-bold">Saldo pendiente</span>
+                    <span class="fw-bold {% if saldo > 0 %}text-danger{% else %}text-success{% endif %}">${{ saldo }}</span>
+                </div>
+                {% if saldo > 0 %}
+                <button class="btn btn-success w-100 mt-3 rounded-pill"
+                        onclick="abrirCobro({{ pedido.pk }}, '{{ saldo|stringformat:'.2f' }}')">
+                    <i class="bi bi-cash me-2"></i>Registrar pago
+                </button>
+                {% else %}
+                <div class="text-center mt-3 text-success small fw-bold">
+                    <i class="bi bi-check-circle me-1"></i>Pedido liquidado
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Historial de pagos -->
+        <div class="card shadow-sm border-0" style="border-radius:15px;">
+            <div class="card-header bg-white border-0 py-3 px-4">
+                <h6 class="fw-bold mb-0">Historial de pagos</h6>
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for pago in pagos %}
+                <li class="list-group-item d-flex justify-content-between align-items-center px-4 py-2">
+                    <div>
+                        <div class="small fw-bold">{{ pago.fecha|date:"d/m/Y H:i" }}</div>
+                        <div class="text-muted" style="font-size:0.75rem;">{{ pago.metodo }}</div>
+                    </div>
+                    <span class="text-success fw-bold">${{ pago.monto }}</span>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-center text-muted py-4 px-4">
+                    <i class="bi bi-cash-stack opacity-25 d-block mb-1" style="font-size:1.5rem;"></i>
+                    Sin pagos registrados
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal Editar Pedido -->
+<div class="modal fade" id="modalEditarPedido" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Editar Pedido</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Estado</label>
+                        <select class="form-select" id="editEstado">
+                            {% for code, label in PEDIDO_ESTADOS %}
+                            <option value="{{ code }}" {% if pedido.estado == code %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Entrega estimada</label>
+                        <input type="date" class="form-control" id="editEntrega" value="{{ pedido.fecha_entrega_estimada|date:'Y-m-d'|default:'' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Precio total</label>
+                        <input type="number" step="0.01" class="form-control" id="editPrecio" value="{{ pedido.precio }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Notas</label>
+                        <textarea class="form-control" id="editNotas" rows="2">{{ pedido.notas }}</textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Notas de ajustes</label>
+                        <textarea class="form-control" id="editAjustes" rows="2">{{ pedido.notas_ajustes }}</textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Notas de entrega</label>
+                        <input type="text" class="form-control" id="editEntregaNotas" value="{{ pedido.notas_entrega }}">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary rounded-pill" onclick="guardarEdicion()">
+                    <i class="bi bi-check-lg me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+
+<script>
+const CSRF = '{{ csrf_token }}';
+const PEDIDO_ID = {{ pedido.pk }};
+
+function abrirCobro(id, saldo) {
+    abrirModalCobro('pedido', id, saldo, '{{ pedido.numero_ticket }}');
+}
+
+async function cambiarEstadoPedido(id, estado) {
+    const res = await fetch(`/api/pedido/${id}/estado/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({estado}),
+    });
+    const d = await res.json();
+    if (d.status !== 'ok') alert('Error: ' + (d.message || ''));
+}
+
+async function cambiarEstadoItem(id, estado) {
+    const res = await fetch(`/api/pedido-item/${id}/estado/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({estado}),
+    });
+    const d = await res.json();
+    if (d.status !== 'ok') alert('Error: ' + (d.message || ''));
+}
+
+async function guardarEdicion() {
+    const data = {
+        estado: document.getElementById('editEstado').value,
+        fecha_entrega_estimada: document.getElementById('editEntrega').value || null,
+        precio: document.getElementById('editPrecio').value || null,
+        notas: document.getElementById('editNotas').value,
+        notas_ajustes: document.getElementById('editAjustes').value,
+        notas_entrega: document.getElementById('editEntregaNotas').value,
+    };
+    try {
+        const res = await fetch(`/api/pedido/${PEDIDO_ID}/editar/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(data),
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+            bootstrap.Modal.getInstance(document.getElementById('modalEditarPedido')).hide();
+            location.reload();
+        } else {
+            alert('Error al guardar: ' + (d.message || 'Error desconocido'));
+        }
+    } catch (e) {
+        alert('Error de red al guardar el pedido: ' + e.message);
+    }
+}
+</script>
+{% endblock %}

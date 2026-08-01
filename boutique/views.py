@@ -9,13 +9,14 @@ from django.db import transaction
 from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
 from .models import (
-    Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente, 
-    CorteCaja, Tienda, MovimientoInventario, Modelo, Tela,
+    Producto, Categoria, Color, Venta, ItemVenta, Pago, Cliente,
+    CorteCaja, Tienda, MovimientoInventario, Modelo, Tela, Talla,
     registrar_auditoria, Ticket, Pedido, Apartado, Novia, Dama
 )
 from .middleware import profile_permission_required
-from .utils import safe_decimal
+from .utils import safe_decimal, normalizar_nombre, nombres_son_iguales
 from django.utils import timezone
+from datetime import timedelta
 from decimal import Decimal
 import logging
 import json
@@ -56,7 +57,8 @@ def api_search_global(request):
             'text': str(p),
             'precio': float(p.precio_venta),
             'stock': p.cantidad_actual,
-            'folio': p.sku
+            'folio': p.sku,
+            'foto_url': p.foto.url if p.foto else None,
         })
 
     # 2. Apartados (Folio, Cliente, Teléfono)
@@ -73,26 +75,39 @@ def api_search_global(request):
             'folio': a.folio,
             'label': f"Apartado: {a.folio}",
             'customer': a.cliente_nombre,
+            'telefono': a.cliente_telefono,
+            'detalle': f"{a.categoria_cache} {a.color_cache} {a.talla_cache}".strip(),
             'total': float(a.total),
             'balance': float(a.saldo),
             'delivery_date': a.fecha_entrega_estimada.isoformat() if a.fecha_entrega_estimada else None,
-            'status': a.estado
+            'status': a.get_estado_display(),
+            'status_code': a.estado,
         })
 
-    # 3. Pedidos (Folio, Cliente, Novia, Dama, Teléfono)
+    # 3. Pedidos (Folio, Cliente, Novia, Dama, Teléfono, Modelo, Color, Talla)
     pedidos = Pedido.objects.filter(
         Q(numero_ticket__icontains=q) |
         Q(novia__nombre__icontains=q) |
         Q(dama__nombre__icontains=q) |
         Q(cliente__nombre__icontains=q) |
-        Q(cliente__telefono__icontains=q)
-    ).select_related('novia', 'dama', 'cliente').order_by('-fecha_creacion')[:10]
+        Q(cliente__telefono__icontains=q) |
+        Q(novia__telefono__icontains=q) |
+        Q(dama__telefono__icontains=q)
+    ).select_related('novia', 'dama', 'cliente', 'modelo', 'color').order_by('-fecha_creacion')[:10]
 
     for ped in pedidos:
-        customer = ""
-        if ped.dama: customer = ped.dama.nombre
-        elif ped.novia: customer = ped.novia.nombre
-        elif ped.cliente: customer = ped.cliente.nombre
+        customer, telefono = "", ""
+        if ped.dama:
+            customer, telefono = ped.dama.nombre, ped.dama.telefono or ""
+        elif ped.novia:
+            customer, telefono = ped.novia.nombre, ped.novia.telefono or ""
+        elif ped.cliente:
+            customer, telefono = ped.cliente.nombre, ped.cliente.telefono or ""
+
+        detalle_parts = []
+        if ped.modelo: detalle_parts.append(ped.modelo.nombre)
+        if ped.color: detalle_parts.append(ped.color.nombre)
+        if ped.talla: detalle_parts.append(f"T:{ped.talla}")
 
         results.append({
             'type': 'PEDIDO',
@@ -100,29 +115,38 @@ def api_search_global(request):
             'folio': ped.numero_ticket,
             'label': f"Pedido: {ped.numero_ticket}",
             'customer': customer,
+            'telefono': telefono,
+            'detalle': " · ".join(detalle_parts),
             'total': float(ped.precio),
             'balance': float(ped.saldo_pendiente),
             'delivery_date': ped.fecha_entrega_estimada.isoformat() if ped.fecha_entrega_estimada else None,
-            'status': ped.get_estado_display()
+            'status': ped.get_estado_display(),
+            'status_code': ped.estado,
         })
 
-    # 4. Novias (Nombre, Teléfono)
+    # 4. Novias (Nombre, Teléfono) — prefetch to avoid N+1
     novias = Novia.objects.filter(
         Q(nombre__icontains=q) |
         Q(telefono__icontains=q)
-    ).filter(activo=True)[:5]
+    ).filter(activo=True).prefetch_related('pedidos__pagos_pedido')[:5]
 
     for n in novias:
+        pedidos_n = list(n.pedidos.all())
+        total_n = sum(p.precio for p in pedidos_n)
+        pendiente_n = sum(p.saldo_pendiente for p in pedidos_n)
         results.append({
             'type': 'NOVIA',
             'id': n.id,
             'folio': f"NV-{n.id}",
             'label': f"Novia: {n.nombre}",
             'customer': n.nombre,
-            'total': float(sum(p.precio for p in n.pedidos.all())),
-            'balance': float(n.total_pendiente),
+            'telefono': n.telefono,
+            'detalle': f"Boda: {n.fecha_boda.strftime('%d/%m/%Y') if n.fecha_boda else '—'}",
+            'total': float(total_n),
+            'balance': float(pendiente_n),
             'delivery_date': n.fecha_entrega.isoformat() if n.fecha_entrega else None,
-            'status': 'Activa'
+            'status': 'Activa',
+            'status_code': 'ACTIVA',
         })
 
     return JsonResponse({'results': results})
@@ -137,8 +161,9 @@ def api_ai_analyze_image(request):
         try:
             image_file = request.FILES['image']
             image_data = image_file.read()
+            mime_type = image_file.content_type or 'image/jpeg'
 
-            atributos = analyze_product_image(image_data)
+            atributos = analyze_product_image(image_data, mime_type=mime_type)
             if atributos:
                 # Validar contra catálogo
                 cat_exists = Categoria.objects.filter(nombre=atributos.get('categoria')).exists()
@@ -146,6 +171,9 @@ def api_ai_analyze_image(request):
 
                 col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
                 if not col_exists: atributos['color'] = None
+
+                tela_exists = Tela.objects.filter(nombre=atributos.get('rasgo2')).exists()
+                if not tela_exists: atributos['rasgo2'] = None
 
                 return JsonResponse({'status': 'ok', 'atributos': atributos})
             else:
@@ -174,6 +202,9 @@ def api_ai_extract_attributes(request):
 
             col_exists = Color.objects.filter(nombre=atributos.get('color')).exists()
             if not col_exists: atributos['color'] = None
+
+            tela_exists = Tela.objects.filter(nombre=atributos.get('rasgo2')).exists()
+            if not tela_exists: atributos['rasgo2'] = None
 
             return JsonResponse({'status': 'ok', 'atributos': atributos})
         else:
@@ -225,6 +256,96 @@ def puede_gestionar_usuarios(usuario):
 def health_check(request):
     """Endpoint para monitoreo de salud del sistema"""
     return JsonResponse({'status': 'ok', 'timestamp': timezone.now().isoformat()})
+
+
+def scan_ticket(request, folio):
+    """
+    Página pública (sin login) para escanear el QR del ticket.
+    Muestra al personal los detalles del pedido: prenda, foto, estado, saldo.
+    """
+    from .models import ConfiguracionTienda
+    ticket = get_object_or_404(Ticket, folio=folio)
+    config = ConfiguracionTienda.get_solo()
+    snap = ticket.snapshot_json or {}
+
+    # ── Foto(s) del producto ─────────────────────────────────────
+    fotos = []
+    try:
+        if ticket.venta:
+            for item in ticket.venta.items.select_related('producto').all():
+                p = item.producto
+                if p and p.foto:
+                    fotos.append({'url': p.foto.url, 'descripcion': str(p)})
+        elif ticket.apartado:
+            for item in ticket.apartado.items.select_related('producto').all():
+                p = item.producto
+                if p and p.foto:
+                    fotos.append({'url': p.foto.url, 'descripcion': str(p)})
+        elif ticket.pedido:
+            ped = ticket.pedido
+            if ped.modelo and ped.modelo.foto_principal:
+                fotos.append({'url': ped.modelo.foto_principal.url, 'descripcion': str(ped.modelo)})
+    except Exception:
+        pass
+
+    # ── Estado y saldo en vivo ───────────────────────────────────
+    estado_display = None
+    estado_css = 'neutral'
+    saldo = None
+    fecha_entrega = None
+    detalles_extra = {}
+
+    try:
+        if ticket.venta:
+            v = ticket.venta
+            estado_display = 'Entregado' if v.estado == 'ENTREGADO' else 'Completado'
+            estado_css = 'ok'
+            saldo = 0
+        elif ticket.apartado:
+            ap = ticket.apartado
+            estado_display = ap.get_estado_display()
+            saldo = float(ap.saldo)
+            fecha_entrega = ap.fecha_vencimiento
+            estado_css = 'warn' if saldo > 0 else 'ok'
+            if ap.estado == 'CANCELADO':
+                estado_css = 'cancel'
+        elif ticket.pedido:
+            ped = ticket.pedido
+            estado_display = ped.get_estado_display()
+            saldo = float(ped.saldo_pendiente)
+            fecha_entrega = ped.fecha_entrega_estimada if hasattr(ped, 'fecha_entrega_estimada') else None
+            estado_css = 'ok' if ped.estado in ('LISTO', 'ENTREGADO') else ('cancel' if ped.estado == 'CANCELADO' else 'progress')
+            if saldo > 0 and ped.estado == 'LISTO':
+                estado_css = 'warn'
+            if ped.modelo:
+                detalles_extra['Modelo'] = str(ped.modelo)
+            if ped.color:
+                detalles_extra['Color'] = str(ped.color)
+            if ped.talla:
+                detalles_extra['Talla'] = ped.talla
+        elif ticket.servicio:
+            srv = ticket.servicio
+            estado_display = srv.get_estado_display()
+            saldo = float(srv.saldo_pendiente)  # uses property summing real pagos_servicio
+            estado_css = 'ok' if srv.estado == 'ENTREGADO' else 'progress'
+    except Exception:
+        pass
+
+    context = {
+        'ticket': ticket,
+        'config': config,
+        'snap': snap,
+        'fotos': fotos,
+        'estado_display': estado_display,
+        'estado_css': estado_css,
+        'saldo': saldo,
+        'fecha_entrega': fecha_entrega,
+        'detalles_extra': detalles_extra,
+        'items': snap.get('items', []),
+        'cliente_nombre': ticket.cliente_nombre or snap.get('cliente', ''),
+        'cliente_telefono': ticket.cliente_telefono or snap.get('cliente_telefono', ''),
+    }
+    return render(request, 'boutique/scan_ticket.html', context)
 
 
 # ============================================================
@@ -342,11 +463,16 @@ def pos_dashboard(request):
     if not corte:
         return redirect('apertura_caja')
 
+    from .models import RASGOS_ESTILO, RASGOS_CORTE, RASGOS_ESCOTE, RASGOS_TELA
     context = {
         'corte': corte,
         'telas': Tela.objects.filter(activa=True),
         'colores': Color.objects.filter(activo=True),
         'categorias': Categoria.objects.all(),
+        'rasgos_estilo': RASGOS_ESTILO,
+        'rasgos_corte': RASGOS_CORTE,
+        'rasgos_escote': RASGOS_ESCOTE,
+        'rasgos_tela': RASGOS_TELA,
     }
     return render(request, 'boutique/pos_dashboard.html', context)
 
@@ -411,19 +537,27 @@ def cierre_caja(request):
         )
         return redirect('index')
 
-    # Calcular esperados desde Movimientos de Caja
+    # Calcular esperados con una sola query de aggregate
+    from django.db.models import Sum as _Sum, Q as _Q, Count as _Count
     movs = corte.movimientos.all()
 
-    efectivo_movs = sum(m.monto for m in movs if m.metodo_pago == 'EFECTIVO')
-    tarjeta_movs = sum(m.monto for m in movs if m.metodo_pago == 'TARJETA')
-    transf_movs = sum(m.monto for m in movs if m.metodo_pago == 'TRANSFERENCIA')
+    # Un aggregate en lugar de iterar 3–4 veces en Python
+    totales = movs.aggregate(
+        efectivo=_Sum('monto', filter=_Q(metodo_pago='EFECTIVO')),
+        tarjeta=_Sum('monto', filter=_Q(metodo_pago='TARJETA')),
+        transferencia=_Sum('monto', filter=_Q(metodo_pago='TRANSFERENCIA')),
+        total_tickets=_Count('id', filter=_Q(ticket_folio__isnull=False)),
+    )
+    efectivo_movs = totales['efectivo'] or 0
+    tarjeta_movs = totales['tarjeta'] or 0
+    transf_movs = totales['transferencia'] or 0
 
     corte.efectivo_esperado = safe_decimal(corte.monto_apertura) + safe_decimal(efectivo_movs)
     corte.tarjeta_esperada = tarjeta_movs
     corte.transferencia_esperada = transf_movs
     corte.save()
 
-    # Resumen por tipo para la vista
+    # Resumen por tipo: una pasada en Python sobre queryset ya evaluado
     resumen_tipos = {}
     for m in movs:
         resumen_tipos[m.tipo] = resumen_tipos.get(m.tipo, 0) + m.monto
@@ -434,7 +568,7 @@ def cierre_caja(request):
         'tarjeta_movs': tarjeta_movs,
         'transf_movs': transf_movs,
         'resumen_tipos': resumen_tipos,
-        'total_tickets': movs.filter(ticket_folio__isnull=False).count()
+        'total_tickets': totales['total_tickets'] or 0,
     })
 
 
@@ -524,13 +658,18 @@ def api_liquidar_pedido(request, pk):
     """Convierte un pedido en venta al ser liquidado"""
     from .models import PagoPedido
     from .services.cash_service import registrar_cobro
-    pedido = get_object_or_404(Pedido, pk=pk)
+    # Validate existence early (outside atomic) for a clean 404
+    get_object_or_404(Pedido, pk=pk)
     try:
         data = json.loads(request.body)
         metodo = data.get('metodo', 'EFECTIVO')
-        monto = safe_decimal(data.get('monto', pedido.saldo_pendiente))
+        monto = safe_decimal(data.get('monto', 0))
 
         with transaction.atomic():
+            # select_for_update serializes concurrent requests (double-click)
+            pedido = Pedido.objects.select_for_update().get(pk=pk)
+            if not monto:
+                monto = pedido.saldo_pendiente
             # Registrar el cobro en caja
             ticket = registrar_cobro(
                 origen_tipo='pedido',
@@ -585,6 +724,79 @@ def api_liquidar_pedido(request, pk):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
+def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, ticket, adjust_total=True):
+    """Crea servicios adicionales vinculados a una venta y los añade al snapshot del ticket."""
+    from .models import Servicio
+    try:
+        servicios_data = json.loads(servicios_json_str or '[]')
+    except Exception:
+        return []
+    creados = []
+    meta_map = {}
+    for srv_data in servicios_data:
+        precio_unit = safe_decimal(srv_data.get('precio_unitario', 0) or 0)
+        cantidad = int(srv_data.get('cantidad', 1) or 1)
+        costo = safe_decimal(srv_data.get('costo', 0) or 0)
+        if costo <= 0:
+            costo = precio_unit * cantidad
+        if costo <= 0:
+            continue
+        if precio_unit <= 0:
+            precio_unit = costo / cantidad if cantidad else costo
+        nota = srv_data.get('nota', '').strip()
+        prenda = srv_data.get('prenda', '').strip()
+        tipo_raw = srv_data.get('tipo', 'AJUSTE')
+        _LINEA_TO_SRV = {
+            'BASTILLA': 'BASTILLA', 'TIRANTE': 'TIRANTE', 'MANGA': 'MANGA',
+            'CINTURA': 'TALLE', 'BUSTO': 'PECHO', 'CIERRE': 'CREMALLERA',
+            'HOMBRO': 'AJUSTE', 'COSTADO': 'AJUSTE', 'PIERNA': 'BASTILLA',
+        }
+        tipo_srv = _LINEA_TO_SRV.get(tipo_raw, tipo_raw if tipo_raw in [
+            'BASTILLA','TALLE','TIRANTE','CREMALLERA','PECHO','CADERA',
+            'MANGA','APLIQUE','BORDADO','AJUSTE','OTRO'] else 'AJUSTE')
+        s = Servicio.objects.create(
+            tipo=tipo_srv,
+            descripcion=nota or prenda or tipo_raw,
+            cliente=cliente_obj,
+            costo=costo,
+            anticipo=costo,
+            estado='RECIBIDO',
+            creado_por=perfil,
+            venta=venta,
+        )
+        creados.append(s)
+        meta_map[s.pk] = {
+            'cantidad': cantidad,
+            'precio_unitario': float(precio_unit),
+            'nota': nota,
+            'prenda': prenda,
+            'tipo_raw': tipo_raw,
+        }
+    if creados and ticket:
+        snapshot = ticket.snapshot_json or {}
+        items = snapshot.get('items', [])
+        for s in creados:
+            meta = meta_map[s.pk]
+            label = s.get_tipo_display()
+            if meta['prenda']:
+                label = f"{label} — {meta['prenda']}"
+            if meta['nota']:
+                label = f"{label} ({meta['nota'][:30]})"
+            items.append({
+                'descripcion': label,
+                'cantidad': meta['cantidad'],
+                'precio_unitario': meta['precio_unitario'],
+                'subtotal': float(s.costo),
+                'es_servicio': True,
+            })
+        snapshot['items'] = items
+        if adjust_total:
+            snapshot['total'] = float(ticket.total) + sum(float(s.costo) for s in creados)
+        ticket.snapshot_json = snapshot
+        ticket.save(update_fields=['snapshot_json'])
+    return creados
+
+
 @require_POST
 @login_required
 @profile_permission_required('Vendedor')
@@ -600,22 +812,40 @@ def api_venta_rapida(request):
         color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
         precio = safe_decimal(request.POST.get('precio', 0))
-        anticipo = safe_decimal(request.POST.get('anticipo', precio))
+        _anticipo_raw = request.POST.get('anticipo', '').strip()
+        anticipo = safe_decimal(_anticipo_raw, precio)  # si vacío → cobro total
         metodo = request.POST.get('metodo', 'EFECTIVO')
         rasgo1 = request.POST.get('rasgo1', '')
         rasgo2 = request.POST.get('rasgo2', '')
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
+        # Idempotency key is read here; the check runs INSIDE the atomic block
+        idem_key = request.POST.get('idempotency_key')
+
         # Datos del cliente
         cliente_telefono = request.POST.get('cliente_telefono', '').strip()
-        cliente_nombre = request.POST.get('cliente_nombre')
+        cliente_nombre = (request.POST.get('cliente_nombre') or '').strip()
         cliente_notas = request.POST.get('cliente_notas')
         evento = request.POST.get('evento', '')
         fecha_entrega_est = request.POST.get('fecha_entrega_estimada')
         fecha_evento = request.POST.get('fecha_evento')
+        sin_registro = request.POST.get('sin_registro') == 'true'
 
-        # 1.5 Validaciones duras para Pedidos
+        # 1.5 Validaciones de identidad de cliente
+        if tipo_op == 'VENTA_NORMAL' and not es_apartado:
+            # Venta inmediata: nombre obligatorio O sin_registro explícito
+            if not sin_registro and not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'Ingresa el nombre del cliente o selecciona "Sin registro".'}, status=400)
+        elif tipo_op == 'VENTA_NORMAL' and es_apartado:
+            if not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para apartados.'}, status=400)
+            if cliente_nombre.lower() == 'sin registro':
+                return JsonResponse({'status': 'error', 'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'}, status=400)
+        elif tipo_op in ['HECHURA', 'PEDIDO_EXTERNO', 'DAMA_HONOR']:
+            if not cliente_nombre:
+                return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para este tipo de operación.'}, status=400)
+
         if tipo_op in ['HECHURA', 'PEDIDO_EXTERNO']:
             if not cliente_telefono:
                 return JsonResponse({'status': 'error', 'message': 'El teléfono del cliente es obligatorio para este tipo de pedido.'}, status=400)
@@ -623,6 +853,20 @@ def api_venta_rapida(request):
                 return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
 
         with transaction.atomic():
+            # Idempotency — inside atomic to protect the PROCESSING→DONE window
+            if idem_key:
+                from .models import IdempotencyLog
+                log, created = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created:
+                    if log.status == 'DONE':
+                        return JsonResponse(log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
+
             # 2. Gestionar cliente
             cliente_obj = None
             if cliente_telefono:
@@ -654,18 +898,21 @@ def api_venta_rapida(request):
                 tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
 
             # 4. Crear producto físico (si aplica)
-            producto = Producto.objects.create(
+            # Reutilizar si ya existe (prevención de duplicados)
+            producto, _ = Producto.objects.get_or_create(
                 categoria=categoria,
                 color=color,
                 tela=tela_obj,
                 rasgo1=rasgo1,
                 rasgo2=rasgo2,
                 talla=talla,
-                precio_venta=precio,
-                estado='TIENDA' if not es_apartado and tipo_op == 'VENTA_NORMAL' else 'APARTADO',
-                cantidad_actual=0,
-                stock_teorico=0,
-                foto=foto
+                defaults={
+                    'precio_venta': precio,
+                    'estado': 'TIENDA' if not es_apartado and tipo_op == 'VENTA_NORMAL' else 'APARTADO',
+                    'cantidad_actual': 0,
+                    'stock_teorico': 0,
+                    'foto': foto
+                }
             )
 
             # 5. Lógica según Tipo de Operación
@@ -674,7 +921,7 @@ def api_venta_rapida(request):
                     # FLUJO APARTADO
                     apartado = Apartado.objects.create(
                         cliente=cliente_obj,
-                        cliente_nombre=cliente_nombre or f"Venta Rápida {producto.sku}",
+                        cliente_nombre=cliente_nombre,
                         cliente_telefono=cliente_telefono or '',
                         total=precio,
                         anticipo=0,
@@ -720,6 +967,30 @@ def api_venta_rapida(request):
                         origen_tipo='venta', origen_obj=venta,
                         monto=anticipo, metodo=metodo, usuario=request.active_profile
                     )
+                    # Venta.cliente_nombre no existe como campo; parchamos el ticket
+                    if not ticket.cliente_nombre:
+                        ticket.cliente_nombre = 'Sin registro' if sin_registro else (cliente_nombre or '')
+                        ticket.cliente_telefono = '' if sin_registro else cliente_telefono
+                        _snap = ticket.snapshot_json or {}
+                        _snap['cliente'] = ticket.cliente_nombre
+                        _snap['cliente_telefono'] = ticket.cliente_telefono
+                        ticket.snapshot_json = _snap
+                        ticket.save(update_fields=['cliente_nombre', 'cliente_telefono', 'snapshot_json'])
+                    # Guardar largo_aprox en snapshot si se proporcionó en el formulario
+                    _m_largo = request.POST.get('m_largo', '').strip()
+                    if _m_largo:
+                        _snap = ticket.snapshot_json or {}
+                        _snap['largo_aprox'] = _m_largo
+                        ticket.snapshot_json = _snap
+                        ticket.save(update_fields=['snapshot_json'])
+                    # Servicios adicionales bundled (bastillas, ajustes, etc.)
+                    _servicios_extra = _parse_servicios_bundled(
+                        request.POST.get('servicios_json', '[]'),
+                        cliente_obj, request.active_profile, venta, ticket
+                    )
+                    if _servicios_extra:
+                        venta.total += sum(s.costo for s in _servicios_extra)
+                        venta.save(update_fields=['total'])
                     res = {'status': 'ok', 'tipo': 'venta', 'id': venta.id, 'sku': producto.sku, 'folio': ticket.folio}
 
             elif tipo_op in ['DAMA_HONOR', 'HECHURA', 'PEDIDO_EXTERNO']:
@@ -791,12 +1062,33 @@ def api_venta_rapida(request):
                         cintura=get_d('m_cintura', 'medidas_cintura'),
                         cadera=get_d('m_cadera', 'medidas_cadera'),
                         hombro=get_d('m_hombro', 'medidas_hombro'),
-                        largo=get_d('m_largo', 'medidas_largo'),
+                        largo_aproximado=get_d('m_largo', 'medidas_largo'),
                         brazo=get_d('m_brazo', 'medidas_brazo'),
                         espalda=get_d('m_espalda', 'medidas_espalda'),
+                        bajo_busto=get_d('m_bajo_busto', 'bajo_busto'),
+                        largo_talle=get_d('m_largo_talle', 'largo_talle'),
+                        hombro_pezon=get_d('m_hombro_pezon', 'hombro_pezon'),
+                        hombro_bajo_busto=get_d('m_hombro_bajo_busto', 'hombro_bajo_busto'),
                         talle_delantero=get_d('m_talle_frente', 'medidas_talle_frente'),
                         talle_trasero=get_d('m_talle_espalda', 'medidas_talle_espalda'),
                         observaciones=request.POST.get('m_notas') or request.POST.get('medidas_notas', '')
+                    )
+
+                # Auto-crear VestidoDama si hay una dama asignada
+                if dama_obj:
+                    from .models import VestidoDama as VD
+                    tipo_vd_map = {'HECHURA': 'HECHURA', 'PEDIDO_EXTERNO': 'ESPECIAL', 'DAMA_HONOR': 'CATALOGO'}
+                    VD.objects.create(
+                        dama=dama_obj,
+                        pedido=pedido,
+                        tipo=tipo_vd_map.get(tipo_op, 'ESPECIAL'),
+                        modelo=pedido.modelo,
+                        talla=talla or dama_obj.talla or '',
+                        color=color,
+                        tela=tela_obj,
+                        precio=precio,
+                        estado='PEDIDO',
+                        creado_por=request.active_profile,
                     )
 
                 ticket = registrar_cobro(
@@ -817,6 +1109,11 @@ def api_venta_rapida(request):
                 entidad=producto,
                 request=request
             )
+
+            if idem_key:
+                log.response_json = res
+                log.status = 'DONE'
+                log.save()
             return JsonResponse(res)
 
     except ValueError as ve:
@@ -874,34 +1171,67 @@ def api_search_productos(request):
         Q(rasgo1__icontains=q) |
         Q(rasgo2__icontains=q) |
         Q(categoria__nombre__icontains=q)
-    )[:15]
-    results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual} for p in productos]
+    ).select_related('categoria', 'color', 'modelo', 'tela')[:15]
+    results = [{'id': p.id, 'sku': p.sku, 'text': str(p), 'precio': float(p.precio_venta), 'stock': p.cantidad_actual, 'foto_url': p.foto.url if p.foto else None} for p in productos]
     return JsonResponse({'results': results})
 
 
 @login_required
 def cliente_detalle(request, pk):
-    """Ficha del cliente con historial estructurado"""
+    """Ficha del cliente con historial unificado completo"""
+    from .models import Servicio
     cliente = get_object_or_404(Cliente, pk=pk)
-    ventas = Venta.objects.filter(cliente=cliente).order_by('-fecha')
-    apartados = Apartado.objects.filter(cliente=cliente).order_by('-fecha_creacion')
-    pedidos = Pedido.objects.filter(cliente=cliente).order_by('-fecha_creacion')
 
-    # Consolidar historial cronológico
+    ventas    = Venta.objects.filter(cliente=cliente).prefetch_related('items', 'pagos').order_by('-fecha')
+    apartados = Apartado.objects.filter(cliente=cliente).prefetch_related('items', 'pagos_apartado', 'tickets_asociados').order_by('-fecha_creacion')
+    pedidos   = Pedido.objects.filter(cliente=cliente).prefetch_related('pagos_pedido', 'tickets_relacionados', 'notas_seguimiento').select_related('novia', 'dama', 'modelo', 'color').order_by('-fecha_creacion')
+    servicios = Servicio.objects.filter(cliente=cliente).prefetch_related('pagos_servicio').order_by('-fecha_creacion')
+    medidas   = cliente.medidas_historicas.order_by('-fecha_actualizacion')
+    tickets   = Ticket.objects.filter(cliente_nombre=cliente.nombre).order_by('-fecha_hora')
+
+    # Saldos pendientes
+    saldo_apartados = sum(a.saldo for a in apartados if a.estado not in ['CANCELADO', 'ENTREGADO'])
+    saldo_pedidos   = sum(p.saldo_pendiente for p in pedidos if p.estado not in ['CANCELADO', 'ENTREGADO'])
+    saldo_servicios = sum(s.saldo_pendiente for s in servicios if s.estado not in ['CANCELADO', 'ENTREGADO'])
+    saldo_total     = saldo_apartados + saldo_pedidos + saldo_servicios
+
+    # Historial cronológico unificado
     historial = []
     for v in ventas:
-        historial.append({'tipo': 'VENTA', 'obj': v, 'fecha': v.fecha})
+        historial.append({'tipo': 'VENTA', 'obj': v, 'fecha': v.fecha,
+                          'total': v.total, 'folio': f'V-{v.id}', 'estado': 'Completada',
+                          'saldo': 0, 'detalle': f"{v.categoria_cache} {v.color_cache}".strip() or 'Venta directa'})
     for a in apartados:
-        historial.append({'tipo': 'APARTADO', 'obj': a, 'fecha': a.fecha_creacion})
+        historial.append({'tipo': 'APARTADO', 'obj': a, 'fecha': a.fecha_creacion,
+                          'total': a.total, 'folio': a.folio, 'estado': a.get_estado_display(),
+                          'saldo': a.saldo, 'detalle': f"{a.categoria_cache} {a.color_cache}".strip() or a.notas[:50]})
     for p in pedidos:
-        historial.append({'tipo': 'PEDIDO', 'obj': p, 'fecha': p.fecha_creacion})
+        desc = ''
+        if p.modelo: desc += p.modelo.nombre
+        if p.color: desc += f' {p.color.nombre}'
+        if p.talla: desc += f' T:{p.talla}'
+        historial.append({'tipo': 'PEDIDO', 'obj': p, 'fecha': p.fecha_creacion,
+                          'total': p.precio, 'folio': p.numero_ticket, 'estado': p.get_estado_display(),
+                          'saldo': p.saldo_pendiente, 'detalle': desc.strip() or p.notas[:50]})
+    for s in servicios:
+        historial.append({'tipo': 'SERVICIO', 'obj': s, 'fecha': s.fecha_creacion,
+                          'total': s.costo, 'folio': f'SRV-{s.id}', 'estado': s.get_estado_display(),
+                          'saldo': s.saldo_pendiente, 'detalle': s.descripcion[:60]})
 
     historial.sort(key=lambda x: x['fecha'], reverse=True)
 
     return render(request, 'boutique/cliente_detalle.html', {
         'cliente': cliente,
         'historial': historial,
-        'apartados_activos': apartados.exclude(estado__in=['CANCELADO', 'ENTREGADO'])
+        'apartados_activos': apartados.exclude(estado__in=['CANCELADO', 'ENTREGADO']),
+        'pedidos': pedidos,
+        'servicios': servicios,
+        'medidas': medidas,
+        'tickets': tickets[:20],
+        'saldo_total': saldo_total,
+        'saldo_apartados': saldo_apartados,
+        'saldo_pedidos': saldo_pedidos,
+        'saldo_servicios': saldo_servicios,
     })
 
 
@@ -932,7 +1262,7 @@ def api_search_clientes(request):
 @profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta o un apartado"""
-    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    from .models import Novia, PagoPedido, Apartado, ApartadoItem, IdempotencyLog
     from .services.cash_service import registrar_cobro
     try:
         data = json.loads(request.body)
@@ -941,16 +1271,56 @@ def api_registrar_venta(request):
         pago_inicial = safe_decimal(data.get('pago_inicial', total))
         metodo = data.get('metodo', 'EFECTIVO')
         es_apartado = data.get('es_apartado', False)
+        cliente_nombre = (data.get('cliente_nombre') or '').strip()
+        cliente_telefono = (data.get('cliente_telefono') or '').strip()
+        sin_registro = bool(data.get('sin_registro', False))
+        notas_operacion = (data.get('notas_operacion') or '').strip()
+        cliente_id_hint = data.get('cliente_id')
+        idem_key = data.get('idempotency_key')
+        tiene_saldo = pago_inicial < total
+
+        # Identidad mínima obligatoria
+        if es_apartado or tiene_saldo:
+            if not cliente_nombre:
+                return JsonResponse({
+                    'status': 'error', 'field': 'cliente_nombre',
+                    'message': 'Agrega el nombre del cliente para continuar con el apartado.'
+                }, status=400)
+            if cliente_nombre.lower() == 'sin registro':
+                return JsonResponse({
+                    'status': 'error', 'field': 'cliente_nombre',
+                    'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'
+                }, status=400)
+        else:
+            if not sin_registro and not cliente_nombre:
+                return JsonResponse({
+                    'status': 'error', 'field': 'cliente_nombre',
+                    'message': 'Agrega el nombre del cliente, o selecciona "Continuar sin registro" para ventas anónimas.'
+                }, status=400)
 
         with transaction.atomic():
+            # Idempotency — inside atomic to protect the PROCESSING→DONE window
+            idem_log = None
+            if idem_key:
+                idem_log, created = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created:
+                    if idem_log.status == 'DONE':
+                        return JsonResponse(idem_log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
+
             if es_apartado:
                 # Nuevo flujo de Apartado Independiente
                 apartado = Apartado.objects.create(
-                    cliente_nombre=data.get('cliente_nombre', 'Cliente POS'),
-                    cliente_telefono=data.get('cliente_telefono', ''),
+                    cliente_nombre=cliente_nombre,
+                    cliente_telefono=cliente_telefono,
                     total=total,
                     anticipo=0,
-                    notas=f"Apartado POS - {len(items)} items"
+                    notas_entrega=notas_operacion,
                 )
 
                 for it in items:
@@ -983,8 +1353,13 @@ def api_registrar_venta(request):
                     monto=pago_inicial,
                     metodo=metodo,
                     usuario=request.active_profile,
-                    notas='Anticipo POS'
+                    notas=notas_operacion or 'Anticipo POS',
                 )
+                if notas_operacion:
+                    snap = ticket.snapshot_json or {}
+                    snap['notas_operacion'] = notas_operacion
+                    ticket.snapshot_json = snap
+                    ticket.save(update_fields=['snapshot_json'])
 
                 registrar_auditoria(
                     usuario=request.active_profile,
@@ -994,13 +1369,39 @@ def api_registrar_venta(request):
                     request=request
                 )
 
-                return JsonResponse({'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio})
+                _res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio}
+                if idem_log:
+                    idem_log.response_json = _res
+                    idem_log.status = 'DONE'
+                    idem_log.save()
+                return JsonResponse(_res)
 
             else:
                 # Flujo de Venta normal
+                # Vincular cliente: primero por ID explícito, luego por teléfono
+                cliente_obj = None
+                if cliente_id_hint:
+                    try:
+                        cliente_obj = Cliente.objects.get(pk=int(cliente_id_hint))
+                        if cliente_nombre and cliente_obj.nombre != cliente_nombre:
+                            cliente_obj.nombre = cliente_nombre
+                            cliente_obj.save(update_fields=['nombre'])
+                    except (Cliente.DoesNotExist, ValueError):
+                        pass
+                if not cliente_obj and cliente_telefono:
+                    cliente_obj, created = Cliente.objects.get_or_create(
+                        telefono=cliente_telefono,
+                        defaults={'nombre': cliente_nombre or 'Sin nombre'}
+                    )
+                    if not created and cliente_nombre:
+                        cliente_obj.nombre = cliente_nombre
+                        cliente_obj.save(update_fields=['nombre'])
+
                 venta = Venta.objects.create(
                     vendedor=request.active_profile,
-                    total=total
+                    cliente=cliente_obj,
+                    total=total,
+                    notas=notas_operacion,
                 )
 
                 for it in items:
@@ -1030,6 +1431,34 @@ def api_registrar_venta(request):
                     metodo=metodo,
                     usuario=request.active_profile
                 )
+
+                # Parchamos ticket con nombre, teléfono y notas de operación
+                snap = ticket.snapshot_json or {}
+                update_fields = []
+                if not ticket.cliente_nombre:
+                    ticket.cliente_nombre = 'Sin registro' if sin_registro else (cliente_nombre or '')
+                    ticket.cliente_telefono = '' if sin_registro else cliente_telefono
+                    snap['cliente'] = ticket.cliente_nombre
+                    snap['cliente_telefono'] = ticket.cliente_telefono
+                    update_fields += ['cliente_nombre', 'cliente_telefono']
+                if notas_operacion:
+                    snap['notas_operacion'] = notas_operacion
+                if update_fields or notas_operacion:
+                    ticket.snapshot_json = snap
+                    ticket.save(update_fields=update_fields + ['snapshot_json'])
+
+                # Servicios extra bundled en la misma venta (ya incluidos en total del frontend)
+                servicios_extra = data.get('servicios_extra') or []
+                if servicios_extra:
+                    import json as _json
+                    _parse_servicios_bundled(
+                        _json.dumps(servicios_extra),
+                        cliente_obj,
+                        request.active_profile,
+                        venta,
+                        ticket,
+                        adjust_total=False,
+                    )
 
                 registrar_auditoria(
                     usuario=request.active_profile,
@@ -1154,6 +1583,14 @@ def api_validar_crear_producto(request):
         data = request.POST
         foto = request.FILES.get('foto')
 
+    # Idempotencia
+    idem_key = data.get('idempotency_key')
+    if idem_key:
+        from .models import IdempotencyLog
+        log, created = IdempotencyLog.objects.get_or_create(key=idem_key, defaults={'status': 'PROCESSING'})
+        if not created and log.status == 'DONE':
+            return JsonResponse(log.response_json)
+
     forzar_crear = data.get('forzar_crear') == True or data.get('forzar_crear') == 'true'
     
     # Si no se fuerza, verificar duplicados primero
@@ -1177,43 +1614,100 @@ def api_validar_crear_producto(request):
                 'requiere_confirmacion': False
             }, status=400)
     
-    # Crear el producto
+    # Resolver objetos FK: accept both ID (preferred) and name (legacy AI fill)
     try:
-        cat_nombre = data.get('categoria', 'Sin definir')
-        color_nombre = data.get('color', 'Sin definir')
-        
-        categoria = Categoria.objects.filter(nombre=cat_nombre).first()
-        if not categoria:
-            categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+        # Categoría
+        if data.get('categoria_id'):
+            categoria = get_object_or_404(Categoria, pk=data['categoria_id'])
+        else:
+            cat_nombre = data.get('categoria', 'Sin definir')
+            categoria = Categoria.objects.filter(nombre__iexact=cat_nombre).first()
+            if not categoria:
+                categoria, _ = Categoria.objects.get_or_create(nombre=normalizar_nombre(cat_nombre) or 'Sin definir')
 
-        color_obj = Color.objects.filter(nombre=color_nombre).first()
-        if not color_obj:
-            color_obj, _ = Color.objects.get_or_create(nombre="Sin definir")
-        
-        rasgo2 = data.get('rasgo2', '')
-        tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+        # Color
+        if data.get('color_id'):
+            color_obj = get_object_or_404(Color, pk=data['color_id'])
+        else:
+            color_nombre = data.get('color', 'Sin definir')
+            color_obj = Color.objects.filter(nombre__iexact=color_nombre).first()
+            if not color_obj:
+                color_obj, _ = Color.objects.get_or_create(nombre=normalizar_nombre(color_nombre) or 'Sin definir')
 
-        producto = Producto.objects.create(
+        # Modelo
+        modelo_obj = None
+        if data.get('modelo_id'):
+            modelo_obj = Modelo.objects.filter(pk=data['modelo_id']).first()
+        elif data.get('rasgo1'):
+            modelo_obj = Modelo.objects.filter(nombre__iexact=data['rasgo1']).first()
+
+        # Tela
+        tela_obj = None
+        if data.get('tela_id'):
+            tela_obj = Tela.objects.filter(pk=data['tela_id']).first()
+        else:
+            rasgo2 = data.get('rasgo2', '')
+            if rasgo2:
+                tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+
+        # Talla FK
+        talla_str = data.get('talla', 'U')
+        talla_obj_cat = None
+        if data.get('talla_id'):
+            talla_obj_cat = Talla.objects.filter(pk=data['talla_id']).first()
+        if talla_obj_cat is None:
+            talla_obj_cat = Talla.buscar_por_alias(talla_str)
+
+        # Uniqueness check via FK constraint (when modelo + talla are set)
+        if not forzar_crear and modelo_obj and talla_obj_cat:
+            qs = Producto.objects.filter(
+                modelo=modelo_obj,
+                color=color_obj,
+                tela=tela_obj,
+                talla_obj=talla_obj_cat,
+            )
+            if qs.exists():
+                return JsonResponse({
+                    'status': 'blocked',
+                    'message': '🚫 Ya existe una variante con ese modelo, color, tela y talla.',
+                    'requiere_confirmacion': False,
+                }, status=400)
+
+        rasgo1 = data.get('rasgo1', modelo_obj.nombre if modelo_obj else '')
+        rasgo2 = data.get('rasgo2', tela_obj.nombre if tela_obj else '')
+
+        producto, created = Producto.objects.get_or_create(
             categoria=categoria,
             color=color_obj,
             tela=tela_obj,
-            rasgo1=data.get('rasgo1', ''),
+            modelo=modelo_obj,
+            rasgo1=rasgo1,
             rasgo2=rasgo2,
-            talla=data.get('talla', 'U'),
-            precio_venta=safe_decimal(data.get('precio', 0)),
-            estado=data.get('estado', 'TIENDA'),
-            cantidad_actual=int(data.get('stock', 1)),
-            foto=foto
+            talla=talla_str,
+            talla_obj=talla_obj_cat,
+            defaults={
+                'precio_venta': safe_decimal(data.get('precio', 0)),
+                'estado': data.get('estado', 'TIENDA'),
+                'cantidad_actual': int(data.get('stock', 1)),
+                'foto': foto,
+            }
         )
-        
-        return JsonResponse({
-            'status': 'ok', 
-            'sku': producto.sku, 
-            'id': producto.id, 
+
+        res = {
+            'status': 'ok',
+            'sku': producto.sku,
+            'id': producto.id,
             'text': str(producto),
-            'message': '✅ Producto creado correctamente'
-        })
-        
+            'message': '✅ Producto creado correctamente' if created else '✅ Producto existente reutilizado',
+        }
+
+        if idem_key:
+            log.response_json = res
+            log.status = 'DONE'
+            log.save()
+
+        return JsonResponse(res)
+
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
@@ -1241,10 +1735,12 @@ def inventario_view(request):
     """Vista de gestión de inventario"""
     q = request.GET.get('q', '')
     productos = Producto.objects.filter(
+        activo=True
+    ).filter(
         Q(sku__icontains=q) |
         Q(rasgo1__icontains=q) |
         Q(rasgo2__icontains=q)
-    ).select_related('categoria', 'color').order_by('-fecha_creacion')[:100]
+    ).select_related('categoria', 'color', 'modelo', 'tela').order_by('-fecha_creacion')[:100]
 
     # Añadir nivel de stock visual
     for p in productos:
@@ -1266,7 +1762,10 @@ def inventario_view(request):
         'q': q,
         'es_admin': es_admin(request.active_profile),
         'categorias': Categoria.objects.all().order_by('nombre'),
-        'colores': Color.objects.filter(activo=True).order_by('nombre')
+        'colores': Color.objects.filter(activo=True).order_by('nombre'),
+        'tallas': Talla.objects.filter(activa=True).order_by('orden', 'nombre'),
+        'modelos': Modelo.objects.all().order_by('nombre'),
+        'telas': Tela.objects.filter(activa=True).order_by('nombre'),
     })
 
 
@@ -1305,17 +1804,22 @@ def api_imprimir_etiquetas_lote(request):
     from .services.printer_service import imprimir_etiqueta_brother
     
     data = json.loads(request.body)
-    producto_ids = data.get('productos', [])
-    cantidad_cada = int(data.get('cantidad', 1))
-    
+    raw_productos = data.get('productos', [])
+    # Accept [{id, cantidad}, ...] or [id, ...] (backward-compat)
+    if raw_productos and isinstance(raw_productos[0], dict):
+        producto_entries = [(int(e['id']), int(e.get('cantidad', 1))) for e in raw_productos]
+    else:
+        cantidad_cada = int(data.get('cantidad', 1))
+        producto_entries = [(int(pid), cantidad_cada) for pid in raw_productos]
+
     resultados = []
     exitosos = 0
     fallidos = 0
-    
-    for pid in producto_ids:
+
+    for pid, cantidad in producto_entries:
         try:
             producto = Producto.objects.get(pk=pid)
-            resultado = imprimir_etiqueta_brother(producto, cantidad_cada)
+            resultado = imprimir_etiqueta_brother(producto, cantidad)
             resultados.append({
                 'sku': producto.sku,
                 'success': resultado['success'],
@@ -1390,30 +1894,55 @@ def api_get_variantes(request, pk):
 @login_required
 @profile_permission_required('Inventario')
 def api_clonar_variante(request, pk):
-    """Clona un producto base para crear una variante (mismo modelo/tela, diferente color/talla)"""
+    """Clona un producto base para crear una variante (mismo modelo/tela, diferente color/talla)."""
     try:
         producto_base = get_object_or_404(Producto, pk=pk)
         data = json.loads(request.body)
-
-        color_nombre = data.get('color')
-        talla = data.get('talla')
         stock_inicial = int(data.get('stock', 0))
 
-        color_obj, _ = Color.objects.get_or_create(nombre=color_nombre)
+        # Resolver color
+        if data.get('color_id'):
+            color_obj = get_object_or_404(Color, pk=data['color_id'])
+        else:
+            color_nombre = data.get('color', '')
+            color_obj, _ = Color.objects.get_or_create(nombre=normalizar_nombre(color_nombre) or color_nombre)
 
-        # Clonar el producto
+        # Resolver talla
+        talla_str = data.get('talla', '')
+        if data.get('talla_id'):
+            talla_obj_cat = Talla.objects.filter(pk=data['talla_id']).first()
+        else:
+            talla_obj_cat = Talla.buscar_por_alias(talla_str) if talla_str else None
+
+        modelo_obj = producto_base.modelo
+        tela_obj = producto_base.tela
+
+        # Dedup check via FK constraint
+        if modelo_obj and talla_obj_cat:
+            if Producto.objects.filter(
+                modelo=modelo_obj,
+                color=color_obj,
+                tela=tela_obj,
+                talla_obj=talla_obj_cat,
+            ).exists():
+                return JsonResponse({
+                    'status': 'blocked',
+                    'message': 'Ya existe una variante con ese modelo, color, tela y talla.',
+                }, status=400)
+
         nueva_variante = Producto.objects.create(
             categoria=producto_base.categoria,
-            modelo=producto_base.modelo,
-            tela=producto_base.tela,
+            modelo=modelo_obj,
+            tela=tela_obj,
             color=color_obj,
-            talla=talla,
+            talla=talla_str,
+            talla_obj=talla_obj_cat,
             precio_venta=producto_base.precio_venta,
             rasgo1=producto_base.rasgo1,
             rasgo2=producto_base.rasgo2,
             cantidad_actual=stock_inicial,
             stock_teorico=stock_inicial,
-            estado='TIENDA'
+            estado='TIENDA',
         )
 
         registrar_auditoria(
@@ -1421,14 +1950,14 @@ def api_clonar_variante(request, pk):
             accion='MOVIMIENTO_INV',
             detalles=f'Variante creada para {producto_base.sku}: {nueva_variante.sku}',
             entidad=nueva_variante,
-            request=request
+            request=request,
         )
 
         return JsonResponse({
             'status': 'ok',
             'sku': nueva_variante.sku,
             'id': nueva_variante.id,
-            'message': 'Variante agregada con éxito'
+            'message': 'Variante agregada con éxito',
         })
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -1476,18 +2005,35 @@ def api_producto_regularizar(request, pk):
 @profile_permission_required('Admin')
 def api_eliminar_producto(request, pk):
     """Elimina un producto (solo Admin)"""
+    from django.db.models.deletion import ProtectedError
+    from django.db import IntegrityError
     producto = get_object_or_404(Producto, pk=pk)
-    
-    registrar_auditoria(
-        usuario=request.active_profile,
-        accion='ELIMINACION_PRODUCTO',
-        detalles=f'Producto {producto.sku} eliminado',
-        entidad=producto,
-        request=request
-    )
-    
-    producto.delete()
-    return JsonResponse({'status': 'ok'})
+    sku = producto.sku  # capturar antes de borrar
+
+    try:
+        producto.delete()
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='ELIMINACION_PRODUCTO',
+            detalles=f'Producto {sku} eliminado',
+            request=request
+        )
+        return JsonResponse({'status': 'ok'})
+    except ProtectedError:
+        # Tiene historial — archivar en lugar de borrar
+        producto.activo = False
+        producto.save(update_fields=['activo'])
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='ARCHIVO_PRODUCTO',
+            detalles=f'Producto {sku} archivado (tiene historial de ventas/movimientos)',
+            request=request
+        )
+        return JsonResponse({'status': 'ok', 'archived': True})
+    except IntegrityError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 
 @require_POST
@@ -1516,7 +2062,8 @@ def api_editar_producto(request, pk):
                 notas=f'Ajuste manual de {producto.cantidad_actual} a {nuevo_stock}',
                 stock_resultante=nuevo_stock
             )
-        
+            producto.cantidad_actual = nuevo_stock
+
         producto.save()
 
         registrar_auditoria(
@@ -1540,10 +2087,252 @@ def imprimir_etiquetas(request):
     return render(request, 'boutique/etiquetas_lote.html', {'productos': productos})
 
 
+@require_POST
+@login_required
+@profile_permission_required('Inventario')
+def api_regenerar_barcodes(request):
+    """Regenera códigos de barras para productos que no los tienen."""
+    sin_barcode = Producto.objects.filter(
+        Q(barcode_image='') | Q(barcode_image__isnull=True)
+    )
+    total = sin_barcode.count()
+    generados = 0
+    errores = []
+    for prod in sin_barcode:
+        try:
+            prod.barcode_image = None
+            prod.save()
+            generados += 1
+        except Exception as e:
+            errores.append(f"{prod.sku}: {e}")
+    return JsonResponse({
+        'status': 'ok',
+        'total_sin_barcode': total,
+        'generados': generados,
+        'errores': errores[:10],
+        'message': f'✅ {generados} barcodes generados de {total} sin código'
+    })
+
+
 # ============================================================
 # VISTAS DE AGENDA
 # ============================================================
 
+
+
+# ============================================================
+# SERVICIOS Y AJUSTES
+# ============================================================
+
+@login_required
+@profile_permission_required('Vendedor')
+def servicios_list(request):
+    """Lista de servicios activos y búsqueda"""
+    from .models import Servicio
+    q = request.GET.get('q', '').strip()
+    estado = request.GET.get('estado', '')
+
+    servicios = Servicio.objects.select_related('cliente', 'novia', 'creado_por').prefetch_related('pagos_servicio')
+
+    if q:
+        servicios = servicios.filter(
+            Q(descripcion__icontains=q) |
+            Q(cliente__nombre__icontains=q) |
+            Q(cliente__telefono__icontains=q) |
+            Q(novia__nombre__icontains=q)
+        )
+    if estado:
+        servicios = servicios.filter(estado=estado)
+    else:
+        servicios = servicios.exclude(estado__in=['ENTREGADO', 'CANCELADO'])
+
+    clientes = []
+    try:
+        from .models import Cliente
+        clientes = Cliente.objects.order_by('nombre').values('id', 'nombre', 'telefono')[:200]
+    except Exception:
+        pass
+
+    from .models import AjusteLinea
+    return render(request, 'boutique/servicios_list.html', {
+        'servicios': servicios,
+        'q': q,
+        'estado_filtro': estado,
+        'clientes': list(clientes),
+        'ESTADOS': Servicio.ESTADOS,
+        'TIPOS': Servicio.TIPOS,
+        'TIPOS_LINEA': AjusteLinea.TIPOS,
+    })
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_crear_servicio(request):
+    """Crea un nuevo servicio/ajuste con líneas de ajuste opcionales."""
+    from .models import Servicio, Cliente, AjusteLinea
+    from .services.cash_service import registrar_cobro
+    try:
+        data = json.loads(request.body)
+        cliente_nombre_input = (data.get('cliente_nombre') or '').strip()
+        if not data.get('cliente_id') and not cliente_nombre_input:
+            return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para registrar un servicio.'}, status=400)
+
+        lineas_data = data.get('lineas', [])
+
+        with transaction.atomic():
+            # Resolve cliente
+            cliente = None
+            if data.get('cliente_id'):
+                cliente = Cliente.objects.filter(pk=data['cliente_id']).first()
+            elif cliente_nombre_input:
+                tel = (data.get('cliente_telefono') or '').strip() or '0000000000'
+                cliente, _ = Cliente.objects.get_or_create(
+                    telefono=tel,
+                    defaults={'nombre': cliente_nombre_input}
+                )
+
+            # Resolve novia if provided
+            novia = None
+            novia_id = data.get('novia_id')
+            if novia_id:
+                from .models import Novia
+                novia = Novia.objects.filter(pk=novia_id).first()
+
+            # Costo: sum from lineas when provided, else explicit field
+            if lineas_data:
+                costo = sum(
+                    safe_decimal(l.get('precio_unitario', 0)) * int(l.get('cantidad', 1) or 1)
+                    for l in lineas_data
+                )
+            else:
+                costo = safe_decimal(data.get('costo', 0))
+
+            # Derive service tipo from first linea type when not explicitly provided
+            _LINEA_TO_SRV = {
+                'BASTILLA': 'BASTILLA', 'TIRANTE': 'TIRANTE', 'MANGA': 'MANGA',
+                'CINTURA': 'TALLE', 'BUSTO': 'PECHO', 'CIERRE': 'CREMALLERA',
+                'HOMBRO': 'AJUSTE', 'COSTADO': 'AJUSTE', 'PIERNA': 'BASTILLA',
+            }
+            tipo = data.get('tipo') or (
+                _LINEA_TO_SRV.get(lineas_data[0].get('tipo', ''), 'AJUSTE')
+                if lineas_data else 'AJUSTE'
+            )
+
+            # Create Servicio — anticipo starts at 0; PagoServicio updates it
+            srv = Servicio.objects.create(
+                tipo=tipo,
+                descripcion=data.get('descripcion', ''),
+                cliente=cliente,
+                novia=novia,
+                costo=costo,
+                fecha_prometida=data.get('fecha_prometida') or None,
+                notas=data.get('notas', ''),
+                creado_por=request.active_profile,
+            )
+
+            # Create AjusteLinea records
+            for i, l in enumerate(lineas_data):
+                AjusteLinea.objects.create(
+                    servicio=srv,
+                    tipo=(l.get('tipo') or 'OTRO'),
+                    descripcion=(l.get('descripcion') or '').strip(),
+                    precio_unitario=safe_decimal(l.get('precio_unitario', 0)),
+                    cantidad=int(l.get('cantidad', 1) or 1),
+                    notas=(l.get('notas') or '').strip(),
+                    prenda=(l.get('prenda') or '').strip(),
+                    orden=i,
+                )
+
+            # Register anticipo through caja (requires open CorteCaja)
+            anticipo = safe_decimal(data.get('anticipo', 0))
+            ticket_folio = None
+            if anticipo > 0:
+                ticket = registrar_cobro(
+                    origen_tipo='servicio',
+                    origen_obj=srv,
+                    monto=anticipo,
+                    metodo=data.get('metodo_pago', 'EFECTIVO'),
+                    usuario=request.active_profile,
+                    notas='Anticipo inicial',
+                )
+                ticket_folio = ticket.folio
+
+        return JsonResponse({'status': 'ok', 'id': srv.pk, 'folio': ticket_folio})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    except Exception as e:
+        logger.exception("Error en api_crear_servicio")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_cobrar_servicio(request, pk):
+    """Registra un pago para un servicio (pasa por caja y genera ticket)"""
+    from .models import Servicio
+    from .services.cash_service import registrar_cobro
+    # Validate existence early (outside atomic) for a clean 404
+    get_object_or_404(Servicio, pk=pk)
+    try:
+        data = json.loads(request.body)
+        monto = safe_decimal(data.get('monto', 0))
+        if monto <= 0:
+            return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
+
+        with transaction.atomic():
+            # select_for_update serializes concurrent payments (double-click)
+            srv = get_object_or_404(Servicio.objects.select_for_update(), pk=pk)
+            if srv.saldo_pendiente <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Este servicio ya está pagado.'}, status=400)
+            ticket = registrar_cobro(
+                origen_tipo='servicio',
+                origen_obj=srv,
+                monto=monto,
+                metodo=data.get('metodo', 'EFECTIVO'),
+                usuario=request.active_profile,
+                referencia=data.get('referencia', ''),
+                notas=data.get('notas', ''),
+            )
+        srv.refresh_from_db()
+        return JsonResponse({'status': 'ok', 'saldo': float(srv.saldo_pendiente), 'folio': ticket.folio})
+    except ValueError as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    except Exception as e:
+        logger.exception("Error en api_cobrar_servicio")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required('Vendedor')
+def api_cambiar_estado_servicio(request, pk):
+    """Cambia el estado de un servicio"""
+    from .models import Servicio
+    srv = get_object_or_404(Servicio, pk=pk)
+    try:
+        data = json.loads(request.body)
+        nuevo_estado = data.get('estado')
+        estados_validos = [s[0] for s in Servicio.ESTADOS]
+        if nuevo_estado not in estados_validos:
+            return JsonResponse({'status': 'error', 'message': 'Estado inválido'}, status=400)
+        srv.estado = nuevo_estado
+        srv.save(update_fields=['estado'])
+        return JsonResponse({'status': 'ok', 'estado_display': srv.get_estado_display()})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO'])
+def api_eliminar_servicio(request, pk):
+    """Elimina un servicio (solo admin)"""
+    from .models import Servicio
+    srv = get_object_or_404(Servicio, pk=pk)
+    srv.delete()
+    return JsonResponse({'status': 'ok'})
 
 
 # ============================================================
@@ -1571,8 +2360,9 @@ def admin_dashboard(request):
         'liquidaciones': movs_hoy.filter(tipo='VENTA').aggregate(Sum('monto'))['monto__sum'] or 0,
     }
 
-    # 2. Ingresos por día (Venta + Abonos) - últimos 30 días
-    ventas_dia = MovimientoCaja.objects.annotate(dia=TruncDate('fecha')).values('dia').annotate(
+    # 2. Ingresos por día - últimos 60 días
+    fecha_desde = timezone.now() - timedelta(days=60)
+    ventas_dia = MovimientoCaja.objects.filter(fecha__gte=fecha_desde).annotate(dia=TruncDate('fecha')).values('dia').annotate(
         total=Sum('monto'),
         cantidad=Count('id')
     ).order_by('dia')
@@ -2027,9 +2817,17 @@ def historial_usuario(request, pk):
 @login_required
 def print_ticket_pdf(request, folio):
     """Retorna el PDF del ticket para impresión"""
-    from .models import Ticket
+    from .models import Ticket, Apartado
     from .services.ticket_service import generate_pdf_ticket
-    ticket = get_object_or_404(Ticket, folio=folio)
+
+    ticket = Ticket.objects.filter(folio=folio).first()
+    if ticket is None:
+        # Folio de Apartado (AP-YYYYMMDD-XXXX) — buscar ticket asociado
+        apartado = get_object_or_404(Apartado, folio=folio)
+        ticket = apartado.tickets_asociados.order_by('-fecha_hora').first()
+        if ticket is None:
+            from django.http import Http404
+            raise Http404("No hay ticket asociado a este apartado")
 
     pdf_buffer = generate_pdf_ticket(ticket.id)
     response = HttpResponse(pdf_buffer, content_type='application/pdf')
@@ -2075,6 +2873,14 @@ def api_cobrar_item(request, tipo, pk):
     from .services.cash_service import registrar_cobro
     from .models import Pedido, Apartado
 
+    # Validate type and existence early (outside atomic) for clean 400/404
+    if tipo == 'pedido':
+        get_object_or_404(Pedido, pk=pk)
+    elif tipo == 'apartado':
+        get_object_or_404(Apartado, pk=pk)
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
     try:
         data = json.loads(request.body)
         monto = safe_decimal(data.get('monto', 0))
@@ -2085,22 +2891,27 @@ def api_cobrar_item(request, tipo, pk):
         if monto <= 0:
             return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
 
-        if tipo == 'pedido':
-            item = get_object_or_404(Pedido, pk=pk)
-        elif tipo == 'apartado':
-            item = get_object_or_404(Apartado, pk=pk)
-        else:
-            return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+        with transaction.atomic():
+            # select_for_update serializes concurrent payments (double-click)
+            if tipo == 'pedido':
+                item = get_object_or_404(Pedido.objects.select_for_update(), pk=pk)
+                saldo_actual = item.saldo_pendiente
+            else:
+                item = get_object_or_404(Apartado.objects.select_for_update(), pk=pk)
+                saldo_actual = item.saldo
 
-        ticket = registrar_cobro(
-            origen_tipo=tipo,
-            origen_obj=item,
-            monto=monto,
-            metodo=metodo,
-            usuario=request.active_profile,
-            referencia=referencia,
-            notas=notas
-        )
+            if saldo_actual <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Este elemento ya está pagado.'}, status=400)
+
+            ticket = registrar_cobro(
+                origen_tipo=tipo,
+                origen_obj=item,
+                monto=monto,
+                metodo=metodo,
+                usuario=request.active_profile,
+                referencia=referencia,
+                notas=notas
+            )
 
         return JsonResponse({
             'status': 'ok',
@@ -2124,13 +2935,20 @@ def api_guardar_medidas(request, pedido_id):
         data = json.loads(request.body)
         medidas, _ = Medidas.objects.get_or_create(pedido=pedido)
 
-        for field in ['busto', 'cintura', 'cadera', 'hombro', 'largo', 'brazo', 'espalda',
-                      'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto']:
-            if field in data:
-                val = data.get(field)
+        for field in ['busto', 'cintura', 'cadera', 'hombro', 'largo_aproximado', 'brazo', 'espalda',
+                      'talle_delantero', 'talle_trasero', 'altura_busto', 'separacion_busto',
+                      'bajo_busto', 'largo_talle', 'hombro_pezon', 'hombro_bajo_busto']:
+            # Accept 'largo' as alias for backwards compat
+            key = 'largo_aproximado' if field == 'largo_aproximado' and 'largo_aproximado' not in data and 'largo' in data else field
+            src_key = 'largo' if field == 'largo_aproximado' and 'largo' in data and 'largo_aproximado' not in data else field
+            if src_key in data:
+                val = data.get(src_key)
                 setattr(medidas, field, safe_decimal(val, None) if val and val != '' else None)
 
         medidas.observaciones = data.get('observaciones', '')
+        medidas.notas = data.get('notas', medidas.notas)
+        if pedido.cliente:
+            medidas.cliente = pedido.cliente
         if pedido.novia:
             medidas.cliente_nombre = pedido.novia.nombre
 
@@ -2153,19 +2971,17 @@ def api_obtener_medidas_reutilizar(request, pedido_id):
 
     if prev_pedido and hasattr(prev_pedido, 'medidas'):
         m = prev_pedido.medidas
+        def fv(val):
+            return float(val) if val is not None else None
         data = {
-            'busto': float(m.busto) if m.busto else None,
-            'cintura': float(m.cintura) if m.cintura else None,
-            'cadera': float(m.cadera) if m.cadera else None,
-            'hombro': float(m.hombro) if m.hombro else None,
-            'largo': float(m.largo) if m.largo else None,
-            'brazo': float(m.brazo) if m.brazo else None,
-            'espalda': float(m.espalda) if m.espalda else None,
-            'talle_delantero': float(m.talle_delantero) if m.talle_delantero else None,
-            'talle_trasero': float(m.talle_trasero) if m.talle_trasero else None,
-            'altura_busto': float(m.altura_busto) if m.altura_busto else None,
-            'separacion_busto': float(m.separacion_busto) if m.separacion_busto else None,
-            'observaciones': m.observaciones
+            'busto': fv(m.busto), 'cintura': fv(m.cintura), 'cadera': fv(m.cadera),
+            'hombro': fv(m.hombro), 'largo_aproximado': fv(m.largo_aproximado),
+            'brazo': fv(m.brazo), 'espalda': fv(m.espalda),
+            'talle_delantero': fv(m.talle_delantero), 'talle_trasero': fv(m.talle_trasero),
+            'altura_busto': fv(m.altura_busto), 'separacion_busto': fv(m.separacion_busto),
+            'bajo_busto': fv(m.bajo_busto), 'largo_talle': fv(m.largo_talle),
+            'hombro_pezon': fv(m.hombro_pezon), 'hombro_bajo_busto': fv(m.hombro_bajo_busto),
+            'observaciones': m.observaciones, 'notas': m.notas,
         }
         return JsonResponse({'medidas': data})
 
@@ -2191,8 +3007,52 @@ def api_entregar_item(request, tipo, pk):
     item.save()
     return JsonResponse({'status': 'ok'})
 
+
 @require_POST
 @login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_llego_a_tienda(request, tipo, pk):
+    """Marca un Pedido o Apartado como llegado a tienda."""
+    from .models import Pedido, Apartado
+    if tipo == 'pedido':
+        item = get_object_or_404(Pedido, pk=pk)
+        item.estado = 'RECIBIDO'
+    elif tipo == 'apartado':
+        item = get_object_or_404(Apartado, pk=pk)
+        item.estado = 'LLEGO_A_TIENDA'
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+    item.llego_a_tienda_en = timezone.now()
+    item.llego_a_tienda_por = request.active_profile
+    item.save()
+    return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
+def api_cambiar_estado_pedido(request, pk):
+    """Actualiza el estado de un Pedido (transiciones de taller/proveedor)."""
+    from .models import Pedido
+    pedido = get_object_or_404(Pedido, pk=pk)
+    try:
+        data = json.loads(request.body)
+        nuevo_estado = data.get('estado', '').strip()
+        estados_validos = [s[0] for s in Pedido.ESTADOS]
+        if nuevo_estado not in estados_validos:
+            return JsonResponse({'status': 'error', 'message': f'Estado inválido: {nuevo_estado}'}, status=400)
+        if nuevo_estado == 'ENTREGADO' and pedido.saldo_pendiente > 0:
+            return JsonResponse({'status': 'error', 'message': 'No se puede entregar con saldo pendiente'}, status=400)
+        pedido.estado = nuevo_estado
+        pedido.save(update_fields=['estado', 'fecha_actualizacion'])
+        return JsonResponse({'status': 'ok', 'estado_display': pedido.get_estado_display()})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Vendedor'])
 def api_editar_entrega(request, tipo, pk):
     """
     Actualiza la fecha de entrega y notas de un Pedido, Apartado o Novia.
@@ -2227,3 +3087,246 @@ def api_editar_entrega(request, tipo, pk):
         return JsonResponse({'status': 'ok'})
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SUBIDA EN BLOQUE
+# ──────────────────────────────────────────────────────────────────────────────
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def subida_bloque(request):
+    """Vista para cargar múltiples vestidos de una vez"""
+    from .models import RASGOS_ESTILO, RASGOS_CORTE, RASGOS_ESCOTE, RASGOS_TELA
+    return render(request, 'boutique/subida_bloque.html', {
+        'categorias': Categoria.objects.all().order_by('nombre'),
+        'colores': Color.objects.filter(activo=True).order_by('nombre'),
+        'rasgos_estilo': RASGOS_ESTILO,
+        'rasgos_corte': RASGOS_CORTE,
+        'rasgos_escote': RASGOS_ESCOTE,
+        'rasgos_tela': RASGOS_TELA,
+    })
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_subida_bloque(request):
+    """Crea múltiples productos en una sola transacción atómica."""
+    try:
+        if request.content_type and 'multipart' in request.content_type:
+            filas = json.loads(request.POST.get('filas', '[]'))
+            fotos = {k: v for k, v in request.FILES.items() if k.startswith('foto_')}
+        else:
+            data = json.loads(request.body)
+            filas = data.get('filas', [])
+            fotos = {}
+        if not filas:
+            return JsonResponse({'status': 'error', 'message': 'No hay filas'}, status=400)
+
+        resultados = []
+        with transaction.atomic():
+            for i, fila in enumerate(filas):
+                precio_raw = fila.get('precio', '')
+                if not precio_raw or not fila.get('categoria') or not fila.get('color'):
+                    resultados.append({'fila': i + 1, 'status': 'skip', 'msg': 'Fila vacía, omitida'})
+                    continue
+                precio = safe_decimal(precio_raw)
+                if precio <= 0:
+                    resultados.append({'fila': i + 1, 'status': 'error', 'msg': 'Precio inválido'})
+                    continue
+                categoria, _ = Categoria.objects.get_or_create(nombre=fila['categoria'].strip())
+                color, _ = Color.objects.get_or_create(
+                    nombre=fila['color'].strip(),
+                    defaults={'codigo_hex': '#CCCCCC', 'activo': True}
+                )
+                rasgo1_val = fila.get('rasgo1', '').strip()
+                rasgo1_prefix = rasgo1_val[:20] if rasgo1_val else ''
+                posible_duplicado = None
+                if rasgo1_prefix:
+                    dup_candidate = Producto.objects.filter(
+                        categoria__nombre=fila['categoria'].strip(),
+                        color__nombre=fila['color'].strip(),
+                        rasgo1__icontains=rasgo1_prefix,
+                    ).exclude(rasgo1='').first()
+                    if dup_candidate:
+                        posible_duplicado = {'sku': dup_candidate.sku, 'id': dup_candidate.id}
+                producto, created = Producto.objects.get_or_create(
+                    categoria=categoria,
+                    color=color,
+                    talla=fila.get('talla', 'U').strip(),
+                    rasgo1=rasgo1_val,
+                    rasgo2=fila.get('rasgo2', '').strip(),
+                    defaults={'precio_venta': precio, 'cantidad_actual': 0, 'estado': 'TIENDA'}
+                )
+                # If get_or_create matched exactly, the posible_duplicado IS the same product — clear it
+                if posible_duplicado and not created and posible_duplicado['id'] == producto.id:
+                    posible_duplicado = None
+                producto.cantidad_actual += 1
+                if created:
+                    producto.precio_venta = precio
+                foto_file = fotos.get(f'foto_{i}')
+                if foto_file and not producto.foto:
+                    producto.foto = foto_file
+                producto.save(update_fields=['cantidad_actual', 'precio_venta', 'foto'])
+                # Refresh from DB so foto field holds the Cloudinary URL written
+                # by the storage backend, not the raw in-memory file object.
+                if producto.foto:
+                    producto.refresh_from_db(fields=['foto'])
+                resultados.append({
+                    'fila': i + 1,
+                    'status': 'nuevo' if created else 'existente',
+                    'sku': producto.sku,
+                    'id': producto.id,
+                    'desc': str(producto),
+                    'msg': 'Creado' if created else f'Ya existía — stock +1 (total: {producto.cantidad_actual})',
+                    'tiene_foto': bool(foto_file),
+                    'foto_url': producto.foto.url if producto.foto else None,
+                    'posible_duplicado': posible_duplicado,
+                })
+
+        ids_nuevos = [r['id'] for r in resultados if r['status'] in ('nuevo', 'existente')]
+        fotos_guardadas = [r['id'] for r in resultados if r.get('tiene_foto')]
+        return JsonResponse({'status': 'ok', 'resultados': resultados, 'ids_nuevos': ids_nuevos})
+    except Exception as e:
+        logger.exception("Error en api_subida_bloque")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_foto_producto(request, pk):
+    """Sube o reemplaza la foto de un producto existente."""
+    producto = get_object_or_404(Producto, pk=pk)
+    foto = request.FILES.get('foto')
+    if not foto:
+        return JsonResponse({'status': 'error', 'message': 'No se recibió foto'}, status=400)
+    if producto.foto:
+        try:
+            producto.foto.delete(save=False)
+        except Exception:
+            pass
+    producto.foto = foto
+    producto.save(update_fields=['foto'])
+    # Refresh from DB so the field holds the Cloudinary public ID/URL written
+    # by the storage backend, not the in-memory InMemoryUploadedFile object.
+    producto.refresh_from_db(fields=['foto'])
+    return JsonResponse({'status': 'ok', 'foto_url': producto.foto.url})
+
+
+# ============================================================
+# CATÁLOGOS CONTROLADOS: Talla, Modelo
+# ============================================================
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_crear_talla(request):
+    """Crea una nueva talla controlada con validación de duplicados."""
+    data = json.loads(request.body)
+    nombre = data.get('nombre', '').strip()
+    if not nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
+
+    # Case-insensitive dedup
+    if Talla.objects.filter(nombre__iexact=nombre).exists():
+        return JsonResponse({'status': 'blocked', 'message': f'Ya existe una talla "{nombre}"'}, status=400)
+
+    # Check alias collision
+    existing = Talla.buscar_por_alias(nombre)
+    if existing:
+        return JsonResponse({
+            'status': 'blocked',
+            'message': f'"{nombre}" es un alias de la talla existente "{existing.nombre}"',
+        }, status=400)
+
+    talla = Talla.objects.create(
+        nombre=nombre,
+        aliases_json=data.get('aliases', []),
+        orden=data.get('orden', 999),
+        activa=True,
+    )
+    return JsonResponse({'status': 'ok', 'id': talla.id, 'nombre': talla.nombre})
+
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_listar_tallas(request):
+    """Lista tallas activas del catálogo."""
+    tallas = list(
+        Talla.objects.filter(activa=True)
+        .order_by('orden', 'nombre')
+        .values('id', 'nombre', 'aliases_json', 'orden')
+    )
+    return JsonResponse({'status': 'ok', 'tallas': tallas})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_crear_modelo_catalogo(request):
+    """Crea un nuevo modelo en el catálogo con validación de duplicados."""
+    data = json.loads(request.body)
+    nombre = data.get('nombre', '').strip()
+    if not nombre:
+        return JsonResponse({'status': 'error', 'message': 'El nombre es requerido'}, status=400)
+
+    nombre_norm = normalizar_nombre(nombre)
+
+    # Accent-insensitive dedup
+    if Modelo.objects.filter(nombre__iexact=nombre_norm).exists():
+        return JsonResponse({'status': 'blocked', 'message': f'Ya existe un modelo "{nombre_norm}"'}, status=400)
+
+    # AI similarity check (optional, silent on failure)
+    ai_warning = None
+    similares = Modelo.objects.filter(
+        nombre__icontains=nombre_norm.split()[0] if nombre_norm else ''
+    ).values_list('nombre', flat=True)[:10]
+    if similares:
+        try:
+            from .ai_utils import get_gemini_client, GEMINI_MODEL
+            client = get_gemini_client()
+            if client:
+                prompt = f"""¿El modelo "{nombre_norm}" es igual o muy similar a alguno de estos modelos?
+Modelos existentes: {', '.join(similares)}
+Responde SOLO con "IGUAL: [nombre]", "SIMILAR: [nombre]" o "DIFERENTE"."""
+                response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+                ai_resp = response.text.strip()
+                if 'IGUAL' in ai_resp.upper():
+                    return JsonResponse({'status': 'blocked', 'message': f'Parece igual a uno existente. {ai_resp}'}, status=400)
+                elif 'SIMILAR' in ai_resp.upper():
+                    ai_warning = ai_resp
+        except Exception:
+            pass
+
+    categoria = None
+    if data.get('categoria_id'):
+        categoria = Categoria.objects.filter(pk=data['categoria_id']).first()
+
+    modelo = Modelo.objects.create(
+        nombre=nombre_norm,
+        descripcion=data.get('descripcion', ''),
+        referencia=data.get('referencia', ''),
+        categoria=categoria,
+        es_especial=data.get('es_especial', False),
+        combinacion_telas=data.get('combinacion_telas', ''),
+        notas_confeccion=data.get('notas_confeccion', ''),
+        codigo_especial=data.get('codigo_especial', ''),
+    )
+    res = {'status': 'ok', 'id': modelo.id, 'nombre': modelo.nombre, 'message': f'Modelo "{modelo.nombre}" creado'}
+    if ai_warning:
+        res['warning'] = ai_warning
+    return JsonResponse(res)
+
+
+@login_required
+@profile_permission_required(['Admin', 'CEO', 'Inventario', 'Vendedor'])
+def api_listar_modelos(request):
+    """Lista modelos con búsqueda opcional."""
+    q = request.GET.get('q', '')
+    qs = Modelo.objects.all()
+    if q:
+        qs = qs.filter(nombre__icontains=q)
+    modelos = list(qs.order_by('nombre').values('id', 'nombre', 'referencia', 'es_especial', 'categoria_id')[:100])
+    return JsonResponse({'status': 'ok', 'modelos': modelos})

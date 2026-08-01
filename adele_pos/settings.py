@@ -61,6 +61,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'boutique.context_processors.tienda_globals',
             ],
         },
     },
@@ -88,6 +89,8 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
 LANGUAGE_CODE = 'es-es'
 TIME_ZONE = 'UTC'
 USE_I18N = True
@@ -95,15 +98,52 @@ USE_TZ = True
 
 # --- Configuración de Archivos Estáticos ---
 STATIC_URL = 'static/'
-# Directorio donde `collectstatic` recogerá los archivos estáticos para producción.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# Motor de almacenamiento para WhiteNoise.
 if not DEBUG:
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    # CompressedStaticFilesStorage: compresses files but does NOT build a strict
+    # manifest. CompressedManifest* crashes on Django 5.x admin CSS cross-references.
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+        },
+    }
+    # Compat shim: django-cloudinary-storage reads this legacy attribute on Django 5.x.
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 # --- Configuración de Archivos Media ---
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# --- Cloudinary para fotos de productos persistentes en producción ---
+# IMPORTANTE: NO agregamos cloudinary_storage a INSTALLED_APPS porque su
+# comando collectstatic personalizado salta copy_file cuando no usa
+# StaticCloudinaryStorage, lo que rompe el post-procesado de whitenoise.
+# El backend MediaCloudinaryStorage funciona sin estar en INSTALLED_APPS.
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
+if CLOUDINARY_URL:
+    try:
+        import cloudinary as _cloudinary
+        _cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+        # Solo sobreescribir el backend de media (fotos), no el de static.
+        if not DEBUG:
+            STORAGES['default'] = {
+                'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+            }
+        else:
+            STORAGES = {
+                'default': {
+                    'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+                },
+                'staticfiles': {
+                    'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+                },
+            }
+    except Exception as _e:
+        import logging as _logging
+        _logging.error(f'Cloudinary setup error: {_e}')
 
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'

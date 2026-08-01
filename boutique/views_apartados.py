@@ -39,8 +39,13 @@ def api_crear_apartado(request):
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
-        cliente_nombre = data.get('cliente_nombre', 'Cliente General')
-        cliente_telefono = data.get('cliente_telefono', '')
+        cliente_nombre = (data.get('cliente_nombre') or '').strip()
+        cliente_telefono = (data.get('cliente_telefono') or '').strip()
+
+        if not cliente_nombre:
+            return JsonResponse({'status': 'error', 'message': 'El nombre del cliente es obligatorio para apartados.'}, status=400)
+        if cliente_nombre.lower() == 'sin registro':
+            return JsonResponse({'status': 'error', 'message': 'Un apartado con saldo pendiente no puede quedar sin registro de cliente.'}, status=400)
         anticipo = safe_decimal(data.get('anticipo', 0))
         total = safe_decimal(data.get('total', 0))
         notas = data.get('notas', '')
