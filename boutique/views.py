@@ -326,7 +326,7 @@ def scan_ticket(request, folio):
         elif ticket.servicio:
             srv = ticket.servicio
             estado_display = srv.get_estado_display()
-            saldo = float(srv.costo - srv.anticipo)
+            saldo = float(srv.saldo_pendiente)  # uses property summing real pagos_servicio
             estado_css = 'ok' if srv.estado == 'ENTREGADO' else 'progress'
     except Exception:
         pass
@@ -658,13 +658,18 @@ def api_liquidar_pedido(request, pk):
     """Convierte un pedido en venta al ser liquidado"""
     from .models import PagoPedido
     from .services.cash_service import registrar_cobro
-    pedido = get_object_or_404(Pedido, pk=pk)
+    # Validate existence early (outside atomic) for a clean 404
+    get_object_or_404(Pedido, pk=pk)
     try:
         data = json.loads(request.body)
         metodo = data.get('metodo', 'EFECTIVO')
-        monto = safe_decimal(data.get('monto', pedido.saldo_pendiente))
+        monto = safe_decimal(data.get('monto', 0))
 
         with transaction.atomic():
+            # select_for_update serializes concurrent requests (double-click)
+            pedido = Pedido.objects.select_for_update().get(pk=pk)
+            if not monto:
+                monto = pedido.saldo_pendiente
             # Registrar el cobro en caja
             ticket = registrar_cobro(
                 origen_tipo='pedido',
@@ -815,13 +820,8 @@ def api_venta_rapida(request):
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
-        # Idempotencia
+        # Idempotency key is read here; the check runs INSIDE the atomic block
         idem_key = request.POST.get('idempotency_key')
-        if idem_key:
-            from .models import IdempotencyLog
-            log, created = IdempotencyLog.objects.get_or_create(key=idem_key, defaults={'status': 'PROCESSING'})
-            if not created and log.status == 'DONE':
-                return JsonResponse(log.response_json)
 
         # Datos del cliente
         cliente_telefono = request.POST.get('cliente_telefono', '').strip()
@@ -853,6 +853,20 @@ def api_venta_rapida(request):
                 return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
 
         with transaction.atomic():
+            # Idempotency — inside atomic to protect the PROCESSING→DONE window
+            if idem_key:
+                from .models import IdempotencyLog
+                log, created = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created:
+                    if log.status == 'DONE':
+                        return JsonResponse(log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
+
             # 2. Gestionar cliente
             cliente_obj = None
             if cliente_telefono:
@@ -1248,7 +1262,7 @@ def api_search_clientes(request):
 @profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta o un apartado"""
-    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    from .models import Novia, PagoPedido, Apartado, ApartadoItem, IdempotencyLog
     from .services.cash_service import registrar_cobro
     try:
         data = json.loads(request.body)
@@ -1262,6 +1276,7 @@ def api_registrar_venta(request):
         sin_registro = bool(data.get('sin_registro', False))
         notas_operacion = (data.get('notas_operacion') or '').strip()
         cliente_id_hint = data.get('cliente_id')
+        idem_key = data.get('idempotency_key')
         tiene_saldo = pago_inicial < total
 
         # Identidad mínima obligatoria
@@ -1284,6 +1299,20 @@ def api_registrar_venta(request):
                 }, status=400)
 
         with transaction.atomic():
+            # Idempotency — inside atomic to protect the PROCESSING→DONE window
+            idem_log = None
+            if idem_key:
+                idem_log, created = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created:
+                    if idem_log.status == 'DONE':
+                        return JsonResponse(idem_log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
+
             if es_apartado:
                 # Nuevo flujo de Apartado Independiente
                 apartado = Apartado.objects.create(
@@ -1340,7 +1369,12 @@ def api_registrar_venta(request):
                     request=request
                 )
 
-                return JsonResponse({'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio})
+                _res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio}
+                if idem_log:
+                    idem_log.response_json = _res
+                    idem_log.status = 'DONE'
+                    idem_log.save()
+                return JsonResponse(_res)
 
             else:
                 # Flujo de Venta normal
@@ -2239,22 +2273,28 @@ def api_cobrar_servicio(request, pk):
     """Registra un pago para un servicio (pasa por caja y genera ticket)"""
     from .models import Servicio
     from .services.cash_service import registrar_cobro
-    srv = get_object_or_404(Servicio, pk=pk)
+    # Validate existence early (outside atomic) for a clean 404
+    get_object_or_404(Servicio, pk=pk)
     try:
         data = json.loads(request.body)
         monto = safe_decimal(data.get('monto', 0))
         if monto <= 0:
             return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
 
-        ticket = registrar_cobro(
-            origen_tipo='servicio',
-            origen_obj=srv,
-            monto=monto,
-            metodo=data.get('metodo', 'EFECTIVO'),
-            usuario=request.active_profile,
-            referencia=data.get('referencia', ''),
-            notas=data.get('notas', ''),
-        )
+        with transaction.atomic():
+            # select_for_update serializes concurrent payments (double-click)
+            srv = get_object_or_404(Servicio.objects.select_for_update(), pk=pk)
+            if srv.saldo_pendiente <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Este servicio ya está pagado.'}, status=400)
+            ticket = registrar_cobro(
+                origen_tipo='servicio',
+                origen_obj=srv,
+                monto=monto,
+                metodo=data.get('metodo', 'EFECTIVO'),
+                usuario=request.active_profile,
+                referencia=data.get('referencia', ''),
+                notas=data.get('notas', ''),
+            )
         srv.refresh_from_db()
         return JsonResponse({'status': 'ok', 'saldo': float(srv.saldo_pendiente), 'folio': ticket.folio})
     except ValueError as e:
@@ -2833,6 +2873,14 @@ def api_cobrar_item(request, tipo, pk):
     from .services.cash_service import registrar_cobro
     from .models import Pedido, Apartado
 
+    # Validate type and existence early (outside atomic) for clean 400/404
+    if tipo == 'pedido':
+        get_object_or_404(Pedido, pk=pk)
+    elif tipo == 'apartado':
+        get_object_or_404(Apartado, pk=pk)
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
     try:
         data = json.loads(request.body)
         monto = safe_decimal(data.get('monto', 0))
@@ -2843,22 +2891,27 @@ def api_cobrar_item(request, tipo, pk):
         if monto <= 0:
             return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
 
-        if tipo == 'pedido':
-            item = get_object_or_404(Pedido, pk=pk)
-        elif tipo == 'apartado':
-            item = get_object_or_404(Apartado, pk=pk)
-        else:
-            return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+        with transaction.atomic():
+            # select_for_update serializes concurrent payments (double-click)
+            if tipo == 'pedido':
+                item = get_object_or_404(Pedido.objects.select_for_update(), pk=pk)
+                saldo_actual = item.saldo_pendiente
+            else:
+                item = get_object_or_404(Apartado.objects.select_for_update(), pk=pk)
+                saldo_actual = item.saldo
 
-        ticket = registrar_cobro(
-            origen_tipo=tipo,
-            origen_obj=item,
-            monto=monto,
-            metodo=metodo,
-            usuario=request.active_profile,
-            referencia=referencia,
-            notas=notas
-        )
+            if saldo_actual <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Este elemento ya está pagado.'}, status=400)
+
+            ticket = registrar_cobro(
+                origen_tipo=tipo,
+                origen_obj=item,
+                monto=monto,
+                metodo=metodo,
+                usuario=request.active_profile,
+                referencia=referencia,
+                notas=notas
+            )
 
         return JsonResponse({
             'status': 'ok',
