@@ -11,16 +11,21 @@ DEBUG = ENVIRONMENT != 'production'
 
 ALLOWED_HOSTS_STRING = os.environ.get('DJANGO_ALLOWED_HOSTS')
 if ALLOWED_HOSTS_STRING:
-    ALLOWED_HOSTS = ALLOWED_HOSTS_STRING.split(',')
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS_STRING.split(',')]
+    if 'testserver' not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append('testserver')
 else:
-    ALLOWED_HOSTS = ['*'] if DEBUG else []
+    ALLOWED_HOSTS = ['*', 'testserver'] if DEBUG else []
 
 CSRF_TRUSTED_ORIGINS = []
 if ALLOWED_HOSTS_STRING:
     for host in ALLOWED_HOSTS_STRING.split(','):
-        CSRF_TRUSTED_ORIGINS.append(f"https://{host.strip()}")
+        h = host.strip()
+        CSRF_TRUSTED_ORIGINS.append(f"https://{h}")
+        CSRF_TRUSTED_ORIGINS.append(f"http://{h}")
 
 INSTALLED_APPS = [
+    'whitenoise.runserver_nostatic',
     'boutique.apps.BoutiqueConfig',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -28,6 +33,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',
 ]
 
 # El middleware de WhiteNoise debe ir después del de Seguridad.
@@ -38,6 +44,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'boutique.middleware.ProfileMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -54,6 +61,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'boutique.context_processors.tienda_globals',
             ],
         },
     },
@@ -62,8 +70,9 @@ TEMPLATES = [
 WSGI_APPLICATION = 'adele_pos.wsgi.application'
 
 if 'DATABASE_URL' in os.environ:
+    db_ssl_require = os.environ.get('DB_SSL_REQUIRE', 'True').lower() == 'true'
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600, ssl_require=True)
+        'default': dj_database_url.config(conn_max_age=600, ssl_require=db_ssl_require)
     }
 else:
     DATABASES = {
@@ -80,6 +89,8 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
 LANGUAGE_CODE = 'es-es'
 TIME_ZONE = 'UTC'
 USE_I18N = True
@@ -87,7 +98,94 @@ USE_TZ = True
 
 # --- Configuración de Archivos Estáticos ---
 STATIC_URL = 'static/'
-# Directorio donde `collectstatic` recogerá los archivos estáticos para producción.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# Motor de almacenamiento para WhiteNoise.
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+if not DEBUG:
+    # CompressedStaticFilesStorage: compresses files but does NOT build a strict
+    # manifest. CompressedManifest* crashes on Django 5.x admin CSS cross-references.
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+        },
+    }
+    # Compat shim: django-cloudinary-storage reads this legacy attribute on Django 5.x.
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+
+# --- Configuración de Archivos Media ---
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# --- Cloudinary para fotos de productos persistentes en producción ---
+# IMPORTANTE: NO agregamos cloudinary_storage a INSTALLED_APPS porque su
+# comando collectstatic personalizado salta copy_file cuando no usa
+# StaticCloudinaryStorage, lo que rompe el post-procesado de whitenoise.
+# El backend MediaCloudinaryStorage funciona sin estar en INSTALLED_APPS.
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
+if CLOUDINARY_URL:
+    try:
+        import cloudinary as _cloudinary
+        _cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+        # Solo sobreescribir el backend de media (fotos), no el de static.
+        if not DEBUG:
+            STORAGES['default'] = {
+                'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+            }
+        else:
+            STORAGES = {
+                'default': {
+                    'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+                },
+                'staticfiles': {
+                    'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+                },
+            }
+    except Exception as _e:
+        import logging as _logging
+        _logging.error(f'Cloudinary setup error: {_e}')
+
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'index'
+LOGOUT_REDIRECT_URL = 'index'
+
+# --- Cookies y seguridad HTTPS (solo en producción) ---
+# Railway termina TLS en su proxy y reenvía HTTP a Django.
+# SECURE_SSL_REDIRECT=True causaría redirect loop; Railway ya fuerza HTTPS externamente.
+# SECURE_PROXY_SSL_HEADER hace que Django trate la petición como segura basándose en el header X-Forwarded-Proto.
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # W004 y W008 se silencian porque Railway maneja HSTS y SSL-redirect a nivel de proxy.
+    SILENCED_SYSTEM_CHECKS = ['security.W004', 'security.W008']
+
+# --- Integración IA Gemini ---
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+# --- Logging ---
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'boutique': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}

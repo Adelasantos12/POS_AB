@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+echo "Running migrations..."
+python manage.py migrate
+
+echo "Setting up roles..."
+python manage.py setup_roles_v2
+
+echo "Populating catalogs..."
+python manage.py populate_catalogs
+
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
+
+echo "Starting Gunicorn..."
+# Aumentamos timeout a 120s para soportar llamadas pesadas de IA/Imágenes
+exec gunicorn adele_pos.wsgi \
+    --bind 0.0.0.0:$PORT \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -

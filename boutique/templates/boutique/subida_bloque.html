@@ -1,0 +1,380 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Subida en Bloque — Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">Subida en Bloque</h1>
+        <p class="page-subtitle">Arrastra fotos y la IA las clasifica sola — o llena la tabla a mano</p>
+    </div>
+    <a href="{% url 'inventario_view' %}" class="btn btn-light rounded-pill px-4">
+        <i class="bi bi-arrow-left me-2"></i>Inventario
+    </a>
+</div>
+
+<!-- ── Drop Zone ── -->
+<div id="dropZone" class="card border-2 mb-4 text-center py-5" style="border-radius:18px;border:2px dashed #c084fc;cursor:pointer;transition:background .2s;">
+    <input type="file" id="inputFotos" accept="image/*" multiple class="d-none">
+    <div id="dropContent">
+        <div style="font-size:3rem;">📸</div>
+        <h5 class="fw-bold mt-2 mb-1">Arrastra las fotos aquí</h5>
+        <p class="text-muted mb-3">O haz clic para seleccionar — puedes soltar muchas a la vez</p>
+        <button type="button" class="btn btn-primary rounded-pill px-5" onclick="document.getElementById('inputFotos').click()">
+            <i class="bi bi-image me-2"></i>Seleccionar fotos
+        </button>
+    </div>
+    <div id="dropProgress" class="d-none">
+        <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;"></div>
+        <h5 class="fw-bold" id="dropProgressLabel">Analizando fotos con IA…</h5>
+        <p class="text-muted small" id="dropProgressSub"></p>
+    </div>
+</div>
+
+<!-- ── Tabla de Vestidos ── -->
+<div class="card shadow-sm border-0 mb-4" style="border-radius:15px;overflow:hidden;">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table mb-0 align-middle" id="tablaBloque">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-3" style="width:36px;">#</th>
+                        <th style="width:70px;">Foto</th>
+                        <th style="min-width:140px;">Categoría *</th>
+                        <th style="min-width:120px;">Color *</th>
+                        <th style="min-width:90px;">Talla</th>
+                        <th style="min-width:100px;">Precio *</th>
+                        <th style="min-width:160px;">Estilo / Corte</th>
+                        <th style="min-width:130px;">Tela / Material</th>
+                        <th style="width:40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="filas">
+                    <!-- filas generadas por JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-white border-0 p-3 d-flex gap-2 align-items-center">
+        <button class="btn btn-outline-secondary rounded-pill" id="btnAgregarFila">
+            <i class="bi bi-plus-lg me-1"></i>Fila manual
+        </button>
+        <span class="text-muted small ms-2" id="lblConteo">0 filas</span>
+        <div class="flex-grow-1"></div>
+        <button class="btn btn-primary fw-bold rounded-pill px-5" id="btnGuardarBloque">
+            <i class="bi bi-check-lg me-2"></i>Guardar todos
+        </button>
+    </div>
+</div>
+
+<!-- ── Resultados ── -->
+<div id="resultadosSection" class="d-none">
+    <div class="card shadow-sm border-0 mb-4" style="border-radius:15px;overflow:hidden;">
+        <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold mb-0" id="resultadosTitulo">Resultado</h5>
+            <button class="btn btn-outline-primary rounded-pill btn-sm d-none" id="btnImprimirEtiquetas">
+                <i class="bi bi-printer me-1"></i>Imprimir etiquetas
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Foto</th>
+                        <th>SKU</th>
+                        <th>Descripción</th>
+                        <th>Resultado</th>
+                    </tr>
+                </thead>
+                <tbody id="resultadosBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Datalists -->
+<datalist id="dlCategorias">{% for c in categorias %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
+<datalist id="dlColores">{% for c in colores %}<option value="{{ c.nombre }}">{% endfor %}</datalist>
+
+<style>
+#dropZone.drag-over { background: #f5f0ff !important; }
+.thumb-preview { width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid #e9ecef; }
+.thumb-placeholder { width:56px;height:56px;border-radius:8px;border:2px dashed #dee2e6;display:flex;align-items:center;justify-content:center;color:#adb5bd;cursor:pointer;font-size:1.3rem;transition:border-color .2s; }
+.thumb-placeholder:hover { border-color:#c084fc; }
+.ai-loading { opacity:.5; }
+.ai-loading td:first-child::after { content:'⏳'; margin-left:4px; }
+</style>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+const RASGOS_ESTILO = {{ rasgos_estilo|safe }};
+const RASGOS_CORTE  = {{ rasgos_corte|safe }};
+const RASGOS_ESCOTE = {{ rasgos_escote|safe }};
+const RASGOS_TELA   = {{ rasgos_tela|safe }};
+const TALLAS = ['U','XS','S','M','L','XL','2XL','3XL','6','8','10','12','14','16','18'];
+
+// Map: rowId → File
+const fotosPorFila = new Map();
+let rowCounter = 0;
+let idNuevos = [];
+
+// ── Datalists para rasgos ──────────────────────────────────────────────────
+const dlR1 = document.createElement('datalist'); dlR1.id = 'dlRasgos1';
+[...RASGOS_ESTILO, ...RASGOS_CORTE, ...RASGOS_ESCOTE].forEach(r => {
+    const o = document.createElement('option'); o.value = r; dlR1.appendChild(o);
+});
+document.body.appendChild(dlR1);
+const dlR2 = document.createElement('datalist'); dlR2.id = 'dlRasgos2';
+RASGOS_TELA.forEach(r => {
+    const o = document.createElement('option'); o.value = r; dlR2.appendChild(o);
+});
+document.body.appendChild(dlR2);
+
+// ── Crear fila ─────────────────────────────────────────────────────────────
+function crearFila(n, foto = null) {
+    const id = ++rowCounter;
+    const tr = document.createElement('tr');
+    tr.dataset.rowId = id;
+    tr.dataset.filaNum = n;
+
+    const url = foto ? URL.createObjectURL(foto) : null;
+    const thumbHtml = url
+        ? `<img src="${url}" class="thumb-preview" title="Clic para cambiar foto">`
+        : `<div class="thumb-placeholder" title="Agregar foto"><i class="bi bi-camera"></i></div>`;
+
+    tr.innerHTML = `
+        <td class="ps-3 text-muted small">${n}</td>
+        <td>
+            <label style="cursor:pointer;display:block;">
+                <input type="file" accept="image/*" class="d-none foto-input" data-row="${id}">
+                ${thumbHtml}
+            </label>
+        </td>
+        <td><input type="text" class="form-control form-control-sm" name="categoria" list="dlCategorias" placeholder="Quinceañera, Novia…"></td>
+        <td><input type="text" class="form-control form-control-sm" name="color" list="dlColores" placeholder="Rosa, Vino…"></td>
+        <td>
+            <select class="form-select form-select-sm" name="talla">
+                ${TALLAS.map(t => `<option value="${t}">${t === 'U' ? 'Única' : t}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" name="precio" placeholder="0" min="0" step="0.01">
+            </div>
+        </td>
+        <td><input type="text" class="form-control form-control-sm" name="rasgo1" list="dlRasgos1" placeholder="Sin manga, Sirena…"></td>
+        <td><input type="text" class="form-control form-control-sm" name="rasgo2" list="dlRasgos2" placeholder="Satín, Encaje…"></td>
+        <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove();actualizarConteo()"><i class="bi bi-x-lg"></i></button></td>`;
+
+    if (foto) fotosPorFila.set(id, foto);
+
+    tr.querySelector('.foto-input').addEventListener('change', e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        fotosPorFila.set(id, f);
+        const lbl = tr.querySelector('label');
+        let img = lbl.querySelector('.thumb-preview');
+        if (!img) {
+            lbl.querySelector('.thumb-placeholder')?.remove();
+            img = document.createElement('img');
+            img.className = 'thumb-preview';
+            img.title = 'Clic para cambiar foto';
+            lbl.appendChild(img);
+        }
+        img.src = URL.createObjectURL(f);
+        analizarYRellenar(tr, f);
+    });
+
+    return tr;
+}
+
+function actualizarConteo() {
+    const n = document.querySelectorAll('#filas tr').length;
+    document.getElementById('lblConteo').textContent = `${n} fila${n !== 1 ? 's' : ''}`;
+}
+
+// ── Analizar foto con IA y rellenar fila ───────────────────────────────────
+async function analizarYRellenar(tr, foto) {
+    tr.classList.add('ai-loading');
+    const fd = new FormData();
+    fd.append('image', foto);
+    try {
+        const res = await fetch('{% url "api_ai_analyze_image" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+            body: fd
+        });
+        const data = await res.json();
+        if (data.status === 'ok' && data.atributos) {
+            const a = data.atributos;
+            const set = (name, val) => { if (val) tr.querySelector(`[name="${name}"]`).value = val; };
+            set('categoria', a.categoria);
+            set('color', a.color);
+            set('rasgo1', a.rasgo1);
+            set('rasgo2', a.rasgo2);
+            if (a.talla) tr.querySelector('[name="talla"]').value = a.talla;
+            if (a.precio_sugerido && a.precio_sugerido > 0)
+                tr.querySelector('[name="precio"]').value = a.precio_sugerido;
+        }
+    } catch (_) { /* el usuario puede llenar a mano */ }
+    finally { tr.classList.remove('ai-loading'); }
+}
+
+// ── Drop Zone ──────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const tbody    = document.getElementById('filas');
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const archivos = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+    if (archivos.length) procesarFotos(archivos);
+});
+document.getElementById('inputFotos').addEventListener('change', e => {
+    procesarFotos([...e.target.files]);
+    e.target.value = '';
+});
+
+async function procesarFotos(files) {
+    if (!files.length) return;
+
+    document.getElementById('dropContent').classList.add('d-none');
+    document.getElementById('dropProgress').classList.remove('d-none');
+
+    let done = 0;
+    const sub = document.getElementById('dropProgressSub');
+    const lbl = document.getElementById('dropProgressLabel');
+
+    // Crear filas inmediatamente con thumbnails, luego analizar en lotes de 3
+    const filasPorFoto = files.map(foto => {
+        const n = tbody.querySelectorAll('tr').length + 1;
+        const tr = crearFila(n, foto);
+        tbody.appendChild(tr);
+        return { tr, foto };
+    });
+    actualizarConteo();
+
+    const lotes = [];
+    for (let i = 0; i < filasPorFoto.length; i += 3) lotes.push(filasPorFoto.slice(i, i + 3));
+
+    for (const lote of lotes) {
+        lbl.textContent = `Analizando foto ${done + 1} de ${files.length}…`;
+        await Promise.all(lote.map(async ({ tr, foto }) => {
+            await analizarYRellenar(tr, foto);
+            done++;
+            sub.textContent = `${done} de ${files.length} listas`;
+        }));
+    }
+
+    document.getElementById('dropContent').classList.remove('d-none');
+    document.getElementById('dropProgress').classList.add('d-none');
+}
+
+// ── Fila manual ────────────────────────────────────────────────────────────
+document.getElementById('btnAgregarFila').addEventListener('click', () => {
+    const n = tbody.querySelectorAll('tr').length + 1;
+    const tr = crearFila(n);
+    tbody.appendChild(tr);
+    actualizarConteo();
+    tr.querySelector('input[name="categoria"]').focus();
+});
+
+// ── Guardar ────────────────────────────────────────────────────────────────
+document.getElementById('btnGuardarBloque').addEventListener('click', async () => {
+    const filas = [];
+    const fotoMap = [];
+
+    [...tbody.querySelectorAll('tr')].forEach(tr => {
+        const get = name => tr.querySelector(`[name="${name}"]`)?.value?.trim() || '';
+        if (!get('categoria') && !get('color') && !get('precio')) return;
+        filas.push({
+            categoria: get('categoria'),
+            color:     get('color'),
+            talla:     get('talla') || 'U',
+            precio:    get('precio'),
+            rasgo1:    get('rasgo1'),
+            rasgo2:    get('rasgo2'),
+        });
+        fotoMap.push(fotosPorFila.get(parseInt(tr.dataset.rowId)) || null);
+    });
+
+    if (!filas.length) { alert('No hay vestidos para guardar.'); return; }
+
+    const btn = document.getElementById('btnGuardarBloque');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando…';
+
+    try {
+        const fd = new FormData();
+        fd.append('filas', JSON.stringify(filas));
+        fotoMap.forEach((foto, idx) => { if (foto) fd.append(`foto_${idx}`, foto); });
+
+        const res = await fetch('{% url "api_subida_bloque" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+            body: fd
+        });
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error(data.message || 'Error desconocido');
+
+        idNuevos = data.ids_nuevos || [];
+        // Crear object URLs locales para los resultados (no depende de Cloudinary)
+        const localUrls = fotoMap.map(f => f ? URL.createObjectURL(f) : null);
+        mostrarResultados(data.resultados, localUrls);
+    } catch (e) {
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg me-2"></i>Guardar todos';
+    }
+});
+
+// ── Resultados ─────────────────────────────────────────────────────────────
+function mostrarResultados(resultados, localUrls = []) {
+    const tb = document.getElementById('resultadosBody');
+    tb.innerHTML = '';
+    let nuevos = 0, existentes = 0, errores = 0;
+    resultados.forEach((r, idx) => {
+        const badge = r.status === 'nuevo'     ? 'bg-success' :
+                      r.status === 'existente' ? 'bg-warning text-dark' :
+                      r.status === 'skip'      ? 'bg-light text-muted border' : 'bg-danger';
+        const label = r.status === 'nuevo'     ? 'Nuevo' :
+                      r.status === 'existente' ? 'Ya existía' :
+                      r.status === 'skip'      ? 'Omitida' : 'Error';
+        // Prefer local object URL (works without Cloudinary); fall back to server URL
+        const imgSrc = localUrls[idx] || r.foto_url || null;
+        const thumb = imgSrc
+            ? `<img src="${imgSrc}" style="height:44px;width:44px;object-fit:cover;border-radius:8px;">`
+            : '<span class="text-muted small">—</span>';
+        const dupBadge = r.posible_duplicado
+            ? ` <a href="/boutique/inventario/?q=${encodeURIComponent(r.posible_duplicado.sku)}" target="_blank"
+                   class="badge bg-warning text-dark rounded-pill ms-1"
+                   title="Posible duplicado detectado">&#9888; Posible duplicado: ${r.posible_duplicado.sku}</a>`
+            : '';
+        tb.innerHTML += `
+            <tr>
+                <td class="ps-4">${thumb}</td>
+                <td class="fw-bold small">${r.sku || '—'}</td>
+                <td class="small">${r.desc || ''}</td>
+                <td><span class="badge ${badge} rounded-pill">${label}</span> <span class="small text-muted">${r.msg || ''}</span>${dupBadge}</td>
+            </tr>`;
+        if (r.status === 'nuevo')          nuevos++;
+        else if (r.status === 'existente') existentes++;
+        else if (r.status === 'error')     errores++;
+    });
+    document.getElementById('resultadosSection').classList.remove('d-none');
+    document.getElementById('resultadosSection').scrollIntoView({ behavior: 'smooth' });
+
+    document.getElementById('resultadosTitulo').textContent =
+        `✅ ${nuevos} nuevos${existentes > 0 ? `  •  ⚠ ${existentes} ya existían` : ''}${errores > 0 ? `  •  ❌ ${errores} errores` : ''}`;
+
+    if (idNuevos.length) document.getElementById('btnImprimirEtiquetas').classList.remove('d-none');
+}
+
+document.getElementById('btnImprimirEtiquetas').addEventListener('click', () => {
+    if (idNuevos.length) window.open(`{% url 'imprimir_etiquetas' %}?ids=${idNuevos.join(',')}`, '_blank');
+});
+</script>
+{% endblock %}

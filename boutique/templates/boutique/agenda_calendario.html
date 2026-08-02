@@ -1,0 +1,323 @@
+{% extends 'boutique/base.html' %}
+{% load boutique_tags %}
+
+{% block title %}Agenda - ByEasy POS{% endblock %}
+
+{% block extra_css %}
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.calendar-header {
+    text-align: center;
+    font-weight: 600;
+    padding: 0.75rem;
+    background: var(--bg-subtle);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.calendar-day {
+    min-height: 100px;
+    background: white;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.calendar-day:hover {
+    border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+}
+.calendar-day.today {
+    border: 2px solid var(--primary);
+    background: #f0f9ff;
+}
+.calendar-day.empty {
+    background: var(--bg-page);
+    cursor: default;
+    border-color: transparent;
+}
+.calendar-day.empty:hover {
+    border-color: transparent;
+    box-shadow: none;
+}
+.day-number {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+.day-number.today {
+    background: var(--primary);
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.cita-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+}
+.cita-dot.prueba { background: #F59E0B; }
+.cita-dot.entrega { background: #10B981; }
+.cita-dot.consulta { background: #3B82F6; }
+.cita-dot.ajuste { background: #8B5CF6; }
+.cita-mini {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: var(--bg-subtle);
+    border-radius: 4px;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.month-nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.month-nav .btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start mb-4" data-testid="agenda-header">
+    <div>
+        <h1 class="page-title">Agenda</h1>
+        <p class="page-subtitle">Adelé Boutique (Gdl)</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'resumen_nocturno' %}" class="btn btn-outline-secondary" data-testid="btn-resumen-nocturno">
+            <i class="bi bi-moon me-2"></i>Resumen Nocturno
+        </a>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nuevaCitaModal" data-testid="btn-nueva-cita">
+            <i class="bi bi-plus-lg me-2"></i>Nueva Cita
+        </button>
+    </div>
+</div>
+
+<!-- Navegación del mes -->
+<div class="card mb-4">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="month-nav">
+                <a href="?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+                <h3 class="mb-0 fw-bold">{{ month_name }} {{ year }}</h3>
+                <a href="?year={{ next_year }}&month={{ next_month }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </div>
+            <div class="d-flex gap-2 align-items-center small">
+                <span class="d-flex align-items-center"><span class="cita-dot consulta"></span>Consulta</span>
+                <span class="d-flex align-items-center"><span class="cita-dot prueba"></span>Prueba</span>
+                <span class="d-flex align-items-center"><span class="cita-dot ajuste"></span>Ajuste</span>
+                <span class="d-flex align-items-center"><span class="cita-dot entrega"></span>Entrega</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Calendario -->
+<div class="calendar-grid" data-testid="calendar-grid">
+    <!-- Headers de días -->
+    <div class="calendar-header">Lun</div>
+    <div class="calendar-header">Mar</div>
+    <div class="calendar-header">Mié</div>
+    <div class="calendar-header">Jue</div>
+    <div class="calendar-header">Vie</div>
+    <div class="calendar-header">Sáb</div>
+    <div class="calendar-header">Dom</div>
+    
+    <!-- Días del mes -->
+    {% for week in month_days %}
+        {% for day in week %}
+            {% if day == 0 %}
+            <div class="calendar-day empty"></div>
+            {% else %}
+            <a href="{% url 'agenda_dia' year month day %}" 
+               class="calendar-day text-decoration-none {% if day == today.day and month == today.month and year == today.year %}today{% endif %}"
+               data-testid="day-{{ day }}">
+                <div class="day-number {% if day == today.day and month == today.month and year == today.year %}today{% endif %}">{{ day }}</div>
+                {% if day in citas_por_dia %}
+                <div class="mt-2">
+                    {% for cita in citas_por_dia|get_item:day %}
+                    <div class="cita-mini">
+                        <span class="cita-dot {% if cita.tipo == 'PRUEBA' %}prueba{% elif cita.tipo == 'ENTREGA' %}entrega{% elif cita.tipo == 'AJUSTE' %}ajuste{% else %}consulta{% endif %}"></span>
+                        {{ cita.hora_inicio|time:"H:i" }} {{ cita.titulo|truncatechars:15 }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </a>
+            {% endif %}
+        {% endfor %}
+    {% endfor %}
+</div>
+
+<!-- Modal Nueva Cita -->
+<div class="modal fade" id="nuevaCitaModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow" style="border-radius: 20px;">
+            <div class="modal-header border-0 p-4 pb-0">
+                <h5 class="modal-title fw-bold">Nueva Cita</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="nuevaCitaForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Título de la Cita *</label>
+                                <input type="text" name="titulo" class="form-control" placeholder="Ej: Consulta Grupo María" required data-testid="input-titulo-cita">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Tipo de Cita</label>
+                                <select name="tipo" class="form-select" data-testid="select-tipo-cita">
+                                    <option value="CONSULTA">🗓️ Consulta nueva novia</option>
+                                    <option value="PRUEBA">👗 Prueba de vestido</option>
+                                    <option value="AJUSTE">✂️ Ajustes</option>
+                                    <option value="ENTREGA">🎁 Entrega</option>
+                                    <option value="RECOGIDA">📦 Recogida</option>
+                                    <option value="OTRO">📝 Otro</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Fecha *</label>
+                                <input type="date" name="fecha" class="form-control" required data-testid="input-fecha-cita">
+                            </div>
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">Hora Inicio *</label>
+                                        <input type="time" name="hora_inicio" class="form-control" value="11:00" required data-testid="input-hora-inicio">
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-bold">Hora Fin</label>
+                                        <input type="time" name="hora_fin" class="form-control" data-testid="input-hora-fin">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Nombre del Cliente</label>
+                                <input type="text" name="nombre_cliente" class="form-control" placeholder="Nombre de la novia/cliente" data-testid="input-nombre-cliente">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Teléfono</label>
+                                <input type="tel" name="telefono_cliente" class="form-control" placeholder="Teléfono de contacto" data-testid="input-tel-cliente">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Cantidad de Damas Esperadas</label>
+                                <input type="number" name="cantidad_damas" class="form-control" value="0" min="0" data-testid="input-damas">
+                            </div>
+                            <div class="mb-3" id="groupCrearNovia">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" name="crear_novia" id="crearNoviaCheck">
+                                    <label class="form-check-label small fw-bold" for="crearNoviaCheck">Crear Perfil de Novia</label>
+                                </div>
+                                <div id="fechaBodaContainer" style="display: none;">
+                                    <label class="form-label small fw-bold">Fecha de Boda</label>
+                                    <input type="date" name="fecha_boda" class="form-control">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Notas</label>
+                                <textarea name="notas" class="form-control" rows="3" placeholder="Notas adicionales..." data-testid="input-notas-cita"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 100px;">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="crearCita()" style="border-radius: 100px;" data-testid="btn-guardar-cita">
+                    <i class="bi bi-check-lg me-1"></i>Agendar Cita
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+// Establecer fecha mínima como hoy
+document.querySelector('input[name="fecha"]').min = new Date().toISOString().split('T')[0];
+
+// Mostrar/Ocultar fecha de boda al marcar checkbox
+document.getElementById('crearNoviaCheck').addEventListener('change', function(e) {
+    document.getElementById('fechaBodaContainer').style.display = e.target.checked ? 'block' : 'none';
+});
+
+// Mostrar/Ocultar opción de crear novia según tipo de cita
+document.querySelector('select[name="tipo"]').addEventListener('change', function(e) {
+    document.getElementById('groupCrearNovia').style.display = (e.target.value === 'CONSULTA') ? 'block' : 'none';
+});
+
+function crearCita() {
+    const form = document.getElementById('nuevaCitaForm');
+    const data = {
+        titulo: form.titulo.value,
+        tipo: form.tipo.value,
+        fecha: form.fecha.value,
+        hora_inicio: form.hora_inicio.value,
+        hora_fin: form.hora_fin.value,
+        nombre_cliente: form.nombre_cliente.value,
+        telefono_cliente: form.telefono_cliente.value,
+        cantidad_damas: parseInt(form.cantidad_damas.value) || 0,
+        notas: form.notas.value,
+        crear_novia: form.crear_novia.checked,
+        fecha_boda: form.fecha_boda.value
+    };
+    
+    if (!data.titulo || !data.fecha || !data.hora_inicio) {
+        alert('Título, fecha y hora son requeridos');
+        return;
+    }
+    
+    fetch('/api/crear-cita/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status === 'ok') {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.message);
+        }
+    })
+    .catch(err => {
+        alert('Error al crear cita');
+    });
+}
+</script>
+{% endblock %}

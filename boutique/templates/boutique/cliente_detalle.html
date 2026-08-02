@@ -1,0 +1,271 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Ficha Cliente - {{ cliente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <h1 class="page-title">{{ cliente.nombre }}</h1>
+        <p class="page-subtitle">
+            {% if cliente.telefono %}<i class="bi bi-telephone me-1"></i>{{ cliente.telefono }}{% endif %}
+            {% if cliente.email %} · <i class="bi bi-envelope me-1"></i>{{ cliente.email }}{% endif %}
+            · Alta: {{ cliente.fecha_alta|date:"d/m/Y" }}
+        </p>
+    </div>
+    <a href="javascript:history.back()" class="btn btn-light rounded-pill"><i class="bi bi-arrow-left me-1"></i>Volver</a>
+</div>
+
+<!-- Saldo Banner -->
+{% if saldo_total > 0 %}
+<div class="alert border-0 mb-4 rounded-4" style="background: linear-gradient(135deg, #fff3cd, #ffe69c);">
+    <div class="row align-items-center g-3">
+        <div class="col-auto">
+            <i class="bi bi-exclamation-triangle-fill text-warning fs-3"></i>
+        </div>
+        <div class="col">
+            <div class="fw-bold">Saldo Total Pendiente: <span class="text-danger fs-5">${{ saldo_total }}</span></div>
+            <small class="text-muted">
+                {% if saldo_apartados > 0 %}Apartados: ${{ saldo_apartados }}{% endif %}
+                {% if saldo_pedidos > 0 %} · Pedidos: ${{ saldo_pedidos }}{% endif %}
+                {% if saldo_servicios > 0 %} · Servicios: ${{ saldo_servicios }}{% endif %}
+            </small>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+    <!-- Columna izquierda: Info + Medidas -->
+    <div class="col-lg-4">
+        <!-- Info del cliente -->
+        <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
+            <div class="card-body">
+                <h6 class="fw-bold text-uppercase small text-muted mb-3">Información</h6>
+                {% if cliente.notas %}
+                <p class="small mb-2"><i class="bi bi-sticky me-2 text-muted"></i>{{ cliente.notas }}</p>
+                {% endif %}
+                {% if cliente.email %}
+                <p class="small mb-2"><i class="bi bi-envelope me-2 text-muted"></i>{{ cliente.email }}</p>
+                {% endif %}
+                {% if cliente.telefono %}
+                <p class="small mb-2"><i class="bi bi-telephone me-2 text-muted"></i>{{ cliente.telefono }}</p>
+                {% endif %}
+                <p class="small mb-0 text-muted"><i class="bi bi-calendar me-2"></i>Cliente desde {{ cliente.fecha_alta|date:"d/m/Y" }}</p>
+            </div>
+        </div>
+
+        <!-- Medidas históricas -->
+        <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
+            <div class="card-body">
+                <h6 class="fw-bold text-uppercase small text-muted mb-3"><i class="bi bi-rulers me-2"></i>Medidas</h6>
+                {% for m in medidas %}
+                <div class="p-2 bg-light rounded-3 mb-2 small">
+                    <div class="fw-bold text-muted mb-1" style="font-size: 0.7rem;">{{ m.fecha_actualizacion|date:"d/m/Y" }} {% if m.pedido %}· Pedido {{ m.pedido.numero_ticket }}{% endif %}</div>
+                    <div class="row g-1">
+                        {% if m.busto %}<div class="col-6">B: <strong>{{ m.busto }}</strong></div>{% endif %}
+                        {% if m.cintura %}<div class="col-6">C: <strong>{{ m.cintura }}</strong></div>{% endif %}
+                        {% if m.cadera %}<div class="col-6">Ca: <strong>{{ m.cadera }}</strong></div>{% endif %}
+                        {% if m.largo_aproximado %}<div class="col-6">L: <strong>{{ m.largo_aproximado }}</strong></div>{% endif %}
+                        {% if m.bajo_busto %}<div class="col-6">BB: <strong>{{ m.bajo_busto }}</strong></div>{% endif %}
+                        {% if m.largo_talle %}<div class="col-6">LT: <strong>{{ m.largo_talle }}</strong></div>{% endif %}
+                        {% if m.hombro_pezon %}<div class="col-6">HP: <strong>{{ m.hombro_pezon }}</strong></div>{% endif %}
+                        {% if m.hombro_bajo_busto %}<div class="col-6">HBB: <strong>{{ m.hombro_bajo_busto }}</strong></div>{% endif %}
+                    </div>
+                    {% if m.notas %}<div class="text-muted mt-1" style="font-size:0.7rem;">{{ m.notas }}</div>{% endif %}
+                </div>
+                {% empty %}
+                <p class="text-muted small mb-0">Sin medidas registradas.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Apartados activos -->
+        {% if apartados_activos %}
+        <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
+            <div class="card-body">
+                <h6 class="fw-bold text-uppercase small text-muted mb-3"><i class="bi bi-bag-heart me-2"></i>Apartados Activos</h6>
+                {% for a in apartados_activos %}
+                <div class="p-2 bg-light rounded-3 mb-2 small">
+                    <div class="d-flex justify-content-between">
+                        <code class="fw-bold">{{ a.folio }}</code>
+                        <span class="{% if a.saldo > 0 %}text-danger{% else %}text-success{% endif %} fw-bold">${{ a.saldo }}</span>
+                    </div>
+                    <div class="text-muted">{{ a.get_estado_display }} · Vence: {{ a.fecha_vencimiento|date:"d/m/Y"|default:"-" }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Columna derecha: Historial + Servicios + Tickets -->
+    <div class="col-lg-8">
+        <!-- Tabs -->
+        <ul class="nav nav-pills mb-3 gap-2" id="clienteTabs" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link rounded-pill px-4 fw-bold active" data-bs-toggle="pill" data-bs-target="#tab-historial" type="button">
+                    <i class="bi bi-clock-history me-1"></i>Historial ({{ historial|length }})
+                </button>
+            </li>
+            {% if servicios %}
+            <li class="nav-item">
+                <button class="nav-link rounded-pill px-4 fw-bold" data-bs-toggle="pill" data-bs-target="#tab-servicios" type="button">
+                    <i class="bi bi-scissors me-1"></i>Servicios ({{ servicios|length }})
+                </button>
+            </li>
+            {% endif %}
+            {% if tickets %}
+            <li class="nav-item">
+                <button class="nav-link rounded-pill px-4 fw-bold" data-bs-toggle="pill" data-bs-target="#tab-tickets" type="button">
+                    <i class="bi bi-receipt me-1"></i>Tickets ({{ tickets|length }})
+                </button>
+            </li>
+            {% endif %}
+        </ul>
+
+        <div class="tab-content">
+            <!-- Tab Historial -->
+            <div class="tab-pane fade show active" id="tab-historial">
+                <div class="card shadow-sm border-0" style="border-radius: 15px; overflow: hidden;">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Fecha</th>
+                                    <th>Folio / Tipo</th>
+                                    <th>Descripción</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="pe-4">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in historial %}
+                                <tr>
+                                    <td class="ps-4 small text-muted">{{ item.fecha|date:"d/m/Y" }}</td>
+                                    <td>
+                                        <code class="small fw-bold">{{ item.folio }}</code><br>
+                                        <span class="badge rounded-pill
+                                            {% if item.tipo == 'VENTA' %}bg-success
+                                            {% elif item.tipo == 'APARTADO' %}bg-info text-dark
+                                            {% elif item.tipo == 'PEDIDO' %}bg-primary
+                                            {% else %}bg-secondary{% endif %}" style="font-size:0.65rem;">
+                                            {{ item.tipo }}
+                                        </span>
+                                    </td>
+                                    <td class="small">{{ item.detalle|default:"-" }}</td>
+                                    <td class="text-end fw-bold small">${{ item.total|default:"0" }}</td>
+                                    <td class="text-end small {% if item.saldo > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
+                                        ${{ item.saldo }}
+                                    </td>
+                                    <td class="pe-4">
+                                        <span class="status-badge {% if item.saldo == 0 %}status-active{% else %}status-warning{% endif %}" style="font-size:0.65rem;">
+                                            {{ item.estado }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-5 text-muted">
+                                        <i class="bi bi-inbox display-6 opacity-25 d-block mb-2"></i>
+                                        Sin historial registrado
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Servicios -->
+            {% if servicios %}
+            <div class="tab-pane fade" id="tab-servicios">
+                <div class="card shadow-sm border-0" style="border-radius: 15px; overflow: hidden;">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Fecha</th>
+                                    <th>Tipo / Descripción</th>
+                                    <th>Entrega Est.</th>
+                                    <th class="text-end">Costo</th>
+                                    <th class="text-end">Saldo</th>
+                                    <th class="pe-4">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for s in servicios %}
+                                <tr>
+                                    <td class="ps-4 small text-muted">{{ s.fecha_creacion|date:"d/m/Y" }}</td>
+                                    <td class="small">
+                                        <div class="fw-bold">{{ s.get_tipo_display }}</div>
+                                        <div class="text-muted">{{ s.descripcion|truncatechars:60 }}</div>
+                                    </td>
+                                    <td class="small">{{ s.fecha_prometida|date:"d/m/Y"|default:"-" }}</td>
+                                    <td class="text-end fw-bold small">${{ s.costo }}</td>
+                                    <td class="text-end small {% if s.saldo_pendiente > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">
+                                        ${{ s.saldo_pendiente }}
+                                    </td>
+                                    <td class="pe-4">
+                                        <span class="status-badge {% if s.estado == 'ENTREGADO' %}status-active{% elif s.estado == 'CANCELADO' %}status-inactive{% else %}status-warning{% endif %}" style="font-size:0.65rem;">
+                                            {{ s.get_estado_display }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Tab Tickets -->
+            {% if tickets %}
+            <div class="tab-pane fade" id="tab-tickets">
+                <div class="card shadow-sm border-0" style="border-radius: 15px; overflow: hidden;">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Fecha / Hora</th>
+                                    <th>Folio</th>
+                                    <th>Tipo</th>
+                                    <th class="text-end">Total</th>
+                                    <th class="pe-4 text-end">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in tickets %}
+                                <tr>
+                                    <td class="ps-4 small text-muted">{{ t.fecha_hora|date:"d/m/Y H:i" }}</td>
+                                    <td><code class="fw-bold">{{ t.folio }}</code></td>
+                                    <td>
+                                        <span class="badge rounded-pill
+                                            {% if t.tipo == 'VENTA' %}bg-success
+                                            {% elif t.tipo == 'APARTADO' %}bg-info text-dark
+                                            {% elif t.tipo == 'PEDIDO' %}bg-primary
+                                            {% elif t.tipo == 'SERVICIO' %}bg-secondary
+                                            {% else %}bg-light text-dark{% endif %}" style="font-size:0.65rem;">
+                                            {{ t.tipo }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end fw-bold small">${{ t.total }}</td>
+                                    <td class="pe-4 text-end">
+                                        <a href="{% url 'print_ticket_pdf' t.folio %}" target="_blank" class="btn btn-xs btn-outline-secondary" title="Imprimir PDF">
+                                            <i class="bi bi-printer"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,46 +1,60 @@
 from django.test import TestCase
-from boutique.models import Producto, Categoria, Modelo, Tela, Color, Proveedor
+from django.urls import reverse
+import json
 
-class ProductoModelTest(TestCase):
+class BoutiqueViewsTest(TestCase):
+    def test_index_view(self):
+        response = self.client.get(reverse('index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'boutique/index.html')
+
+    def test_signup_view_get(self):
+        response = self.client.get(reverse('signup'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'boutique/signup.html')
+
+    def test_signup_no_longer_auto_assigns_vendedor_group(self):
+        from django.contrib.auth.models import User, Group
+        # Ensure group exists
+        Group.objects.get_or_create(name='Vendedor')
+
+        data = {
+            'username': 'testuser',
+            'email': 'test@example.com',
+            'password1': 'testpass123',
+            'password2': 'testpass123',
+        }
+        self.client.post(reverse('signup'), data)
+        user = User.objects.get(username='testuser')
+        # Now users start without roles, to be assigned by admin
+        self.assertFalse(user.groups.filter(name='Vendedor').exists())
+
+class POSAPITest(TestCase):
     def setUp(self):
-        self.proveedor = Proveedor.objects.create(nombre="Proveedor 1")
-        self.categoria = Categoria.objects.create(nombre="Categoria 1")
-        self.modelo = Modelo.objects.create(nombre="Modelo 1")
-        self.tela = Tela.objects.create(nombre="Tela 1", proveedor=self.proveedor, codigo_proveedor="T1")
-        self.color = Color.objects.create(nombre="Color 1", codigo_hex="#FFFFFF")
+        from django.contrib.auth.models import User, Group
+        from boutique.models import Categoria, Color
+        self.user = User.objects.create_user(username='staff', password='pass')
+        vendedor_group, _ = Group.objects.get_or_create(name='Vendedor')
+        self.user.groups.add(vendedor_group)
+        self.categoria, _ = Categoria.objects.get_or_create(nombre='Vestido')
+        self.color, _ = Color.objects.get_or_create(nombre='Rojo')
+        self.client.login(username='staff', password='pass')
 
-    def test_producto_str(self):
-        """Verifica que la representación en cadena sea correcta."""
-        producto = Producto.objects.create(
-            categoria=self.categoria,
-            modelo=self.modelo,
-            tela=self.tela,
-            color=self.color,
-            talla="m",
-            precio_venta=100.00
-        )
-        expected_str = "Modelo 1 Tela 1 Color 1 - Talla: m"
-        self.assertEqual(str(producto), expected_str)
+        # Simular selección de perfil activo
+        session = self.client.session
+        session['active_profile_id'] = self.user.id
+        session.save()
 
-    def test_producto_sku_generation(self):
-        """Verifica que el SKU se genere automáticamente al crear un producto."""
-        producto = Producto.objects.create(
-            categoria=self.categoria,
-            modelo=self.modelo,
-            tela=self.tela,
-            color=self.color,
-            talla="l",
-            precio_venta=150.00
-        )
-        expected_sku = f"CAT{self.categoria.id}-MOD{self.modelo.id}-TELA{self.tela.id}-COL{self.color.id}-L"
-        self.assertEqual(producto.sku, expected_sku)
-
-    def test_producto_str_defensive(self):
-        """Verifica que __str__ maneje relaciones faltantes de forma defensiva."""
-        producto = Producto(talla="s")
-        # En este punto, modelo, tela y color son None
-        rep = str(producto)
-        self.assertIn("Sin modelo", rep)
-        self.assertIn("Sin tela", rep)
-        self.assertIn("Sin color", rep)
-        self.assertIn("Talla: s", rep)
+    def test_crear_producto_rapido(self):
+        data = {
+            'categoria': 'Top',
+            'color': 'Azul',
+            'rasgo1': 'Manga Corta',
+            'precio': 500,
+            'estado': 'TIENDA'
+        }
+        response = self.client.post(reverse('api_crear_producto_rapido'),
+                                    data=json.dumps(data),
+                                    content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('sku', response.json())

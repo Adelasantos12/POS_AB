@@ -1,0 +1,762 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Detalle Novia - {{ novia.nombre }}{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'novias_list' %}">Novias</a></li>
+                <li class="breadcrumb-item active">{{ novia.nombre }}</li>
+            </ol>
+        </nav>
+        <h1 class="page-title">{{ novia.nombre }}</h1>
+        <p class="page-subtitle"><i class="bi bi-calendar-heart me-2"></i>Boda: {{ novia.fecha_boda|date:"d F, Y" }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-danger" onclick="eliminarNovia({{ novia.id }})">
+            <i class="bi bi-trash"></i>
+        </button>
+        <a href="{% url 'pedido_nuevo' %}?novia_id={{ novia.pk }}" class="btn btn-outline-success rounded-pill">
+            <i class="bi bi-clipboard-plus me-1"></i>Nuevo Pedido
+        </a>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalNuevaDama">
+            <i class="bi bi-person-plus me-2"></i>Agregar Dama
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEditarNovia">
+            <i class="bi bi-pencil me-2"></i>Editar Perfil
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Resumen del Grupo -->
+    <div class="col-md-4 mb-4">
+        <!-- Semáforo de Control -->
+        <div class="card mb-3 shadow-sm border-0 bg-light" style="border-radius: 15px;">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center text-center">
+                    <div>
+                        <div class="rounded-circle bg-{{ novia.semaforo_medidas }} mb-1 mx-auto" style="width: 12px; height: 12px;"></div>
+                        <small class="x-small fw-bold text-uppercase">Medidas</small>
+                    </div>
+                    <div>
+                        <div class="rounded-circle bg-{{ novia.semaforo_produccion }} mb-1 mx-auto" style="width: 12px; height: 12px;"></div>
+                        <small class="x-small fw-bold text-uppercase">Listo</small>
+                    </div>
+                    <div>
+                        <div class="rounded-circle bg-{{ novia.semaforo_pago }} mb-1 mx-auto" style="width: 12px; height: 12px;"></div>
+                        <small class="x-small fw-bold text-uppercase">Pagado</small>
+                    </div>
+                    <div>
+                        <div class="rounded-circle bg-{{ novia.semaforo_entrega }} mb-1 mx-auto" style="width: 12px; height: 12px;"></div>
+                        <small class="x-small fw-bold text-uppercase">Entrega</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-body">
+                <h5 class="heading mb-4">Resumen de Pendientes</h5>
+
+                {% with rp=novia.resumen_pendientes %}
+                <div class="row g-3 text-center mb-4">
+                    <div class="col-6">
+                        <div class="p-2 border rounded-3">
+                            <small class="text-muted d-block x-small">Total Damas</small>
+                            <span class="fw-bold">{{ rp.total_damas }}</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-2 border rounded-3">
+                            <small class="text-muted d-block x-small">Entregados</small>
+                            <span class="fw-bold text-success">{{ rp.entregados }}</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-2 border rounded-3 bg-{{ novia.semaforo_medidas }}-subtle">
+                            <small class="text-muted d-block x-small">Medidas Inc.</small>
+                            <span class="fw-bold text-danger">{{ rp.medidas_incompletas }}</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-2 border rounded-3">
+                            <small class="text-muted d-block x-small">Listos Entr.</small>
+                            <span class="fw-bold text-primary">{{ rp.listos_entrega }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endwith %}
+
+                <div class="mb-4">
+                    <label class="text-muted small d-block mb-1">Saldo del Grupo</label>
+                    <div class="d-flex justify-content-between align-items-end">
+                        <div class="h4 fw-bold text-danger mb-0">${{ novia.total_pendiente }}</div>
+                        <small class="text-muted text-success">Pagado: ${{ novia.total_pagado }}</small>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="text-muted small d-block mb-2">Colores del Grupo</label>
+                    {% for col in resumen.colores %}
+                        <span class="badge bg-light text-dark border me-1 mb-1">{{ col }}</span>
+                    {% empty %}
+                        <span class="text-muted small italic">Sin definir</span>
+                    {% endfor %}
+                </div>
+
+                {% if novia.notas %}
+                <hr class="my-2">
+                <div class="mb-2">
+                    <label class="text-muted small d-block mb-1"><i class="bi bi-sticky me-1"></i>Notas</label>
+                    <p class="small mb-0" style="white-space: pre-line;">{{ novia.notas }}</p>
+                </div>
+                {% endif %}
+
+                {% if novia.modelo_especial or novia.color_especial or novia.tela_especial %}
+                <hr class="my-2">
+                <div>
+                    <label class="text-muted small d-block mb-1">Especificaciones del Vestido</label>
+                    {% if novia.modelo_especial %}<p class="small mb-1"><strong>Modelo:</strong> {{ novia.modelo_especial }}</p>{% endif %}
+                    {% if novia.color_especial  %}<p class="small mb-1"><strong>Color:</strong> {{ novia.color_especial }}</p>{% endif %}
+                    {% if novia.tela_especial   %}<p class="small mb-0"><strong>Tela:</strong> {{ novia.tela_especial }}</p>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Damas y Pedidos -->
+    <div class="col-md-8 mb-4">
+        <!-- Lista de Damas -->
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4 d-flex justify-content-between">
+                <h5 class="heading mb-0">Damas del Grupo</h5>
+            </div>
+            <div class="card-body px-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr class="bg-light">
+                                <th class="ps-4">Nombre</th>
+                                <th>Info</th>
+                                <th>Modelo/Color</th>
+                                <th class="pe-4 text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in damas %}
+                            <tr>
+                                <td class="ps-4 fw-bold">{{ d.nombre }}</td>
+                                <td class="small">{{ d.telefono|default:"-" }}<br>Talla: {{ d.talla|default:"-" }}</td>
+                                <td class="small">{{ d.modelo_especial|default:"-" }}<br>{{ d.color_especial|default:"" }}</td>
+                                <td class="pe-4 text-end">
+                                    <a class="btn btn-sm btn-link text-info" href="{% url 'dama_detalle' d.pk %}" title="Ver expediente">
+                                        <i class="bi bi-person-badge"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-link text-primary" onclick="generarPedido({{ d.id }}, false)">Pedido</button>
+                                    <button class="btn btn-sm btn-link text-secondary" onclick="abrirEditarDama({{ d.id }}, '{{ d.nombre|escapejs }}', '{{ d.telefono|escapejs }}', '{{ d.talla|escapejs }}', '{{ d.modelo_especial|escapejs }}', '{{ d.color_especial|escapejs }}', '{{ d.tela_especial|escapejs }}', '{{ d.notas_ajustes|escapejs }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger border-0" onclick="eliminarDama({{ d.id }})">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-3 text-muted">No hay damas registradas</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pendientes de Entregar -->
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 15px;">
+            <div class="card-header bg-white border-0 pt-4 px-4">
+                <h5 class="heading mb-0">Pendientes de Entregar</h5>
+            </div>
+            <div class="card-body px-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr class="bg-light">
+                                <th class="ps-4">Beneficiaria</th>
+                                <th>Producción</th>
+                                <th>Medidas</th>
+                                <th>Entrega</th>
+                                <th>Saldo</th>
+                                <th class="pe-4 text-end">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in pedidos %}
+                            {% if p.estado != 'ENTREGADO' %}
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="fw-bold">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</div>
+                                    <small class="text-muted">{{ p.numero_ticket }}</small>
+                                </td>
+                                <td>
+                                    <span class="status-badge {% if p.estado == 'LISTO' %}status-active{% else %}status-warning{% endif %}" style="font-size: 0.6rem;">
+                                        {{ p.get_estado_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% with pct=p.medidas_completitud %}
+                                    <small class="fw-bold {% if pct < 100 %}text-danger{% else %}text-success{% endif %}">{{ pct }}%</small>
+                                    {% endwith %}
+                                </td>
+                                <td class="small">{{ p.fecha_entrega_estimada|date:"d/m/y"|default:"-" }}</td>
+                                <td class="small fw-bold {% if p.saldo_pendiente > 0 %}text-danger{% else %}text-success{% endif %}">${{ p.saldo_pendiente }}</td>
+                                <td class="pe-4 text-end">
+                                    <div class="btn-group">
+                                        {% if p.saldo_pendiente > 0 %}
+                                        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalCobro('pedido', {{ p.id }}, '{{ p.saldo_pendiente|stringformat:".2f" }}', '{{ p.numero_ticket }}')">
+                                            <i class="bi bi-cash"></i>
+                                        </button>
+                                        {% endif %}
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="openMedidasModal({{ p.id }})">
+                                            <i class="bi bi-rulers"></i>
+                                        </button>
+                                        {% if p.saldo_pendiente <= 0 and p.estado == 'LISTO' %}
+                                        <button class="btn btn-sm btn-success" onclick="entregarItem('pedido', {{ p.id }})">
+                                            <i class="bi bi-check-lg"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pedidos y Apartados (Historial Completo) -->
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <h5 class="heading mb-0">Historial de Pedidos y Apartados</h5>
+            </div>
+
+            {% for p in pedidos %}
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm border-0" style="border-radius: 15px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="badge bg-primary-subtle text-primary mb-2" style="font-size: 0.7rem;">PEDIDO</span>
+                                <h6 class="fw-bold mb-0">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</h6>
+                                <small class="text-muted">{{ p.numero_ticket }}</small>
+                            </div>
+                            <span class="status-badge {% if p.estado == 'ENTREGADO' %}status-active{% else %}status-warning{% endif %}">
+                                {{ p.get_estado_display }}
+                            </span>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="small text-muted">{{ p.modelo.nombre|default:"Sin modelo" }}</div>
+                            <div class="small">{{ p.tela.nombre|default:"Sin tela" }} / {{ p.color.nombre|default:"-" }} / Talla: {{ p.talla|default:"-" }}</div>
+                        </div>
+
+                        <div class="row g-2 mb-3 bg-light p-3 rounded-3 mx-0">
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Total</small>
+                                <span class="fw-bold">${{ p.precio }}</span>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Pagado</small>
+                                <span class="fw-bold text-success">${{ p.total_pagado }}</span>
+                            </div>
+                            <div class="col-12 mt-2 pt-2 border-top">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Saldo Pendiente</small>
+                                <span class="h5 fw-bold text-danger mb-0">${{ p.saldo_pendiente }}</span>
+                            </div>
+                        </div>
+
+                        {% with pagos_list=p.pagos_pedido.all %}
+                        {% if pagos_list %}
+                        {% with last_pa=pagos_list|last %}
+                        <div class="mb-3 small border-start ps-3 py-1" style="background: #fdfdfd;">
+                            <div class="text-muted" style="font-size: 0.7rem;">Último pago:</div>
+                            <div class="fw-medium">${{ last_pa.monto }} - {{ last_pa.get_metodo_display }}</div>
+                            <div class="text-muted" style="font-size: 0.7rem;">{{ last_pa.fecha|date:"d/m/Y" }}</div>
+                        </div>
+                        {% endwith %}
+                        {% endif %}
+                        {% endwith %}
+
+                        <div class="d-flex gap-2 mt-auto">
+                            {% if p.saldo_pendiente > 0 %}
+                            <button class="btn btn-primary flex-grow-1 rounded-pill shadow-sm" onclick="abrirModalCobro('pedido', {{ p.id }}, '{{ p.saldo_pendiente|stringformat:".2f" }}', '{{ p.numero_ticket }}')">
+                                <i class="bi bi-cash-stack me-2"></i>Cobrar
+                            </button>
+                            {% endif %}
+
+                            <a href="{% url 'print_ticket_pdf' p.numero_ticket %}" target="_blank" class="btn btn-outline-secondary rounded-pill" title="Ticket">
+                                <i class="bi bi-printer"></i>
+                            </a>
+
+                            <button class="btn btn-outline-secondary rounded-pill" title="Medidas" onclick="openMedidasModal({{ p.id }})">
+                                <i class="bi bi-rulers"></i>
+                            </button>
+
+                            <button class="btn btn-outline-primary rounded-pill" title="Entrega" onclick="abrirModalEntrega('pedido', {{ p.id }}, '{{ p.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ p.notas_entrega|escapejs }}')">
+                                <i class="bi bi-calendar-event"></i>
+                            </button>
+
+                            {% if p.saldo_pendiente <= 0 and p.estado != 'ENTREGADO' %}
+                            <button class="btn btn-success rounded-pill" title="Entregar" onclick="entregarItem('pedido', {{ p.id }})">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            {% for a in apartados_vinculados %}
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm border-0" style="border-radius: 15px;">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <span class="badge bg-info-subtle text-info mb-2" style="font-size: 0.7rem;">APARTADO</span>
+                                <h6 class="fw-bold mb-0">{{ a.cliente_nombre }}</h6>
+                                <small class="text-muted">Independiente</small>
+                            </div>
+                            <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% else %}status-warning{% endif %}">
+                                {{ a.estado }}
+                            </span>
+                        </div>
+
+                        <div class="row g-2 mb-3 bg-light p-3 rounded-3 mx-0">
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Total</small>
+                                <span class="fw-bold">${{ a.total }}</span>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Pagado</small>
+                                <span class="fw-bold text-success">${{ a.anticipo }}</span>
+                            </div>
+                            <div class="col-12 mt-2 pt-2 border-top">
+                                <small class="text-muted d-block" style="font-size: 0.65rem;">Saldo Pendiente</small>
+                                <span class="h5 fw-bold text-danger mb-0">${{ a.saldo }}</span>
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-auto">
+                            {% if a.saldo > 0 %}
+                            <button class="btn btn-primary flex-grow-1 rounded-pill shadow-sm" onclick="abrirModalCobro('apartado', {{ a.id }}, '{{ a.saldo|stringformat:".2f" }}', 'Apartado {{ a.folio }}')">
+                                <i class="bi bi-cash-stack me-2"></i>Cobrar
+                            </button>
+                            {% endif %}
+
+                            {% if a.saldo <= 0 and a.estado != 'ENTREGADO' %}
+                            <button class="btn btn-success rounded-pill" title="Entregar" onclick="entregarItem('apartado', {{ a.id }})">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+{% include 'boutique/includes/modal_entrega.html' %}
+
+<!-- MODAL MEDIDAS -->
+<div class="modal fade" id="modalMedidas" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Medidas</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="text-end mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="reutilizarMedidas()">Copiar anteriores</button>
+                </div>
+                <form id="formMedidas">
+                    <input type="hidden" id="medidas_pedido_id">
+                    <div class="row g-2">
+                        <div class="col-md-3 col-6"><label class="small">Busto</label><input type="number" step="0.1" name="busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cintura</label><input type="number" step="0.1" name="cintura" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cadera</label><input type="number" step="0.1" name="cadera" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Largo Aprox.</label><input type="number" step="0.1" name="largo_aproximado" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Bajo Busto</label><input type="number" step="0.1" name="bajo_busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Largo Talle</label><input type="number" step="0.1" name="largo_talle" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro-Pezón</label><input type="number" step="0.1" name="hombro_pezon" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro-B.Busto</label><input type="number" step="0.1" name="hombro_bajo_busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro</label><input type="number" step="0.1" name="hombro" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Brazo</label><input type="number" step="0.1" name="brazo" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Espalda</label><input type="number" step="0.1" name="espalda" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Altura Busto</label><input type="number" step="0.1" name="altura_busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Sep. Busto</label><input type="number" step="0.1" name="separacion_busto" class="form-control form-control-sm"></div>
+                        <div class="col-12"><label class="small">Notas</label><textarea name="observaciones" class="form-control form-control-sm"></textarea></div>
+                    </div>
+                    <div class="text-end mt-4"><button type="submit" class="btn btn-primary rounded-pill px-5">Guardar</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Dama -->
+<div class="modal fade" id="modalNuevaDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Agregar Dama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevaDama">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nombre Completo</label>
+                        <input type="text" name="nombre" class="form-control" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Teléfono (10 dígitos)</label>
+                            <input type="tel" name="telefono" class="form-control" placeholder="33..." pattern="[0-9]{10}" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-bold">Talla Base</label>
+                            <select name="talla" class="form-select">
+                                <option value="M">M</option>
+                                <option value="XS">XS</option>
+                                <option value="S">S</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="2XL">2XL</option>
+                                <option value="U">Unitalla</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Correo (Opcional)</label>
+                        <input type="email" name="email" class="form-control" placeholder="ejemplo@correo.com">
+                    </div>
+                    <div class="text-end mt-2">
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">Guardar y Vincular</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Pedido Completo -->
+<div class="modal fade" id="modalPedidoCompleto" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Captura de Pedido / Apartado</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <form id="formPedidoCompleto">
+                    <input type="hidden" name="novia_id" value="{{ novia.id }}">
+                    <input type="hidden" name="dama_id" id="pc_dama_id">
+                    <input type="hidden" name="es_vestido_novia" id="pc_es_novia">
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Modelo</label>
+                            <input type="text" name="modelo_nombre" class="form-control" placeholder="Ej: Sirena">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Color</label>
+                            <input type="text" name="color_nombre" class="form-control" placeholder="Ej: Rosa Palo">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Talla</label>
+                            <input type="text" name="talla" class="form-control" placeholder="Ej: 8">
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Fecha Entrega</label>
+                            <input type="date" name="fecha_entrega_estimada" class="form-control">
+                        </div>
+
+                        <div class="col-12 mt-4">
+                            <h6 class="fw-bold small border-bottom pb-2">Medidas (Opcional)</h6>
+                        </div>
+
+                        <div class="col-md-3 col-6"><label class="small">Busto</label><input type="number" step="0.1" name="busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cintura</label><input type="number" step="0.1" name="cintura" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Cadera</label><input type="number" step="0.1" name="cadera" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Largo Aprox.</label><input type="number" step="0.1" name="largo_aproximado" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Bajo Busto</label><input type="number" step="0.1" name="bajo_busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Largo Talle</label><input type="number" step="0.1" name="largo_talle" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro-Pezón</label><input type="number" step="0.1" name="hombro_pezon" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro-B.Busto</label><input type="number" step="0.1" name="hombro_bajo_busto" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Hombro</label><input type="number" step="0.1" name="hombro" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Brazo</label><input type="number" step="0.1" name="brazo" class="form-control form-control-sm"></div>
+                        <div class="col-md-3 col-6"><label class="small">Espalda</label><input type="number" step="0.1" name="espalda" class="form-control form-control-sm"></div>
+
+                        <div class="col-12 mt-4">
+                            <h6 class="fw-bold small border-bottom pb-2">Detalles de Pago</h6>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Precio Total</label>
+                            <input type="number" name="precio" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Anticipo</label>
+                            <input type="number" name="anticipo" class="form-control" value="0">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Método</label>
+                            <select name="metodo" class="form-select">
+                                <option value="EFECTIVO">💵 Efectivo</option>
+                                <option value="TARJETA">💳 Tarjeta</option>
+                                <option value="TRANSFERENCIA">📱 Transferencia</option>
+                            </select>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold">Especificaciones / Notas</label>
+                            <textarea name="notas" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="text-end mt-4">
+                        <button type="submit" class="btn btn-primary rounded-pill px-5 fw-bold">
+                            Confirmar y Generar Ticket
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Dama -->
+<div class="modal fade" id="modalEditarDama" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Dama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarDama">
+                    <input type="hidden" id="editDamaId">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Nombre</label>
+                            <input type="text" id="editDamaNombre" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" id="editDamaTelefono" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Talla</label>
+                            <input type="text" id="editDamaTalla" class="form-control" placeholder="S / M / L / XL / 34...">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Color del Vestido</label>
+                            <input type="text" id="editDamaColor" class="form-control" placeholder="Ej: Rosa Nude, Azul Cielo">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Modelo Especial</label>
+                            <input type="text" id="editDamaModelo" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Tela Especial</label>
+                            <input type="text" id="editDamaTela" class="form-control">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notas / Ajustes</label>
+                            <textarea id="editDamaNotas" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <div class="text-end mt-3">
+                        <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary rounded-pill px-4">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Novia -->
+<div class="modal fade" id="modalEditarNovia" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title heading">Editar Perfil Novia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEditarNovia">
+                    <div class="mb-3"><label class="form-label">Nombre</label><input type="text" name="nombre" class="form-control" value="{{ novia.nombre }}" required></div>
+                    <div class="row">
+                        <div class="col-6 mb-3"><label class="form-label">Teléfono</label><input type="text" name="telefono" class="form-control" value="{{ novia.telefono }}"></div>
+                        <div class="col-6 mb-3"><label class="form-label">Fecha Boda</label><input type="date" name="fecha_boda" class="form-control" value="{{ novia.fecha_boda|date:'Y-m-d' }}" required></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label">Notas</label><textarea name="notas" class="form-control" rows="3">{{ novia.notas }}</textarea></div>
+                    <div class="text-end"><button type="submit" class="btn btn-primary rounded-pill px-4">Guardar Cambios</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function openMedidasModal(pedidoId) {
+        document.getElementById('medidas_pedido_id').value = pedidoId;
+        new bootstrap.Modal(document.getElementById('modalMedidas')).show();
+    }
+    async function reutilizarMedidas() {
+        const res = await fetch(`/api/pedido/${document.getElementById('medidas_pedido_id').value}/medidas/reutilizar/`);
+        if(res.ok) {
+            const data = await res.json();
+            const form = document.getElementById('formMedidas');
+            for (const [key, val] of Object.entries(data.medidas)) {
+                const input = form.querySelector(`[name="${key}"]`);
+                if(input) input.value = val;
+            }
+        }
+    }
+    document.getElementById('formMedidas').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        await fetch(`/api/pedido/${document.getElementById('medidas_pedido_id').value}/medidas/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify(data)
+        });
+        alert('Medidas guardadas');
+        bootstrap.Modal.getInstance(document.getElementById('modalMedidas')).hide();
+    });
+    async function entregarItem(tipo, id) {
+        if(!confirm('¿Confirmar entrega?')) return;
+        const res = await fetch(`/api/entregar/${tipo}/${id}/`, { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } });
+        if(res.ok) location.reload();
+    }
+    document.getElementById('formNuevaDama').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        await fetch('{% url "api_agregar_dama" novia.id %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(data) });
+        location.reload();
+    });
+    document.getElementById('formEditarNovia').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        await fetch('{% url "api_editar_novia" novia.id %}', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' }, body: JSON.stringify(data) });
+        location.reload();
+    });
+
+    async function generarPedido(damaId, esNovia) {
+        document.getElementById('pc_dama_id').value = damaId || '';
+        document.getElementById('pc_es_novia').value = esNovia ? 'true' : 'false';
+        new bootstrap.Modal(document.getElementById('modalPedidoCompleto')).show();
+    }
+
+    document.getElementById('formPedidoCompleto').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+        const data = Object.fromEntries(new FormData(e.target).entries());
+        data.novia_id = parseInt(data.novia_id);
+        data.dama_id = data.dama_id ? parseInt(data.dama_id) : null;
+        data.es_vestido_novia = data.es_vestido_novia === 'true';
+        data.precio = parseFloat(data.precio);
+        data.anticipo = parseFloat(data.anticipo);
+
+        try {
+            const res = await fetch('/api/pedido/crear-completo/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.status === 'ok') {
+                if (result.ticket_print_url) {
+                    window.open(result.ticket_print_url, '_blank');
+                }
+                location.reload();
+            } else {
+                alert('Error: ' + result.message);
+                btn.disabled = false;
+                btn.innerHTML = 'Confirmar y Generar Ticket';
+            }
+        } catch (err) {
+            alert('Error de conexión');
+            btn.disabled = false;
+            btn.innerHTML = 'Confirmar y Generar Ticket';
+        }
+    });
+    async function eliminarNovia(id) {
+        if (!confirm('¿Eliminar novia?')) return;
+        await fetch(`/api/novia/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });
+        window.location.href = "{% url 'novias_list' %}";
+    }
+    async function eliminarDama(id) {
+        if (!confirm('¿Quitar dama?')) return;
+        await fetch(`/api/dama/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });
+        location.reload();
+    }
+
+    function abrirEditarDama(id, nombre, telefono, talla, modelo, color, tela, notas) {
+        document.getElementById('editDamaId').value = id;
+        document.getElementById('editDamaNombre').value = nombre;
+        document.getElementById('editDamaTelefono').value = telefono;
+        document.getElementById('editDamaTalla').value = talla;
+        document.getElementById('editDamaColor').value = color;
+        document.getElementById('editDamaModelo').value = modelo;
+        document.getElementById('editDamaTela').value = tela;
+        document.getElementById('editDamaNotas').value = notas;
+        new bootstrap.Modal(document.getElementById('modalEditarDama')).show();
+    }
+
+    document.getElementById('formEditarDama').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('editDamaId').value;
+        await fetch(`/api/dama/${id}/editar/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+            body: JSON.stringify({
+                nombre:         document.getElementById('editDamaNombre').value,
+                telefono:       document.getElementById('editDamaTelefono').value,
+                talla:          document.getElementById('editDamaTalla').value,
+                color_especial: document.getElementById('editDamaColor').value,
+                modelo_especial:document.getElementById('editDamaModelo').value,
+                tela_especial:  document.getElementById('editDamaTela').value,
+                notas:          document.getElementById('editDamaNotas').value,
+            })
+        });
+        location.reload();
+    });
+
+    // Hardening numeric inputs
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.value === '') this.value = '0';
+        });
+        if (input.value === '' && input.hasAttribute('required')) input.value = '0';
+    });
+</script>
+{% endblock %}

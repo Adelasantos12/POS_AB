@@ -1,0 +1,155 @@
+<!-- Modal de Cobro Unificado -->
+<div class="modal fade" id="modalCobroUnificado" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold" id="modalCobroTitle">Registrar Cobro</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-4">
+                <form id="formCobroUnificado">
+                    <input type="hidden" id="cobro_tipo" name="tipo">
+                    <input type="hidden" id="cobro_id" name="id">
+
+                    <div class="mb-4 text-center">
+                        <label class="form-label text-muted small text-uppercase fw-bold">Saldo Pendiente</label>
+                        <h2 class="fw-bold text-primary" id="cobro_saldo_display">$0.00</h2>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Monto a Cobrar</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-white border-end-0">$</span>
+                            <input type="number" id="cobro_monto" name="monto" class="form-control border-start-0 ps-0" step="0.01" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Método de Pago</label>
+                        <div class="d-flex gap-2">
+                            <input type="radio" class="btn-check" name="metodo" id="metodo_efectivo" value="EFECTIVO" checked>
+                            <label class="btn btn-outline-primary flex-fill" for="metodo_efectivo">Efectivo</label>
+
+                            <input type="radio" class="btn-check" name="metodo" id="metodo_tarjeta" value="TARJETA">
+                            <label class="btn btn-outline-primary flex-fill" for="metodo_tarjeta">Tarjeta</label>
+
+                            <input type="radio" class="btn-check" name="metodo" id="metodo_transferencia" value="TRANSFERENCIA">
+                            <label class="btn btn-outline-primary flex-fill" for="metodo_transferencia">Transf.</label>
+                        </div>
+                    </div>
+
+                    <div id="div_referencia" class="mb-3 d-none">
+                        <label class="form-label">Referencia / Folio</label>
+                        <input type="text" name="referencia" class="form-control" placeholder="Ej: 123456">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Notas / Observaciones</label>
+                        <textarea name="notas" class="form-control" rows="2" placeholder="Opcional..."></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-pill">
+                        Cobrar e Imprimir Ticket
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let modalCobro;
+document.addEventListener('DOMContentLoaded', function() {
+    modalCobro = new bootstrap.Modal(document.getElementById('modalCobroUnificado'));
+
+    // Hardening numeric inputs
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.value === '') this.value = '0';
+        });
+        if (input.value === '' && input.hasAttribute('required')) input.value = '0';
+    });
+
+    // Mostrar/Ocultar referencia según método
+    const radios = document.querySelectorAll('input[name="metodo"]');
+    if (radios.length > 0) {
+        radios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const divRef = document.getElementById('div_referencia');
+                if (this.value === 'TRANSFERENCIA' || this.value === 'TARJETA') {
+                    divRef.classList.remove('d-none');
+                } else {
+                    divRef.classList.add('d-none');
+                }
+            });
+        });
+    }
+});
+
+function abrirModalCobro(tipo, id, saldo, folio) {
+    document.getElementById('cobro_tipo').value = tipo;
+    document.getElementById('cobro_id').value = id;
+    document.getElementById('cobro_saldo_display').textContent = '$' + parseFloat(saldo).toLocaleString('es-MX', {minimumFractionDigits: 2});
+    document.getElementById('cobro_monto').value = parseFloat(saldo).toFixed(2);
+    document.getElementById('modalCobroTitle').textContent = 'Cobrar ' + tipo.charAt(0).toUpperCase() + tipo.slice(1) + ': ' + (folio || id);
+    modalCobro.show();
+}
+
+document.getElementById('formCobroUnificado').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Procesando...';
+
+    const tipo = document.getElementById('cobro_tipo').value;
+    const id = document.getElementById('cobro_id').value;
+
+    // Convertir FormData a objeto plano
+    const formData = new FormData(this);
+    const data = {};
+    formData.forEach((value, key) => { data[key] = value; });
+
+    try {
+        const response = await fetch(`/api/cobrar/${tipo}/${id}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            // Abrir ticket en nueva pestaña
+            if (result.ticket_print_url) {
+                window.open(result.ticket_print_url, '_blank');
+            } else if (result.ticket_folio) {
+                window.open(`/api/tickets/${result.ticket_folio}/pdf/`, '_blank');
+            }
+            location.reload();
+        } else if (result.status === 'caja_cerrada') {
+            modalCobro.hide();
+            new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();
+            btn.disabled = false;
+            btn.textContent = originalText;
+        } else {
+            alert('Error: ' + result.message);
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Ocurrió un error al procesar el pago');
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+});
+
+function imprimirTicket(folio) {
+    if (folio) {
+        window.open(`/api/tickets/${folio}/pdf/`, '_blank');
+    }
+}
+</script>

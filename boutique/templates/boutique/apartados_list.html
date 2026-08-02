@@ -1,0 +1,101 @@
+{% extends 'boutique/base.html' %}
+
+{% block title %}Apartados - Adelé Boutique{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="page-title">Apartados Globales</h1>
+        <p class="page-subtitle">Gestión de apartados independientes y vinculados</p>
+    </div>
+</div>
+
+<!-- Buscador -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{% url 'lista_apartados' %}" class="d-flex gap-2">
+            <input type="text" name="q" class="form-control" placeholder="Buscar por folio, cliente o teléfono..." value="{{ q }}">
+            <button type="submit" class="btn btn-primary px-4">Buscar</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Folio</th>
+                    <th>Cliente</th>
+                    <th>Total</th>
+                    <th>Saldo</th>
+                    <th>Estado</th>
+                    <th>Entrega Est.</th>
+                    <th>Novia</th>
+                    <th class="text-end pe-4">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in apartados %}
+                <tr>
+                    <td><span class="fw-bold">{{ a.folio }}</span></td>
+                    <td>
+                        <div class="fw-bold">{{ a.cliente_nombre }}</div>
+                        <small class="text-muted">{{ a.cliente_telefono }}</small>
+                    </td>
+                    <td class="small">
+                        Total: ${{ a.total }}<br>
+                        <span class="text-success">Pagado: ${{ a.anticipo }}</span>
+                    </td>
+                    <td class="text-danger fw-bold">${{ a.saldo }}</td>
+                    <td>
+                        <span class="status-badge {% if a.estado == 'ENTREGADO' %}status-active{% elif a.estado == 'CANCELADO' %}status-error{% else %}status-warning{% endif %}" style="font-size: 0.65rem;">
+                            {{ a.get_estado_display }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="small {% if a.fecha_entrega_estimada < today and a.estado == 'VIGENTE' %}text-danger fw-bold{% endif %}">
+                            {{ a.fecha_entrega_estimada|date:"d/m/Y"|default:"-" }}
+                        </div>
+                    </td>
+                    <td>
+                        {% if a.novia %}
+                            <a href="{% url 'novia_detalle' a.novia.id %}" class="small">{{ a.novia.nombre }}</a>
+                        {% else %}
+                            <span class="text-muted small">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-4">
+                        <div class="btn-group">
+                            {% if a.saldo > 0 %}
+                            <button class="btn btn-sm btn-outline-success" onclick="abrirModalCobro('apartado', {{ a.id }}, '{{ a.saldo|stringformat:".2f" }}', '{{ a.folio }}')" title="Cobrar">
+                                <i class="bi bi-cash"></i>
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-primary"
+                                    onclick="abrirModalEntrega('apartado', {{ a.id }}, '{{ a.fecha_entrega_estimada|date:'Y-m-d' }}', '{{ a.notas_entrega|escapejs }}')"
+                                    title="Editar Entrega">
+                                <i class="bi bi-calendar-event"></i>
+                            </button>
+                            {% with t_folio=a.tickets_asociados.first.folio|default:a.folio %}
+                            <button class="btn btn-sm btn-outline-secondary" onclick="imprimirTicket('{{ t_folio }}')" title="Imprimir Ticket">
+                                <i class="bi bi-printer"></i>
+                            </button>
+                            {% endwith %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="text-center py-5">No hay apartados registrados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% include 'boutique/includes/modal_cobro_unificado.html' %}
+{% include 'boutique/includes/modal_entrega.html' %}
+
+{% endblock %}

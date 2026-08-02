@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ByEasy POS{% endblock %}</title>
+    <!-- Bootstrap 5 CSS — preload para evitar render-block -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style"
+          onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"></noscript>
+    <!-- Bootstrap Icons -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" as="style"
+          onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"></noscript>
+    <!-- Google Fonts: diferido para no bloquear primer paint -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap"
+          rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Manrope:wght@600;800&display=swap" rel="stylesheet"></noscript>
+    {# ── Token de identidad de marca — se sobreescribe con los valores de BD ── #}
+    <style>
+      :root {
+        --primary:       {{ tienda_config.color_primario|default:"#9D174D" }};
+        --primary-hover: {{ tienda_config.color_primario|default:"#9D174D" }};
+      }
+    </style>
+    <style>
+        :root {
+            /* Paleta base — los valores de --primary se inyectan arriba desde BD */
+            --primary: #9D174D;
+            --primary-hover: #831843;
+            --secondary: #0F172A;
+            --bg-page: #F8FAFC;
+            --bg-surface: #FFFFFF;
+            --bg-subtle: #F1F5F9;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --border-default: #E2E8F0;
+            --border-focus: #9D174D;
+            --success: #10B981;
+            --error: #EF4444;
+            --warning: #F59E0B;
+            --info: #3B82F6;
+        }
+
+        /* ── Modo oscuro ──────────────────────────────────── */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-page:        #0F0A0D;
+                --bg-surface:     #1C1319;
+                --bg-subtle:      #2A1E24;
+                --text-primary:   #F9F1F5;
+                --text-secondary: #A8899A;
+                --border-default: #3A2832;
+                --border-focus:   #C4175E;
+                --primary:        #C4175E;
+                --primary-hover:  #9D174D;
+            }
+        }
+        :root[data-theme="dark"] {
+            --bg-page:        #0F0A0D;
+            --bg-surface:     #1C1319;
+            --bg-subtle:      #2A1E24;
+            --text-primary:   #F9F1F5;
+            --text-secondary: #A8899A;
+            --border-default: #3A2832;
+            --border-focus:   #C4175E;
+            --primary:        #C4175E;
+            --primary-hover:  #9D174D;
+        }
+        :root[data-theme="light"] {
+            --bg-page:        #F8FAFC;
+            --bg-surface:     #FFFFFF;
+            --bg-subtle:      #F1F5F9;
+            --text-primary:   #0F172A;
+            --text-secondary: #64748B;
+            --border-default: #E2E8F0;
+            --border-focus:   #9D174D;
+            --primary:        #9D174D;
+            --primary-hover:  #831843;
+        }
+        
+        * {
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        h1, h2, h3, h4, h5, h6,
+        .heading, .card-title, .modal-title,
+        .offcanvas-title {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+            color: var(--text-primary);
+        }
+        /* Subtitles and data labels get IBM Plex 500 */
+        .form-label, .nav-label, small.label {
+            font-family: 'IBM Plex Sans', sans-serif;
+            font-weight: 500;
+        }
+        
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            height: 100vh;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border-default);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 260px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        .logo {
+            font-family: 'Manrope', sans-serif;
+            font-weight: 800;
+            font-size: 1.75rem;
+            color: var(--primary);
+            letter-spacing: -0.05em;
+            margin-bottom: 2rem;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.25rem;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+        
+        .nav-link:hover {
+            background-color: var(--bg-subtle);
+            color: var(--text-primary);
+        }
+        
+        .nav-link.active {
+            background-color: var(--primary);
+            color: white !important;
+        }
+        
+        .nav-link i {
+            width: 24px;
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
+        
+        /* Main Content */
+        .main-content {
+            margin-left: 260px;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        
+        /* Buttons */
+        .btn-primary {
+            background-color: var(--primary);
+            border: none;
+            border-radius: 100px;  /* pill: CTA principal */
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline-primary {
+            color: var(--primary);
+            border: 1.5px solid var(--primary);
+            border-radius: 10px;   /* moderado: acción secundaria */
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            background: transparent;
+        }
+
+        .btn-outline-primary:hover {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-outline-secondary,
+        .btn-outline-success,
+        .btn-outline-warning,
+        .btn-outline-info {
+            border-radius: 10px;
+        }
+
+        .btn-outline-danger {
+            border-radius: 8px;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1.25rem;
+            border-radius: 8px;
+        }
+        /* Allow explicit pill to override btn-sm radius */
+        .btn-sm.rounded-pill { border-radius: 100px !important; }
+
+        .btn-xs {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            border-radius: 6px;
+        }
+        
+        /* Cards */
+        .card {
+            border: 1px solid var(--border-default);
+            border-radius: 16px;
+            background: var(--bg-surface);
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            transition: all 0.2s ease;
+        }
+        
+        .card:hover {
+            border-color: #CBD5E1;
+        }
+        
+        /* Inputs */
+        .form-control, .form-select {
+            background-color: var(--bg-subtle);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background-color: var(--bg-surface);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        .form-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Tables */
+        .table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        .table thead th {
+            background-color: var(--bg-subtle);
+            border-bottom: 1px solid var(--border-default);
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            padding: 1rem;
+        }
+        
+        .table tbody td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-default);
+            vertical-align: middle;
+        }
+        
+        .table tbody tr:hover {
+            background-color: var(--bg-subtle);
+        }
+        
+        /* Badges */
+        .badge {
+            font-weight: 500;
+            padding: 0.375rem 0.75rem;
+            border-radius: 100px;
+        }
+        
+        .badge-role {
+            background-color: var(--bg-subtle);
+            color: var(--text-primary);
+            border: 1px solid var(--border-default);
+        }
+        
+        /* Profile indicator */
+        .profile-indicator {
+            background: var(--bg-subtle);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            margin-top: auto;
+        }
+        
+        .profile-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), #F9A8D4);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        
+        /* Status indicators */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .x-small { font-size: 0.65rem; }
+        
+        .status-active {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+        
+        .status-inactive {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+        
+        .status-warning {
+            background-color: #FEF3C7;
+            color: #92400E;
+        }
+        
+        /* Page headers */
+        .page-header {
+            margin-bottom: 2rem;
+        }
+        
+        .page-title {
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+        
+        /* Responsive — small laptops (769px–1024px): collapse sidebar to offcanvas */
+        @media (max-width: 1024px) {
+            .sidebar {
+                display: none;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+            }
+        }
+        @media (max-width: 768px) {
+            .main-content {
+                padding-bottom: 5rem; /* room for bottom nav */
+            }
+        }
+
+        /* Mobile/laptop top bar — shown whenever sidebar is hidden */
+        .mobile-topbar {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 56px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-default);
+            z-index: 1040;
+            padding: 0 1rem;
+            align-items: center;
+            justify-content: space-between;
+        }
+        @media (max-width: 1024px) {
+            .mobile-topbar { display: flex; }
+            .main-content { padding-top: 4rem; }
+        }
+
+        /* Bottom nav bar (mobile) */
+        .bottom-nav {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border-default);
+            z-index: 1040;
+            padding: 0.5rem 0 env(safe-area-inset-bottom, 0.5rem);
+        }
+        @media (max-width: 1024px) { .bottom-nav { display: flex; } }
+
+        .bottom-nav a {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.25rem 0;
+            gap: 2px;
+        }
+        .bottom-nav a i { font-size: 1.3rem; }
+        .bottom-nav a.active { color: var(--primary); }
+
+        /* Offcanvas sidebar override */
+        .offcanvas-sidebar { width: 260px !important; }
+
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    {% if request.active_profile %}
+    <!-- Mobile Top Bar -->
+    <div class="mobile-topbar">
+        <span class="logo" style="font-size: 1.25rem; margin-bottom: 0;">{{ tienda_config.nombre_comercial }}</span>
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#offcanvasSidebar" aria-controls="offcanvasSidebar">
+            <i class="bi bi-list fs-5"></i>
+        </button>
+    </div>
+
+    <!-- Offcanvas Sidebar (mobile) -->
+    <div class="offcanvas offcanvas-start offcanvas-sidebar" tabindex="-1" id="offcanvasSidebar">
+        <div class="offcanvas-header border-bottom">
+            <span class="logo" style="font-size: 1.5rem; margin-bottom: 0;">{{ tienda_config.nombre_comercial }}</span>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body p-3 d-flex flex-column">
+            <ul class="nav flex-column flex-grow-1">
+                {% with profile=request.active_profile %}
+                {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" %}
+                <li class="nav-item"><a href="{% url 'admin_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}"><i class="bi bi-grid-1x2-fill"></i>Dashboard</a></li>
+                {% endif %}
+                <li class="nav-item"><a href="{% url 'pos_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}"><i class="bi bi-calculator-fill"></i>Caja</a></li>
+                <li class="nav-item"><a href="{% url 'agenda_view' %}" class="nav-link {% if 'agenda' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-calendar-event-fill"></i>Agenda</a></li>
+                <li class="nav-item"><a href="{% url 'novias_list' %}" class="nav-link {% if 'novia' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-heart-fill"></i>Novias</a></li>
+                <li class="nav-item"><a href="{% url 'pedidos_en_puerta' %}" class="nav-link {% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}"><i class="bi bi-bag-check"></i>Pedidos</a></li>
+                <li class="nav-item"><a href="{% url 'lista_apartados' %}" class="nav-link {% if 'apartado' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-journal-bookmark-fill"></i>Apartados</a></li>
+                <li class="nav-item"><a href="{% url 'servicios_list' %}" class="nav-link {% if 'servicio' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-scissors"></i>Servicios</a></li>
+                <li class="nav-item"><a href="{% url 'inventario_view' %}" class="nav-link {% if request.resolver_match.url_name == 'inventario_view' %}active{% endif %}"><i class="bi bi-box-fill"></i>Inventario</a></li>
+                {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" %}
+                <li class="nav-item"><a href="{% url 'gestion_usuarios' %}" class="nav-link {% if 'usuario' in request.resolver_match.url_name %}active{% endif %}"><i class="bi bi-people-fill"></i>Usuarios</a></li>
+                {% endif %}
+                {% endwith %}
+            </ul>
+            <div class="mt-2 d-flex gap-2">
+                <a href="{% url 'cambiar_perfil' %}" class="btn btn-sm btn-outline-secondary w-50"><i class="bi bi-arrow-left-right me-1"></i>Cambiar</a>
+                <a href="{% url 'cierre_caja' %}" class="btn btn-sm btn-outline-danger w-50"><i class="bi bi-lock-fill me-1"></i>Cerrar</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Nav (mobile) -->
+    <nav class="bottom-nav">
+        <a href="{% url 'pos_dashboard' %}" class="{% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}">
+            <i class="bi bi-calculator-fill"></i>Caja
+        </a>
+        <a href="{% url 'agenda_view' %}" class="{% if 'agenda' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="bi bi-calendar-event-fill"></i>Agenda
+        </a>
+        <a href="{% url 'novias_list' %}" class="{% if 'novia' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="bi bi-heart-fill"></i>Novias
+        </a>
+        <a href="{% url 'pedidos_en_puerta' %}" class="{% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}">
+            <i class="bi bi-bag-check"></i>Pedidos
+        </a>
+        <a href="{% url 'lista_apartados' %}" class="{% if 'apartado' in request.resolver_match.url_name %}active{% endif %}">
+            <i class="bi bi-journal-bookmark-fill"></i>Apartados
+        </a>
+    </nav>
+
+    <!-- Sidebar Navigation (desktop) -->
+    <nav class="sidebar" data-testid="sidebar-nav">
+        <div class="logo">{{ tienda_config.nombre_comercial }}</div>
+        {% if tienda_config.tagline %}<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary);margin-top:-.5rem;margin-bottom:1rem;padding-left:.25rem;">{{ tienda_config.tagline }}</div>{% endif %}
+        
+        <ul class="nav flex-column flex-grow-1">
+            {% with profile=request.active_profile %}
+            
+            {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" or "Supervisora" in profile.groups.all|stringformat:"s" %}
+            <li class="nav-item">
+                <a href="{% url 'admin_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}" data-testid="nav-dashboard">
+                    <i class="bi bi-grid-1x2-fill"></i>Dashboard
+                </a>
+            </li>
+            {% endif %}
+            
+            <li class="nav-item">
+                <a href="{% url 'pos_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'pos_dashboard' %}active{% endif %}" data-testid="nav-caja">
+                    <i class="bi bi-calculator-fill"></i>Caja
+                    {% if request.caja_activa %}
+                        <span class="badge bg-success-subtle text-success float-end mt-1" style="font-size: 0.6rem;">Abierta</span>
+                    {% else %}
+                        <span class="badge bg-danger-subtle text-danger float-end mt-1" style="font-size: 0.6rem;">Cerrada</span>
+                    {% endif %}
+                </a>
+            </li>
+            
+            <li class="nav-item">
+                <a href="{% url 'agenda_view' %}" class="nav-link {% if 'agenda' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-agenda">
+                    <i class="bi bi-calendar-event-fill"></i>Agenda
+                </a>
+            </li>
+            
+            <li class="nav-item">
+                <a href="{% url 'novias_list' %}" class="nav-link {% if 'novia' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-novias">
+                    <i class="bi bi-heart-fill"></i>Novias
+                </a>
+            </li>
+            
+            <li class="nav-item">
+                <a href="{% url 'pedidos_en_puerta' %}" class="nav-link {% if request.resolver_match.url_name == 'pedidos_en_puerta' %}active{% endif %}" data-testid="nav-pedidos">
+                    <i class="bi bi-bag-check"></i>Pedidos
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="{% url 'lista_apartados' %}" class="nav-link {% if 'apartado' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-apartados">
+                    <i class="bi bi-journal-bookmark-fill"></i>Apartados
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="{% url 'servicios_list' %}" class="nav-link {% if 'servicio' in request.resolver_match.url_name %}active{% endif %}" data-testid="nav-servicios">
+                    <i class="bi bi-scissors"></i>Servicios
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="{% url 'inventario_view' %}" class="nav-link {% if request.resolver_match.url_name == 'inventario_view' %}active{% endif %}" data-testid="nav-inventario">
+                    <i class="bi bi-box-fill"></i>Inventario
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{% url 'subida_bloque' %}" class="nav-link {% if request.resolver_match.url_name == 'subida_bloque' %}active{% endif %}" style="padding-left: 2.5rem;">
+                    <i class="bi bi-table"></i>Subida en Bloque
+                </a>
+            </li>
+
+            <!-- Catálogos -->
+            <li class="nav-item mt-3">
+                <span class="nav-link text-muted small" style="padding-bottom: 0.25rem;"><i class="bi bi-folder me-2"></i>Catálogos</span>
+            </li>
+            <li class="nav-item">
+                <a href="{% url 'catalogo_colores' %}" class="nav-link {% if request.resolver_match.url_name == 'catalogo_colores' %}active{% endif %}" style="padding-left: 2.5rem;">
+                    <i class="bi bi-palette"></i>Colores
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{% url 'catalogo_telas' %}" class="nav-link {% if request.resolver_match.url_name == 'catalogo_telas' %}active{% endif %}" style="padding-left: 2.5rem;">
+                    <i class="bi bi-layers"></i>Telas
+                </a>
+            </li>
+            
+            {% if profile.is_superuser or "Admin" in profile.groups.all|stringformat:"s" or "Superadmin" in profile.groups.all|stringformat:"s" or "CEO" in profile.groups.all|stringformat:"s" or "Supervisora" in profile.groups.all|stringformat:"s" %}
+            <li class="nav-item">
+                <a href="{% url 'gestion_usuarios' %}" class="nav-link {% if request.resolver_match.url_name == 'gestion_usuarios' or request.resolver_match.url_name == 'editar_usuario' %}active{% endif %}" data-testid="nav-usuarios">
+                    <i class="bi bi-people-fill"></i>Usuarios
+                </a>
+            </li>
+            {% endif %}
+            
+            {% endwith %}
+        </ul>
+        
+        <!-- Profile indicator -->
+        <div class="profile-indicator">
+            {% if request.caja_activa %}
+            <div class="caja-status mb-3 p-2 rounded bg-light border">
+                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.6rem; letter-spacing: 0.5px;">Caja Abierta</small>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fw-bold text-primary" style="font-size: 0.9rem;">${{ request.caja_activa.monto_apertura }}</span>
+                    <i class="bi bi-unlock-fill text-success small"></i>
+                </div>
+            </div>
+            {% endif %}
+            <div class="d-flex align-items-center">
+                <div class="profile-avatar me-3">
+                    {{ request.active_profile.username|make_list|first|upper }}
+                </div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">{{ request.active_profile.get_full_name|default:request.active_profile.username }}</div>
+                    <small class="text-muted">
+                        {% for g in request.active_profile.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}Sin rol{% endfor %}
+                    </small>
+                </div>
+            </div>
+            <div class="mt-2 d-flex gap-2">
+                <a href="{% url 'cambiar_perfil' %}" class="btn btn-sm btn-outline-secondary w-50" data-testid="btn-cambiar-perfil">
+                    <i class="bi bi-arrow-left-right me-1"></i>Cambiar
+                </a>
+                <a href="{% url 'cierre_caja' %}" class="btn btn-sm btn-outline-danger w-50" data-testid="btn-cerrar-caja">
+                    <i class="bi bi-lock-fill me-1"></i>Cerrar
+                </a>
+            </div>
+            <button class="btn btn-xs btn-outline-secondary w-100 mt-2" onclick="toggleTheme()" id="themeToggle" title="Alternar modo oscuro/claro">
+                <i class="bi bi-moon-fill" id="themeIcon"></i> <span id="themeLabel">Modo oscuro</span>
+            </button>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main class="main-content {% if not request.active_profile %}ms-0{% endif %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% include 'boutique/includes/modal_abrir_caja.html' %}
+    {% if request.active_profile %}
+    {% include 'boutique/includes/modal_servicio_rapido.html' %}
+    {% endif %}
+    {% block extra_js %}{% endblock %}
+    <script>
+    (function() {
+        const saved = localStorage.getItem('adele-theme');
+        if (saved) document.documentElement.setAttribute('data-theme', saved);
+        function updateToggleUI() {
+            const current = document.documentElement.getAttribute('data-theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            const icon = document.getElementById('themeIcon');
+            const label = document.getElementById('themeLabel');
+            if (!icon) return;
+            if (current === 'dark') {
+                icon.className = 'bi bi-sun-fill';
+                if (label) label.textContent = 'Modo claro';
+            } else {
+                icon.className = 'bi bi-moon-fill';
+                if (label) label.textContent = 'Modo oscuro';
+            }
+        }
+        window.toggleTheme = function() {
+            const current = document.documentElement.getAttribute('data-theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('adele-theme', next);
+            updateToggleUI();
+        };
+        document.addEventListener('DOMContentLoaded', updateToggleUI);
+    })();
+    </script>
+</body>
+</html>
