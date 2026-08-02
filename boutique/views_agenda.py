@@ -699,17 +699,33 @@ def api_eliminar_novia(request, pk):
 @require_POST
 @profile_permission_required(['Agenda', 'Vendedor'])
 def api_editar_dama(request, pk):
-    """Actualiza datos de una dama"""
+    """Actualiza datos de una dama.
+
+    Guarda los campos de texto Y, si el nombre coincide con un catálogo,
+    también actualiza el FK correspondiente para mantener coherencia.
+    """
+    from boutique.models import Color, Tela, Modelo
     dama = get_object_or_404(Dama, pk=pk)
     data = json.loads(request.body)
     try:
         dama.nombre = data.get('nombre', dama.nombre)
         dama.telefono = data.get('telefono', dama.telefono)
         dama.talla = data.get('talla', dama.talla)
-        dama.modelo_especial = data.get('modelo_especial', dama.modelo_especial)
-        dama.color_especial = data.get('color_especial', dama.color_especial)
-        dama.tela_especial = data.get('tela_especial', dama.tela_especial)
         dama.notas_ajustes = data.get('notas', dama.notas_ajustes)
+
+        # Texto libre (siempre se guarda tal como viene)
+        if 'color_especial' in data:
+            dama.color_especial = data['color_especial']
+            dama.color = Color.objects.filter(nombre__iexact=data['color_especial']).first()
+
+        if 'tela_especial' in data:
+            dama.tela_especial = data['tela_especial']
+            dama.tela = Tela.objects.filter(nombre__iexact=data['tela_especial']).first()
+
+        if 'modelo_especial' in data:
+            dama.modelo_especial = data['modelo_especial']
+            dama.modelo = Modelo.objects.filter(nombre__iexact=data['modelo_especial']).first()
+
         dama.save()
         return JsonResponse({'status': 'ok', 'message': 'Dama actualizada'})
     except Exception as e:
