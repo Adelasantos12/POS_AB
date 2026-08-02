@@ -27,6 +27,7 @@ if ALLOWED_HOSTS_STRING:
 INSTALLED_APPS = [
     'whitenoise.runserver_nostatic',
     'boutique.apps.BoutiqueConfig',
+    'django_ratelimit',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -167,6 +168,14 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     # W004 y W008 se silencian porque Railway maneja HSTS y SSL-redirect a nivel de proxy.
     SILENCED_SYSTEM_CHECKS = ['security.W004', 'security.W008']
+
+# django-ratelimit: E003/W001 silenciados porque Railway usa Gunicorn con 1
+# worker (start.sh no pasa --workers). Con 1 worker, LocMemCache es efectivo
+# para rate limiting. Si se añaden workers, migrar a Redis.
+SILENCED_SYSTEM_CHECKS = getattr(locals(), 'SILENCED_SYSTEM_CHECKS', []) + [
+    'django_ratelimit.E003',
+    'django_ratelimit.W001',
+]
 
 # --- Integración IA Gemini ---
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')

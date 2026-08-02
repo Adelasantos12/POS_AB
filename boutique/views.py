@@ -2,9 +2,12 @@ from django.shortcuts import render, redirect, get_object_or_404
 from .forms import CustomUserCreationForm
 from django.contrib.auth import login, logout as auth_logout
 from django.contrib.auth.models import Group, User
+from django.contrib.auth.views import LoginView
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from django_ratelimit.decorators import ratelimit
 from django.db import transaction
 from django.db.models import Q, Sum, Count
 from django.db.models.functions import TruncDate
@@ -368,6 +371,15 @@ def scan_ticket(request, folio):
 # VISTAS DE AUTENTICACIÓN Y PERFILES
 # ============================================================
 
+@method_decorator(
+    ratelimit(key='ip', rate='5/m', method='POST', block=True),
+    name='post',
+)
+class RateLimitedLoginView(LoginView):
+    """LoginView con rate limiting: máximo 5 intentos por minuto por IP."""
+    template_name = 'boutique/login.html'
+
+
 def index(request):
     """Vista para la página de inicio principal"""
     if request.user.is_authenticated:
@@ -451,6 +463,7 @@ def logout_view(request):
     return redirect('index')
 
 
+@ratelimit(key='ip', rate='3/m', method='POST', block=True)
 def signup(request):
     """Registro de nuevos usuarios"""
     if request.method == 'POST':

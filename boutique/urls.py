@@ -12,7 +12,7 @@ urlpatterns = [
     path('', views.index, name='index'),
     path('health/', views.health_check, name='health_check'),
     path('signup/', views.signup, name='signup'),
-    path('login/', auth_views.LoginView.as_view(template_name='boutique/login.html'), name='login'),
+    path('login/', views.RateLimitedLoginView.as_view(), name='login'),
     path('logout/', views.logout_view, name='logout'),
     
     # Perfiles (estilo macOS)
