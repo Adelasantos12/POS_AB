@@ -912,7 +912,7 @@ class Apartado(models.Model):
             # Use Secuencia for atomic folio generation — COUNT+1 produces duplicates under concurrency.
             self.folio = Secuencia.siguiente('AP')
 
-        self.saldo = self.total - self.anticipo
+        self.saldo = max(Decimal('0'), self.total - self.anticipo)
         super().save(*args, **kwargs)
 
     def __str__(self): return f"{self.folio} - {self.cliente_nombre}"
@@ -1435,8 +1435,8 @@ class Pedido(models.Model):
 
     @property
     def saldo_pendiente(self):
-        return self.precio - self.total_pagado
-    
+        return max(Decimal('0'), self.precio - self.total_pagado)
+
     @property
     def esta_pagado(self):
         return self.saldo_pendiente <= 0
