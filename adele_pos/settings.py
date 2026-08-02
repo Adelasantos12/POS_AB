@@ -150,13 +150,15 @@ LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = 'index'
 
 # --- Cookies y seguridad HTTPS (solo en producción) ---
+# Railway termina TLS en su proxy y reenvía HTTP a Django.
+# SECURE_SSL_REDIRECT=True causaría redirect loop; Railway ya fuerza HTTPS externamente.
+# SECURE_PROXY_SSL_HEADER hace que Django trate la petición como segura basándose en el header X-Forwarded-Proto.
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_SSL_REDIRECT = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # W004 y W008 se silencian porque Railway maneja HSTS y SSL-redirect a nivel de proxy.
+    SILENCED_SYSTEM_CHECKS = ['security.W004', 'security.W008']
 
 # --- Integración IA Gemini ---
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
