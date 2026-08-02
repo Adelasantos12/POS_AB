@@ -2942,15 +2942,37 @@ def api_cobrar_item(request, tipo, pk):
                 notas=notas
             )
 
+        registrar_auditoria(
+            usuario=request.active_profile,
+            accion='COBRO',
+            detalles=f'{tipo.upper()} #{pk} | ${monto} | {metodo} | Ticket {ticket.folio}',
+            entidad=ticket,
+            request=request,
+        )
+        logger.info(
+            "cobro_registrado",
+            extra={
+                "tipo": tipo, "pk": pk, "monto": float(monto),
+                "metodo": metodo, "folio": ticket.folio,
+                "usuario": request.active_profile.username,
+            },
+        )
         return JsonResponse({
             'status': 'ok',
             'ticket_folio': ticket.folio,
             'ticket_print_url': f"/api/tickets/{ticket.folio}/pdf/"
         })
     except ValueError as ve:
+        logger.warning(
+            "cobro_fallido_caja_cerrada",
+            extra={"tipo": tipo, "pk": pk, "monto": float(monto), "error": str(ve)},
+        )
         return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
-        logger.exception("Error en api_cobrar_item")
+        logger.exception(
+            "cobro_fallido_error",
+            extra={"tipo": tipo, "pk": pk, "monto": float(monto)},
+        )
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @require_POST
