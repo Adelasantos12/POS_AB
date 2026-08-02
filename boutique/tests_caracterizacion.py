@@ -42,7 +42,7 @@ def crear_caja(usuario):
 def crear_catalogo():
     cat, _  = Categoria.objects.get_or_create(nombre='Vestido')
     color, _ = Color.objects.get_or_create(nombre='Rosa Palo', defaults={'codigo_hex': '#FFB6C1'})
-    tela, _  = Tela.objects.get_or_create(nombre='Satín', defaults={'es_predefinida': True, 'activa': True})
+    tela, _  = Tela.objects.get_or_create(nombre='Satin', defaults={'es_predefinida': True, 'activa': True})
     modelo, _ = Modelo.objects.get_or_create(nombre='Sirena Enamorada')
     return cat, color, tela, modelo
 
@@ -191,7 +191,7 @@ class TC03TicketDesdePedidoItemsVacios(TestCase):
             novia=self.novia,
             modelo=Modelo.objects.get(nombre='Sirena Enamorada'),
             color=Color.objects.get(nombre='Rosa Palo'),
-            tela=Tela.objects.get(nombre='Satín'),
+            tela=Tela.objects.get(nombre='Satin'),
             talla='S',
             precio=Decimal('12000.00'),
             creado_por=self.usuario,
@@ -528,7 +528,7 @@ class TC08FlujoPedidoCompleto(TestCase):
         self.assertGreater(
             len(items), 0,
             "BUG R1 ACTIVO: ticket de pedido tiene 0 items. "
-            "El vestido (Sirena Enamorada, Rosa Palo, Satín, M) no aparece en el ticket. "
+            "El vestido (Sirena Enamorada, Rosa Palo, Satin, M) no aparece en el ticket. "
             "Corregir con PR-01: agregar caso especial en populate_from_obj para Pedido."
         )
 

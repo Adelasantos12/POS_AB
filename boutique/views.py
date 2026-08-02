@@ -254,8 +254,24 @@ def puede_gestionar_usuarios(usuario):
 
 
 def health_check(request):
-    """Endpoint para monitoreo de salud del sistema"""
-    return JsonResponse({'status': 'ok', 'timestamp': timezone.now().isoformat()})
+    """Monitoreo de salud. Incluye el SHA del commit desplegado para auditoría."""
+    import subprocess, os
+    # GIT_COMMIT se inyecta como variable de entorno en Railway; fallback a git CLI.
+    sha = os.environ.get('GIT_COMMIT') or os.environ.get('RAILWAY_GIT_COMMIT_SHA', '')
+    if not sha:
+        try:
+            sha = subprocess.check_output(
+                ['git', 'rev-parse', '--short', 'HEAD'],
+                stderr=subprocess.DEVNULL,
+                timeout=2
+            ).decode().strip()
+        except Exception:
+            sha = 'unknown'
+    return JsonResponse({
+        'status': 'ok',
+        'sha': sha,
+        'timestamp': timezone.now().isoformat(),
+    })
 
 
 def scan_ticket(request, folio):
@@ -326,7 +342,7 @@ def scan_ticket(request, folio):
         elif ticket.servicio:
             srv = ticket.servicio
             estado_display = srv.get_estado_display()
-            saldo = float(srv.costo - srv.anticipo)
+            saldo = float(srv.saldo_pendiente)  # uses property summing real pagos_servicio
             estado_css = 'ok' if srv.estado == 'ENTREGADO' else 'progress'
     except Exception:
         pass
@@ -658,13 +674,18 @@ def api_liquidar_pedido(request, pk):
     """Convierte un pedido en venta al ser liquidado"""
     from .models import PagoPedido
     from .services.cash_service import registrar_cobro
-    pedido = get_object_or_404(Pedido, pk=pk)
+    # Validate existence early (outside atomic) for a clean 404
+    get_object_or_404(Pedido, pk=pk)
     try:
         data = json.loads(request.body)
         metodo = data.get('metodo', 'EFECTIVO')
-        monto = safe_decimal(data.get('monto', pedido.saldo_pendiente))
+        monto = safe_decimal(data.get('monto', 0))
 
         with transaction.atomic():
+            # select_for_update serializes concurrent requests (double-click)
+            pedido = Pedido.objects.select_for_update().get(pk=pk)
+            if not monto:
+                monto = pedido.saldo_pendiente
             # Registrar el cobro en caja
             ticket = registrar_cobro(
                 origen_tipo='pedido',
@@ -803,8 +824,8 @@ def api_venta_rapida(request):
     try:
         # 1. Parámetros básicos
         tipo_op = request.POST.get('tipo_operacion', 'VENTA_NORMAL')
-        cat_nombre = normalizar_nombre(request.POST.get('categoria', 'General')) or 'General'
-        color_nombre = normalizar_nombre(request.POST.get('color', 'N/A')) or 'N/A'
+        cat_nombre = request.POST.get('categoria', 'General')
+        color_nombre = request.POST.get('color', 'N/A')
         talla = request.POST.get('talla', 'U')
         precio = safe_decimal(request.POST.get('precio', 0))
         _anticipo_raw = request.POST.get('anticipo', '').strip()
@@ -815,7 +836,7 @@ def api_venta_rapida(request):
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
-        # Idempotencia key — only read here; check runs INSIDE atomic to prevent double-submit race.
+        # Idempotency key is read here; the check runs INSIDE the atomic block
         idem_key = request.POST.get('idempotency_key')
 
         # Datos del cliente
@@ -848,8 +869,7 @@ def api_venta_rapida(request):
                 return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
 
         with transaction.atomic():
-            # Idempotency inside atomic + select_for_update prevents double-submit under concurrency.
-            log = None
+            # Idempotency — inside atomic to protect the PROCESSING→DONE window
             if idem_key:
                 from .models import IdempotencyLog
                 log, created = IdempotencyLog.objects.select_for_update().get_or_create(
@@ -876,14 +896,9 @@ def api_venta_rapida(request):
                         cliente_obj.notas = cliente_notas
                     cliente_obj.save()
 
-            # 3. Gestionar Catálogos
-            categoria = Categoria.objects.filter(nombre=cat_nombre).first()
-            if not categoria:
-                categoria, _ = Categoria.objects.get_or_create(nombre="Sin Definir")
-
-            color = Color.objects.filter(nombre=color_nombre).first()
-            if not color:
-                color, _ = Color.objects.get_or_create(nombre="Sin Definir")
+            # 3. Gestionar Catálogos — el manager normaliza antes de buscar/crear
+            categoria, _ = Categoria.objects.get_or_create_normalizado(cat_nombre)
+            color, _ = Color.objects.get_or_create_normalizado(color_nombre)
 
             # Intentar asociar Tela desde rasgo2 o tela_id
             tela_id = request.POST.get('tela_id')
@@ -1126,16 +1141,12 @@ def api_crear_producto_rapido(request):
     """Crea un producto de forma rápida desde la caja"""
     try:
         data = json.loads(request.body)
-        cat_nombre = normalizar_nombre(data.get('categoria', 'Sin Definir')) or 'Sin Definir'
-        color_nombre = normalizar_nombre(data.get('color', 'Sin Definir')) or 'Sin Definir'
-
-        categoria = Categoria.objects.filter(nombre=cat_nombre).first()
-        if not categoria:
-            categoria, _ = Categoria.objects.get_or_create(nombre="Sin Definir")
-
-        color = Color.objects.filter(nombre=color_nombre).first()
-        if not color:
-            color, _ = Color.objects.get_or_create(nombre="Sin Definir")
+        categoria, _ = Categoria.objects.get_or_create_normalizado(
+            data.get('categoria', Categoria.DEFAULT_NAME)
+        )
+        color, _ = Color.objects.get_or_create_normalizado(
+            data.get('color', Color.DEFAULT_NAME)
+        )
 
         rasgo2 = data.get('rasgo2', '')
         tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
@@ -1295,7 +1306,7 @@ def api_registrar_venta(request):
                 }, status=400)
 
         with transaction.atomic():
-            # Idempotency inside atomic + select_for_update prevents double-submit race.
+            # Idempotency — inside atomic to protect the PROCESSING→DONE window
             idem_log = None
             if idem_key:
                 idem_log, created = IdempotencyLog.objects.select_for_update().get_or_create(
@@ -2281,22 +2292,28 @@ def api_cobrar_servicio(request, pk):
     """Registra un pago para un servicio (pasa por caja y genera ticket)"""
     from .models import Servicio
     from .services.cash_service import registrar_cobro
-    srv = get_object_or_404(Servicio, pk=pk)
+    # Validate existence early (outside atomic) for a clean 404
+    get_object_or_404(Servicio, pk=pk)
     try:
         data = json.loads(request.body)
         monto = safe_decimal(data.get('monto', 0))
         if monto <= 0:
             return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
 
-        ticket = registrar_cobro(
-            origen_tipo='servicio',
-            origen_obj=srv,
-            monto=monto,
-            metodo=data.get('metodo', 'EFECTIVO'),
-            usuario=request.active_profile,
-            referencia=data.get('referencia', ''),
-            notas=data.get('notas', ''),
-        )
+        with transaction.atomic():
+            # select_for_update serializes concurrent payments (double-click)
+            srv = get_object_or_404(Servicio.objects.select_for_update(), pk=pk)
+            if srv.saldo_pendiente <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Este servicio ya está pagado.'}, status=400)
+            ticket = registrar_cobro(
+                origen_tipo='servicio',
+                origen_obj=srv,
+                monto=monto,
+                metodo=data.get('metodo', 'EFECTIVO'),
+                usuario=request.active_profile,
+                referencia=data.get('referencia', ''),
+                notas=data.get('notas', ''),
+            )
         srv.refresh_from_db()
         return JsonResponse({'status': 'ok', 'saldo': float(srv.saldo_pendiente), 'folio': ticket.folio})
     except ValueError as e:
@@ -2875,6 +2892,14 @@ def api_cobrar_item(request, tipo, pk):
     from .services.cash_service import registrar_cobro
     from .models import Pedido, Apartado
 
+    # Validate type and existence early (outside atomic) for clean 400/404
+    if tipo == 'pedido':
+        get_object_or_404(Pedido, pk=pk)
+    elif tipo == 'apartado':
+        get_object_or_404(Apartado, pk=pk)
+    else:
+        return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+
     try:
         data = json.loads(request.body)
         monto = safe_decimal(data.get('monto', 0))
@@ -2885,22 +2910,27 @@ def api_cobrar_item(request, tipo, pk):
         if monto <= 0:
             return JsonResponse({'status': 'error', 'message': 'Monto inválido'}, status=400)
 
-        if tipo == 'pedido':
-            item = get_object_or_404(Pedido, pk=pk)
-        elif tipo == 'apartado':
-            item = get_object_or_404(Apartado, pk=pk)
-        else:
-            return JsonResponse({'status': 'error', 'message': 'Tipo inválido'}, status=400)
+        with transaction.atomic():
+            # select_for_update serializes concurrent payments (double-click)
+            if tipo == 'pedido':
+                item = get_object_or_404(Pedido.objects.select_for_update(), pk=pk)
+                saldo_actual = item.saldo_pendiente
+            else:
+                item = get_object_or_404(Apartado.objects.select_for_update(), pk=pk)
+                saldo_actual = item.saldo
 
-        ticket = registrar_cobro(
-            origen_tipo=tipo,
-            origen_obj=item,
-            monto=monto,
-            metodo=metodo,
-            usuario=request.active_profile,
-            referencia=referencia,
-            notas=notas
-        )
+            if saldo_actual <= 0:
+                return JsonResponse({'status': 'error', 'message': 'Este elemento ya está pagado.'}, status=400)
+
+            ticket = registrar_cobro(
+                origen_tipo=tipo,
+                origen_obj=item,
+                monto=monto,
+                metodo=metodo,
+                usuario=request.active_profile,
+                referencia=referencia,
+                notas=notas
+            )
 
         return JsonResponse({
             'status': 'ok',

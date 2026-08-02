@@ -128,8 +128,30 @@ class Proveedor(models.Model):
     contacto = models.CharField(max_length=100, blank=True)
     def __str__(self): return self.nombre
 
+class CatalogoManager(models.Manager):
+    """Manager para catálogos con nombre único normalizado.
+
+    Centraliza la normalización en get_or_create para que ningún llamador
+    necesite recordar invocar normalizar_nombre() antes de consultar.
+    """
+    DEFAULT_NAME = 'Sin Definir'
+
+    def get_or_create_normalizado(self, nombre, **kwargs):
+        from .utils import normalizar_nombre
+        nombre = normalizar_nombre(nombre) or self.DEFAULT_NAME
+        return self.get_or_create(nombre=nombre, **kwargs)
+
+    def get_default(self):
+        obj, _ = self.get_or_create_normalizado(self.DEFAULT_NAME)
+        return obj
+
+
 class Categoria(models.Model):
+    DEFAULT_NAME = 'Sin Definir'
+
     nombre = models.CharField(max_length=100, unique=True)
+
+    objects = CatalogoManager()
 
     def save(self, *args, **kwargs):
         from .utils import normalizar_nombre
@@ -255,13 +277,17 @@ class Medidas(models.Model):
 
 class Color(models.Model):
     """Catálogo de colores con muestra visual"""
+    DEFAULT_NAME = 'Sin Definir'
+
     nombre = models.CharField(max_length=100, unique=True)
     codigo_hex = models.CharField(max_length=7, default="#CCCCCC", help_text="Ej: #FF5733")
     familia = models.CharField(max_length=50, blank=True, help_text="Ej: Rosa, Azul, Verde")
     es_predefinido = models.BooleanField(default=False, help_text="Colores del catálogo base")
     activo = models.BooleanField(default=True)
     orden = models.IntegerField(default=0, help_text="Orden de aparición")
-    
+
+    objects = CatalogoManager()
+
     class Meta:
         ordering = ['familia', 'orden', 'nombre']
 
@@ -1102,46 +1128,58 @@ class Novia(models.Model):
     @property
     def total_pedidos(self):
         return self.pedidos.count()
-    
+
+    def _pedidos_list(self):
+        """Return pedidos from prefetch cache when available (avoids re-query)."""
+        if hasattr(self, 'pedidos_cache'):
+            return self.pedidos_cache
+        return list(
+            self.pedidos
+            .select_related('modelo', 'color', 'tela')
+            .prefetch_related('pagos_pedido')
+        )
+
     @property
     def total_pagado(self):
-        return sum(p.total_pagado for p in self.pedidos.all())
-    
+        return sum(p.total_pagado for p in self._pedidos_list())
+
     @property
     def total_pendiente(self):
-        return sum(p.saldo_pendiente for p in self.pedidos.all())
+        return sum(p.saldo_pendiente for p in self._pedidos_list())
 
     @property
     def medidas_completitud_promedio(self):
-        peds = self.pedidos.all()
-        if not peds.exists(): return 100
+        peds = self._pedidos_list()
+        if not peds: return 100
         total_pct = sum(p.medidas_completitud for p in peds)
-        return int(total_pct / peds.count())
+        return int(total_pct / len(peds))
 
     @property
     def semaforo_medidas(self):
-        peds = self.pedidos.all()
-        if not peds.exists(): return 'secondary'
+        peds = self._pedidos_list()
+        if not peds: return 'secondary'
 
         completos = sum(1 for p in peds if p.medidas_completitud == 100)
-        if completos == peds.count(): return 'success'
+        if completos == len(peds): return 'success'
         if completos > 0: return 'warning'
-        return 'danger' # Ninguna medida completa
+        return 'danger'
 
     @property
     def semaforo_produccion(self):
-        """Punto 2: Pedido listo"""
-        peds = self.pedidos.exclude(estado='CANCELADO')
-        if not peds.exists(): return 'secondary'
+        """Punto 2: Pedido listo — in-memory filter via _pedidos_list()."""
+        peds = [p for p in self._pedidos_list() if p.estado != 'CANCELADO']
+        if not peds: return 'secondary'
 
-        listos = peds.filter(estado__in=['LISTO', 'RECIBIDO', 'ENTREGADO']).count()
-        if listos == peds.count(): return 'success'
+        estados_listo = {'LISTO', 'RECIBIDO', 'ENTREGADO'}
+        listos = sum(1 for p in peds if p.estado in estados_listo)
+        if listos == len(peds): return 'success'
 
-        # Verificar retrasos
         hoy = timezone.now().date()
-        if peds.exclude(estado__in=['LISTO', 'RECIBIDO', 'ENTREGADO']).filter(
-            Q(fecha_entrega_estimada__lt=hoy) | Q(fecha_entrega_estimada__isnull=True)
-        ).exists():
+        pendientes = [p for p in peds if p.estado not in estados_listo]
+        if any(
+            p.fecha_entrega_estimada is None or p.fecha_entrega_estimada < hoy
+            for p in pendientes
+        ):
             return 'danger'
 
         if listos > 0: return 'warning'
@@ -1149,38 +1187,46 @@ class Novia(models.Model):
 
     @property
     def semaforo_pago(self):
-        """Punto 3: Liquidado"""
-        peds = self.pedidos.exclude(estado='CANCELADO')
-        if not peds.exists(): return 'secondary'
+        """Punto 3: Liquidado — in-memory filter via _pedidos_list()."""
+        peds = [p for p in self._pedidos_list() if p.estado != 'CANCELADO']
+        if not peds: return 'secondary'
 
-        liquidados = peds.filter(estado_pago='LIQUIDADO').count()
-        if liquidados == peds.count(): return 'success'
+        liquidados = sum(1 for p in peds if p.estado_pago == 'LIQUIDADO')
+        if liquidados == len(peds): return 'success'
 
-        # Alerta roja: entrega próxima y no liquidado
         proxima_semana = timezone.now().date() + timezone.timedelta(days=7)
-        if peds.exclude(estado_pago='LIQUIDADO').filter(fecha_entrega_estimada__lte=proxima_semana).exists():
+        if any(
+            p.estado_pago != 'LIQUIDADO'
+            and p.fecha_entrega_estimada is not None
+            and p.fecha_entrega_estimada <= proxima_semana
+            for p in peds
+        ):
             return 'danger'
 
-        if liquidados > 0 or peds.filter(estado_pago__in=['APARTADO', 'PARCIAL']).exists():
+        if liquidados > 0 or any(p.estado_pago in {'APARTADO', 'PARCIAL'} for p in peds):
             return 'warning'
         return 'secondary'
 
     @property
     def semaforo_entrega(self):
-        """Punto 4: Entregado"""
-        peds = self.pedidos.exclude(estado='CANCELADO')
-        if not peds.exists(): return 'secondary'
+        """Punto 4: Entregado — in-memory filter via _pedidos_list()."""
+        peds = [p for p in self._pedidos_list() if p.estado != 'CANCELADO']
+        if not peds: return 'secondary'
 
-        entregados = peds.filter(estado='ENTREGADO').count()
-        if entregados == peds.count(): return 'success'
+        entregados = sum(1 for p in peds if p.estado == 'ENTREGADO')
+        if entregados == len(peds): return 'success'
         if entregados > 0: return 'warning'
         return 'secondary'
 
     @property
     def resumen_pendientes(self):
-        peds = self.pedidos.all()
+        peds = self._pedidos_list()
+        total_damas = (
+            len(self.damas_cache) if hasattr(self, 'damas_cache')
+            else self.damas.count()
+        )
         return {
-            'total_damas': self.damas.count(),
+            'total_damas': total_damas,
             'medidas_completas': sum(1 for p in peds if p.medidas_completitud == 100),
             'medidas_incompletas': sum(1 for p in peds if p.medidas_completitud < 100),
             'listos_entrega': sum(1 for p in peds if p.estado == 'LISTO' and p.saldo_pendiente == 0),
@@ -1190,8 +1236,8 @@ class Novia(models.Model):
 
     @property
     def resumen_grupo(self):
-        """Genera resumen de todos los pedidos del grupo"""
-        pedidos = self.pedidos.all()
+        """Genera resumen de todos los pedidos del grupo."""
+        pedidos = self._pedidos_list()
         colores = set()
         telas = set()
         modelos = set()
@@ -1212,7 +1258,7 @@ class Novia(models.Model):
             'telas': list(telas),
             'modelos': list(modelos),
             'tallas': tallas,
-            'total': pedidos.count()
+            'total': len(pedidos)
         }
 
 
@@ -1375,13 +1421,18 @@ class Pedido(models.Model):
 
     def __str__(self):
         quien = "Novia" if self.es_vestido_novia else (self.dama.nombre if self.dama else "Dama")
-        novia_nombre = self.novia.nombre if self.novia else "Sin Novia"
+        novia_nombre = self.novia.nombre if self.novia else 'Sin novia'
         return f"{self.numero_ticket} - {quien} ({novia_nombre})"
     
     @property
     def total_pagado(self):
         return sum(p.monto for p in self.pagos_pedido.all())
-    
+
+    @property
+    def ultimo_pago(self):
+        return self.pagos_pedido.order_by('-fecha', '-id').first()
+
+
     @property
     def saldo_pendiente(self):
         return self.precio - self.total_pagado

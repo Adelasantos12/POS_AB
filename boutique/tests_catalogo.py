@@ -296,3 +296,87 @@ class TestCatalogAPIs(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()['status'], 'blocked')
+
+
+# ─────────────────────────────────────────────────────────────
+# Regresión R-UNIQUE-001: get_or_create_normalizado no debe
+# disparar UNIQUE constraint cuando el modelo normaliza en save().
+# Escenario: nombre en minúscula ingresado por usuario vs nombre
+# en title-case almacenado tras normalización.
+# ─────────────────────────────────────────────────────────────
+
+class TestCatalogoManagerRegresion(TestCase):
+    """Prueba de regresión para el bug UNIQUE constraint en Categoria y Color.
+
+    Antes del fix: get_or_create(nombre='sin definir') → GET fallaba
+    (DB tenía 'Sin Definir') → INSERT → save() normalizaba → UNIQUE crash.
+    """
+
+    def test_get_or_create_normalizado_categoria_lowercase(self):
+        """get_or_create_normalizado no falla con entrada sin normalizar.
+
+        El escenario crítico: DB ya tiene 'Sin Definir' (lo que save() produce).
+        get_or_create_normalizado('sin definir') debe hacer GET exitoso, no INSERT.
+        Antes del fix: GET fallaba → INSERT → save() colisionaba → UNIQUE crash.
+        """
+        # Garantizar que ya existe el registro normalizado (simula estado de producción)
+        Categoria.objects.get_or_create(nombre='Sin Definir')
+
+        # Llamada con minúscula — debe encontrar el existente sin IntegrityError
+        cat1, created1 = Categoria.objects.get_or_create_normalizado('sin definir')
+        self.assertFalse(created1, "Debe encontrar el existente, no crear uno nuevo")
+        self.assertEqual(cat1.nombre, 'Sin Definir')
+
+        # Llamada con mayúsculas — mismo resultado
+        cat2, created2 = Categoria.objects.get_or_create_normalizado('SIN DEFINIR')
+        self.assertFalse(created2)
+        self.assertEqual(cat1.pk, cat2.pk)
+
+    def test_get_or_create_normalizado_color_lowercase(self):
+        """Mismo escenario para Color."""
+        Color.objects.get_or_create(nombre='Azul Marino')
+
+        c1, created1 = Color.objects.get_or_create_normalizado('azul marino')
+        self.assertFalse(created1, "Debe encontrar el existente, no crear uno nuevo")
+        self.assertEqual(c1.nombre, 'Azul Marino')
+
+        c2, created2 = Color.objects.get_or_create_normalizado('AZUL MARINO')
+        self.assertFalse(created2)
+        self.assertEqual(c1.pk, c2.pk)
+
+    def test_get_default_categoria(self):
+        """get_default() devuelve siempre el mismo objeto normalizado."""
+        d1 = Categoria.objects.get_default()
+        d2 = Categoria.objects.get_default()
+        self.assertEqual(d1.pk, d2.pk)
+        self.assertEqual(d1.nombre, 'Sin Definir')
+
+    def test_api_crear_producto_rapido_no_unique_crash(self):
+        """api_crear_producto_rapido no debe fallar con categoría en minúscula."""
+        from django.contrib.auth.models import User, Group
+        user = User.objects.create_user(username='v2', password='pass')
+        g, _ = Group.objects.get_or_create(name='Vendedor')
+        user.groups.add(g)
+        self.client.login(username='v2', password='pass')
+        session = self.client.session
+        session['active_profile_id'] = user.id
+        session.save()
+
+        import json
+        # Primera llamada crea 'Sin Definir'
+        r1 = self.client.post(
+            '/api/producto-rapido/',
+            data=json.dumps({'categoria': 'sin definir', 'color': 'sin definir',
+                             'precio': 100, 'estado': 'TIENDA'}),
+            content_type='application/json',
+        )
+        self.assertEqual(r1.status_code, 200, r1.content.decode())
+
+        # Segunda llamada no debe disparar IntegrityError
+        r2 = self.client.post(
+            '/api/producto-rapido/',
+            data=json.dumps({'categoria': 'SIN DEFINIR', 'color': 'SIN DEFINIR',
+                             'precio': 200, 'estado': 'TIENDA'}),
+            content_type='application/json',
+        )
+        self.assertEqual(r2.status_code, 200, r2.content.decode())

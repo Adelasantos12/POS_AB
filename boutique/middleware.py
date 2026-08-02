@@ -1,6 +1,7 @@
 from django.shortcuts import redirect
 from django.urls import reverse, NoReverseMatch
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from functools import wraps
 from django.core.exceptions import PermissionDenied
 
@@ -26,14 +27,19 @@ class ProfileMiddleware:
             return self.get_response(request)
 
         if request.user.is_authenticated:
-            # Añadir estado de caja a todas las peticiones autenticadas
-            from .models import CorteCaja
-            request.caja_activa = CorteCaja.objects.filter(cerrado=False).first()
+            # Cache caja_activa for 30 s to avoid one extra query per request.
+            caja_cache_key = 'caja_activa'
+            request.caja_activa = cache.get(caja_cache_key)
+            if request.caja_activa is None:
+                from .models import CorteCaja
+                request.caja_activa = CorteCaja.objects.filter(cerrado=False).first()
+                cache.set(caja_cache_key, request.caja_activa, 30)
 
             active_profile_id = request.session.get('active_profile_id')
             if active_profile_id:
                 try:
-                    request.active_profile = User.objects.get(id=active_profile_id)
+                    # prefetch_related('groups') avoids 2 extra queries in profile_permission_required
+                    request.active_profile = User.objects.prefetch_related('groups').get(id=active_profile_id)
                 except User.DoesNotExist:
                     if 'active_profile_id' in request.session:
                         del request.session['active_profile_id']

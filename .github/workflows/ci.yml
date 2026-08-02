@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches-ignore:
+      - 'feat/initial-project-setup-*'
+  pull_request:
+
+jobs:
+  test:
+    name: Tests & sistema check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: pos
+          POSTGRES_PASSWORD: pos
+          POSTGRES_DB: pos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://pos:pos@localhost:5432/pos_test
+      DB_SSL_REQUIRE: "false"
+      DJANGO_SECRET_KEY: ci-insecure-key-not-for-production
+      ENVIRONMENT: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Verificar migraciones pendientes
+        run: |
+          python manage.py migrate --run-syncdb
+          python manage.py migrate --check
+
+      - name: Sistema check (sin silenciar errores de seguridad)
+        run: python manage.py check --deploy --fail-level WARNING
+        env:
+          ENVIRONMENT: production
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_SECRET_KEY: ci-insecure-key-not-for-production
+
+      - name: Ejecutar tests
+        run: python manage.py test --verbosity=2
+
+      - name: Verificar que no existen tests marcados como skip sin justificación
+        run: |
+          # Falla si algún test usa @skip sin comentario que cite un issue/ticket
+          if grep -rn "@skip\b" boutique/tests*.py | grep -v "#.*#\|issue\|ticket\|bug\|TODO"; then
+            echo "ERROR: @skip sin justificación encontrado. Cita el issue en el comentario."
+            exit 1
+          fi
