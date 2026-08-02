@@ -883,11 +883,8 @@ class Apartado(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.folio:
-            today_str = timezone.now().strftime('%Y%m%d')
-            prefix = "AP"
-            # Conteo simple para el consecutivo del día
-            count = Apartado.objects.filter(fecha_creacion__date=timezone.now().date()).count() + 1
-            self.folio = f"{prefix}-{today_str}-{count:04d}"
+            # Use Secuencia for atomic folio generation — COUNT+1 produces duplicates under concurrency.
+            self.folio = Secuencia.siguiente('AP')
 
         self.saldo = self.total - self.anticipo
         super().save(*args, **kwargs)
@@ -1025,13 +1022,21 @@ class MovimientoInventario(models.Model):
         return f"{self.get_tipo_display()} {self.cantidad} x {self.producto.sku}"
     
     def save(self, *args, **kwargs):
-        # Calcular stock resultante (basado en stock_teorico para permitir negativos)
-        if not self.stock_resultante:
-            self.stock_resultante = self.producto.stock_teorico + self.cantidad
         super().save(*args, **kwargs)
-        # Actualizar stock teórico del producto
-        self.producto.stock_teorico = self.stock_resultante
-        self.producto.save(update_fields=['stock_teorico'])
+        # Atomic F()-based update — prevents lost-update race under concurrent Gunicorn workers.
+        # Never read-modify-write stock_teorico at the Python level.
+        Producto.objects.filter(pk=self.producto_id).update(
+            stock_teorico=F('stock_teorico') + self.cantidad
+        )
+        # Sync audit field with the actual post-update value (single extra SELECT).
+        nuevo_stock = (
+            Producto.objects.filter(pk=self.producto_id)
+            .values_list('stock_teorico', flat=True)
+            .get()
+        )
+        type(self).objects.filter(pk=self.pk).update(stock_resultante=nuevo_stock)
+        self.stock_resultante = nuevo_stock
+        self.producto.stock_teorico = nuevo_stock
 
 
 

@@ -633,7 +633,7 @@ def api_sync(request):
                                 motivo='VENTA',
                                 perfil_activo=request.active_profile,
                                 venta=venta,
-                                stock_resultante=prod.stock_teorico - it['cantidad']
+                                stock_resultante=0  # computed atomically by MovimientoInventario.save()
                             )
 
                         Pago.objects.create(
@@ -815,13 +815,8 @@ def api_venta_rapida(request):
         es_apartado = request.POST.get('es_apartado') == 'true'
         foto = request.FILES.get('foto')
 
-        # Idempotencia
+        # Idempotencia key — only read here; check runs INSIDE atomic to prevent double-submit race.
         idem_key = request.POST.get('idempotency_key')
-        if idem_key:
-            from .models import IdempotencyLog
-            log, created = IdempotencyLog.objects.get_or_create(key=idem_key, defaults={'status': 'PROCESSING'})
-            if not created and log.status == 'DONE':
-                return JsonResponse(log.response_json)
 
         # Datos del cliente
         cliente_telefono = request.POST.get('cliente_telefono', '').strip()
@@ -853,6 +848,21 @@ def api_venta_rapida(request):
                 return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
 
         with transaction.atomic():
+            # Idempotency inside atomic + select_for_update prevents double-submit under concurrency.
+            log = None
+            if idem_key:
+                from .models import IdempotencyLog
+                log, created = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created:
+                    if log.status == 'DONE':
+                        return JsonResponse(log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
+
             # 2. Gestionar cliente
             cliente_obj = None
             if cliente_telefono:
@@ -947,7 +957,7 @@ def api_venta_rapida(request):
                     MovimientoInventario.objects.create(
                         producto=producto, tipo='VENTA', cantidad=-1, motivo='VENTA',
                         perfil_activo=request.active_profile, venta=venta,
-                        stock_resultante=producto.stock_teorico - 1
+                        stock_resultante=0  # computed atomically by MovimientoInventario.save()
                     )
                     ticket = registrar_cobro(
                         origen_tipo='venta', origen_obj=venta,
@@ -1096,10 +1106,10 @@ def api_venta_rapida(request):
                 request=request
             )
 
-            if idem_key:
+            if log:
                 log.response_json = res
                 log.status = 'DONE'
-                log.save()
+                log.save(update_fields=['response_json', 'status'])
             return JsonResponse(res)
 
     except ValueError as ve:
@@ -1248,7 +1258,7 @@ def api_search_clientes(request):
 @profile_permission_required('Vendedor')
 def api_registrar_venta(request):
     """Registra una venta o un apartado"""
-    from .models import Novia, PagoPedido, Apartado, ApartadoItem
+    from .models import Novia, PagoPedido, Apartado, ApartadoItem, IdempotencyLog
     from .services.cash_service import registrar_cobro
     try:
         data = json.loads(request.body)
@@ -1262,6 +1272,7 @@ def api_registrar_venta(request):
         sin_registro = bool(data.get('sin_registro', False))
         notas_operacion = (data.get('notas_operacion') or '').strip()
         cliente_id_hint = data.get('cliente_id')
+        idem_key = data.get('idempotency_key')
         tiene_saldo = pago_inicial < total
 
         # Identidad mínima obligatoria
@@ -1284,6 +1295,19 @@ def api_registrar_venta(request):
                 }, status=400)
 
         with transaction.atomic():
+            # Idempotency inside atomic + select_for_update prevents double-submit race.
+            idem_log = None
+            if idem_key:
+                idem_log, created = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created:
+                    if idem_log.status == 'DONE':
+                        return JsonResponse(idem_log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
             if es_apartado:
                 # Nuevo flujo de Apartado Independiente
                 apartado = Apartado.objects.create(
@@ -1314,7 +1338,7 @@ def api_registrar_venta(request):
                         cantidad=-it['cantidad'],
                         motivo='VENTA',
                         perfil_activo=request.active_profile,
-                        stock_resultante=prod.stock_teorico - it['cantidad']
+                        stock_resultante=0  # computed atomically by MovimientoInventario.save()
                     )
 
                 # Registrar cobro inicial
@@ -1340,7 +1364,12 @@ def api_registrar_venta(request):
                     request=request
                 )
 
-                return JsonResponse({'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio})
+                _res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio}
+                if idem_log:
+                    idem_log.response_json = _res
+                    idem_log.status = 'DONE'
+                    idem_log.save(update_fields=['response_json', 'status'])
+                return JsonResponse(_res)
 
             else:
                 # Flujo de Venta normal
@@ -1386,7 +1415,7 @@ def api_registrar_venta(request):
                         motivo='VENTA',
                         perfil_activo=request.active_profile,
                         venta=venta,
-                        stock_resultante=prod.stock_teorico - it['cantidad']
+                        stock_resultante=0  # computed atomically by MovimientoInventario.save()
                     )
 
                 # Registrar cobro en caja
@@ -1434,7 +1463,12 @@ def api_registrar_venta(request):
                     request=request
                 )
 
-                return JsonResponse({'status': 'ok', 'tipo': 'venta', 'venta_id': venta.id, 'folio': ticket.folio})
+                _res = {'status': 'ok', 'tipo': 'venta', 'venta_id': venta.id, 'folio': ticket.folio}
+                if idem_log:
+                    idem_log.response_json = _res
+                    idem_log.status = 'DONE'
+                    idem_log.save(update_fields=['response_json', 'status'])
+                return JsonResponse(_res)
     except ValueError as ve:
         return JsonResponse({'status': 'caja_cerrada', 'message': str(ve)}, status=400)
     except Exception as e:
@@ -1549,130 +1583,138 @@ def api_validar_crear_producto(request):
         data = request.POST
         foto = request.FILES.get('foto')
 
-    # Idempotencia
     idem_key = data.get('idempotency_key')
-    if idem_key:
-        from .models import IdempotencyLog
-        log, created = IdempotencyLog.objects.get_or_create(key=idem_key, defaults={'status': 'PROCESSING'})
-        if not created and log.status == 'DONE':
-            return JsonResponse(log.response_json)
-
     forzar_crear = data.get('forzar_crear') == True or data.get('forzar_crear') == 'true'
-    
-    # Si no se fuerza, verificar duplicados primero
+
+    # Read-only duplicate checks before entering the atomic block (avoids holding locks).
     if not forzar_crear:
         cat = data.get('categoria', '')
         r1 = data.get('rasgo1', '')
         r2 = data.get('rasgo2', '')
         color = data.get('color', '')
-        
+
         existe_similar = Producto.objects.filter(
             categoria__nombre__iexact=cat,
             rasgo1__iexact=r1,
             rasgo2__iexact=r2,
             color__nombre__iexact=color
         ).exists()
-        
+
         if existe_similar:
             return JsonResponse({
                 'status': 'blocked',
                 'message': '🚫 Ya existe un producto IDÉNTICO. No se puede crear duplicado.',
                 'requiere_confirmacion': False
             }, status=400)
-    
-    # Resolver objetos FK: accept both ID (preferred) and name (legacy AI fill)
+
     try:
-        # Categoría
-        if data.get('categoria_id'):
-            categoria = get_object_or_404(Categoria, pk=data['categoria_id'])
-        else:
-            cat_nombre = data.get('categoria', 'Sin definir')
-            categoria = Categoria.objects.filter(nombre__iexact=cat_nombre).first()
-            if not categoria:
-                categoria, _ = Categoria.objects.get_or_create(nombre=normalizar_nombre(cat_nombre) or 'Sin definir')
+        with transaction.atomic():
+            # Idempotency inside atomic + select_for_update prevents double-submit race.
+            idem_log = None
+            if idem_key:
+                from .models import IdempotencyLog
+                idem_log, created_log = IdempotencyLog.objects.select_for_update().get_or_create(
+                    key=idem_key, defaults={'status': 'PROCESSING'}
+                )
+                if not created_log:
+                    if idem_log.status == 'DONE':
+                        return JsonResponse(idem_log.response_json)
+                    return JsonResponse(
+                        {'status': 'error', 'message': 'Petición duplicada en proceso. Intenta de nuevo en unos segundos.'},
+                        status=409
+                    )
 
-        # Color
-        if data.get('color_id'):
-            color_obj = get_object_or_404(Color, pk=data['color_id'])
-        else:
-            color_nombre = data.get('color', 'Sin definir')
-            color_obj = Color.objects.filter(nombre__iexact=color_nombre).first()
-            if not color_obj:
-                color_obj, _ = Color.objects.get_or_create(nombre=normalizar_nombre(color_nombre) or 'Sin definir')
+            # Categoría
+            if data.get('categoria_id'):
+                categoria = get_object_or_404(Categoria, pk=data['categoria_id'])
+            else:
+                cat_nombre = data.get('categoria', 'Sin definir')
+                categoria = Categoria.objects.filter(nombre__iexact=cat_nombre).first()
+                if not categoria:
+                    categoria, _ = Categoria.objects.get_or_create(nombre=normalizar_nombre(cat_nombre) or 'Sin definir')
 
-        # Modelo
-        modelo_obj = None
-        if data.get('modelo_id'):
-            modelo_obj = Modelo.objects.filter(pk=data['modelo_id']).first()
-        elif data.get('rasgo1'):
-            modelo_obj = Modelo.objects.filter(nombre__iexact=data['rasgo1']).first()
+            # Color
+            if data.get('color_id'):
+                color_obj = get_object_or_404(Color, pk=data['color_id'])
+            else:
+                color_nombre = data.get('color', 'Sin definir')
+                color_obj = Color.objects.filter(nombre__iexact=color_nombre).first()
+                if not color_obj:
+                    color_obj, _ = Color.objects.get_or_create(nombre=normalizar_nombre(color_nombre) or 'Sin definir')
 
-        # Tela
-        tela_obj = None
-        if data.get('tela_id'):
-            tela_obj = Tela.objects.filter(pk=data['tela_id']).first()
-        else:
-            rasgo2 = data.get('rasgo2', '')
-            if rasgo2:
-                tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
+            # Modelo
+            modelo_obj = None
+            if data.get('modelo_id'):
+                modelo_obj = Modelo.objects.filter(pk=data['modelo_id']).first()
+            elif data.get('rasgo1'):
+                modelo_obj = Modelo.objects.filter(nombre__iexact=data['rasgo1']).first()
 
-        # Talla FK
-        talla_str = data.get('talla', 'U')
-        talla_obj_cat = None
-        if data.get('talla_id'):
-            talla_obj_cat = Talla.objects.filter(pk=data['talla_id']).first()
-        if talla_obj_cat is None:
-            talla_obj_cat = Talla.buscar_por_alias(talla_str)
+            # Tela
+            tela_obj = None
+            if data.get('tela_id'):
+                tela_obj = Tela.objects.filter(pk=data['tela_id']).first()
+            else:
+                rasgo2 = data.get('rasgo2', '')
+                if rasgo2:
+                    tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
 
-        # Uniqueness check via FK constraint (when modelo + talla are set)
-        if not forzar_crear and modelo_obj and talla_obj_cat:
-            qs = Producto.objects.filter(
-                modelo=modelo_obj,
+            # Talla FK
+            talla_str = data.get('talla', 'U')
+            talla_obj_cat = None
+            if data.get('talla_id'):
+                talla_obj_cat = Talla.objects.filter(pk=data['talla_id']).first()
+            if talla_obj_cat is None:
+                talla_obj_cat = Talla.buscar_por_alias(talla_str)
+
+            # Uniqueness check via FK constraint (when modelo + talla are set)
+            if not forzar_crear and modelo_obj and talla_obj_cat:
+                qs = Producto.objects.filter(
+                    modelo=modelo_obj,
+                    color=color_obj,
+                    tela=tela_obj,
+                    talla_obj=talla_obj_cat,
+                )
+                if qs.exists():
+                    return JsonResponse({
+                        'status': 'blocked',
+                        'message': '🚫 Ya existe una variante con ese modelo, color, tela y talla.',
+                        'requiere_confirmacion': False,
+                    }, status=400)
+
+            rasgo1 = data.get('rasgo1', modelo_obj.nombre if modelo_obj else '')
+            rasgo2 = data.get('rasgo2', tela_obj.nombre if tela_obj else '')
+
+            producto, created = Producto.objects.get_or_create(
+                categoria=categoria,
                 color=color_obj,
                 tela=tela_obj,
+                modelo=modelo_obj,
+                rasgo1=rasgo1,
+                rasgo2=rasgo2,
+                talla=talla_str,
                 talla_obj=talla_obj_cat,
+                defaults={
+                    'precio_venta': safe_decimal(data.get('precio', 0)),
+                    'estado': data.get('estado', 'TIENDA'),
+                    'cantidad_actual': int(data.get('stock', 1)),
+                    'foto': foto,
+                }
             )
-            if qs.exists():
-                return JsonResponse({
-                    'status': 'blocked',
-                    'message': '🚫 Ya existe una variante con ese modelo, color, tela y talla.',
-                    'requiere_confirmacion': False,
-                }, status=400)
 
-        rasgo1 = data.get('rasgo1', modelo_obj.nombre if modelo_obj else '')
-        rasgo2 = data.get('rasgo2', tela_obj.nombre if tela_obj else '')
-
-        producto, created = Producto.objects.get_or_create(
-            categoria=categoria,
-            color=color_obj,
-            tela=tela_obj,
-            modelo=modelo_obj,
-            rasgo1=rasgo1,
-            rasgo2=rasgo2,
-            talla=talla_str,
-            talla_obj=talla_obj_cat,
-            defaults={
-                'precio_venta': safe_decimal(data.get('precio', 0)),
-                'estado': data.get('estado', 'TIENDA'),
-                'cantidad_actual': int(data.get('stock', 1)),
-                'foto': foto,
+            res = {
+                'status': 'ok',
+                'sku': producto.sku,
+                'id': producto.id,
+                'text': str(producto),
+                'message': '✅ Producto creado correctamente' if created else '��� Producto existente reutilizado',
             }
-        )
 
-        res = {
-            'status': 'ok',
-            'sku': producto.sku,
-            'id': producto.id,
-            'text': str(producto),
-            'message': '✅ Producto creado correctamente' if created else '✅ Producto existente reutilizado',
-        }
+            if idem_log:
+                idem_log.response_json = res
+                idem_log.status = 'DONE'
+                idem_log.save(update_fields=['response_json', 'status'])
 
-        if idem_key:
-            log.response_json = res
-            log.status = 'DONE'
-            log.save()
-
-        return JsonResponse(res)
+            return JsonResponse(res)
 
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
