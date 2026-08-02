@@ -1,9 +1,31 @@
+import uuid
+import logging
 from django.shortcuts import redirect
 from django.urls import reverse, NoReverseMatch
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from functools import wraps
 from django.core.exceptions import PermissionDenied
+
+logger = logging.getLogger(__name__)
+
+
+class RequestIDMiddleware:
+    """Propaga un correlation ID por cada request para facilitar búsqueda en logs."""
+
+    HEADER_IN = 'HTTP_X_REQUEST_ID'
+    HEADER_OUT = 'X-Request-ID'
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        request_id = request.META.get(self.HEADER_IN) or uuid.uuid4().hex[:12]
+        request.request_id = request_id
+        response = self.get_response(request)
+        response[self.HEADER_OUT] = request_id
+        return response
+
 
 class ProfileMiddleware:
     def __init__(self, get_response):
