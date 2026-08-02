@@ -149,7 +149,14 @@ LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'index'
 LOGOUT_REDIRECT_URL = 'index'
 
-# --- Cookies y seguridad HTTPS (solo en producción) ---
+# --- Cookies y seguridad HTTP ---
+# SameSite=Lax en todos los entornos: bloquea envío de cookies en
+# navegaciones cross-site iniciadas por terceros (POST desde otro dominio).
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_HTTPONLY = True   # JS no puede leer la cookie de sesión
+X_FRAME_OPTIONS = 'DENY'         # Previene clickjacking en todos los entornos
+
 # Railway termina TLS en su proxy y reenvía HTTP a Django.
 # SECURE_SSL_REDIRECT=True causaría redirect loop; Railway ya fuerza HTTPS externamente.
 # SECURE_PROXY_SSL_HEADER hace que Django trate la petición como segura basándose en el header X-Forwarded-Proto.
