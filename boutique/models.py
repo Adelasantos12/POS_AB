@@ -1375,7 +1375,8 @@ class Pedido(models.Model):
 
     def __str__(self):
         quien = "Novia" if self.es_vestido_novia else (self.dama.nombre if self.dama else "Dama")
-        return f"{self.numero_ticket} - {quien} ({self.novia.nombre})"
+        novia_nombre = self.novia.nombre if self.novia else "Sin Novia"
+        return f"{self.numero_ticket} - {quien} ({novia_nombre})"
     
     @property
     def total_pagado(self):

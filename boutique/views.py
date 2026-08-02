@@ -803,8 +803,8 @@ def api_venta_rapida(request):
     try:
         # 1. Parámetros básicos
         tipo_op = request.POST.get('tipo_operacion', 'VENTA_NORMAL')
-        cat_nombre = request.POST.get('categoria', 'General')
-        color_nombre = request.POST.get('color', 'N/A')
+        cat_nombre = normalizar_nombre(request.POST.get('categoria', 'General')) or 'General'
+        color_nombre = normalizar_nombre(request.POST.get('color', 'N/A')) or 'N/A'
         talla = request.POST.get('talla', 'U')
         precio = safe_decimal(request.POST.get('precio', 0))
         _anticipo_raw = request.POST.get('anticipo', '').strip()
@@ -879,11 +879,11 @@ def api_venta_rapida(request):
             # 3. Gestionar Catálogos
             categoria = Categoria.objects.filter(nombre=cat_nombre).first()
             if not categoria:
-                categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+                categoria, _ = Categoria.objects.get_or_create(nombre="Sin Definir")
 
             color = Color.objects.filter(nombre=color_nombre).first()
             if not color:
-                color, _ = Color.objects.get_or_create(nombre="Sin definir")
+                color, _ = Color.objects.get_or_create(nombre="Sin Definir")
 
             # Intentar asociar Tela desde rasgo2 o tela_id
             tela_id = request.POST.get('tela_id')
@@ -1126,16 +1126,16 @@ def api_crear_producto_rapido(request):
     """Crea un producto de forma rápida desde la caja"""
     try:
         data = json.loads(request.body)
-        cat_nombre = data.get('categoria', 'Sin definir')
-        color_nombre = data.get('color', 'Sin definir')
+        cat_nombre = normalizar_nombre(data.get('categoria', 'Sin Definir')) or 'Sin Definir'
+        color_nombre = normalizar_nombre(data.get('color', 'Sin Definir')) or 'Sin Definir'
 
         categoria = Categoria.objects.filter(nombre=cat_nombre).first()
         if not categoria:
-            categoria, _ = Categoria.objects.get_or_create(nombre="Sin definir")
+            categoria, _ = Categoria.objects.get_or_create(nombre="Sin Definir")
 
         color = Color.objects.filter(nombre=color_nombre).first()
         if not color:
-            color, _ = Color.objects.get_or_create(nombre="Sin definir")
+            color, _ = Color.objects.get_or_create(nombre="Sin Definir")
 
         rasgo2 = data.get('rasgo2', '')
         tela_obj = Tela.objects.filter(nombre__iexact=rasgo2).first()
