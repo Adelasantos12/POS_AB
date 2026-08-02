@@ -181,3 +181,81 @@ class R5DuplicateCobro(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn('pagado', response.json().get('message', '').lower())
+
+
+class S3CancelledOrderPayment(TestCase):
+    """S3 — cobrar un pedido cancelado debe devolver 400."""
+
+    def setUp(self):
+        from boutique.models import Novia, Pedido, ConfiguracionTienda, CorteCaja
+        ConfiguracionTienda.get_solo()
+        self.user = _make_user('s3_user', groups=('Vendedor', 'Admin'))
+        self.novia = Novia.objects.create(nombre='S3 Novia', fecha_boda=date(2027, 6, 1))
+        self.pedido = Pedido.objects.create(
+            novia=self.novia, precio=Decimal('800.00'),
+            estado='CANCELADO', evento='Boda', creado_por=self.user,
+        )
+        CorteCaja.objects.create(abierto_por=self.user, monto_apertura=Decimal('500.00'))
+
+    def test_cobrar_cancelado_returns_400(self):
+        import json
+        client = Client()
+        client.login(username='s3_user', password='pass')
+        s = client.session
+        s['active_profile_id'] = self.user.id
+        s.save()
+        resp = client.post(
+            reverse('api_cobrar_item', kwargs={'tipo': 'pedido', 'pk': self.pedido.pk}),
+            data=json.dumps({'monto': '100.00', 'metodo': 'EFECTIVO'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('cancelado', resp.json().get('message', '').lower())
+
+
+class S4OverpaymentRejected(TestCase):
+    """S4 — monto > saldo_pendiente debe devolver 400."""
+
+    def setUp(self):
+        from boutique.models import Novia, Pedido, PagoPedido, ConfiguracionTienda, CorteCaja
+        ConfiguracionTienda.get_solo()
+        self.user = _make_user('s4_user', groups=('Vendedor', 'Admin'))
+        self.novia = Novia.objects.create(nombre='S4 Novia', fecha_boda=date(2027, 7, 1))
+        self.pedido = Pedido.objects.create(
+            novia=self.novia, precio=Decimal('1000.00'),
+            evento='Boda', creado_por=self.user,
+        )
+        CorteCaja.objects.create(abierto_por=self.user, monto_apertura=Decimal('500.00'))
+        PagoPedido.objects.create(pedido=self.pedido, monto=Decimal('700.00'),
+                                  metodo='EFECTIVO', registrado_por=self.user)
+
+    def test_overpayment_returns_400(self):
+        import json
+        client = Client()
+        client.login(username='s4_user', password='pass')
+        s = client.session
+        s['active_profile_id'] = self.user.id
+        s.save()
+        # saldo = 300; trying to pay 500
+        resp = client.post(
+            reverse('api_cobrar_item', kwargs={'tipo': 'pedido', 'pk': self.pedido.pk}),
+            data=json.dumps({'monto': '500.00', 'metodo': 'EFECTIVO'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('supera', resp.json().get('message', '').lower())
+
+    def test_exact_payment_accepted(self):
+        import json
+        client = Client()
+        client.login(username='s4_user', password='pass')
+        s = client.session
+        s['active_profile_id'] = self.user.id
+        s.save()
+        # saldo = 300; paying exactly 300 should succeed
+        resp = client.post(
+            reverse('api_cobrar_item', kwargs={'tipo': 'pedido', 'pk': self.pedido.pk}),
+            data=json.dumps({'monto': '300.00', 'metodo': 'EFECTIVO'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content.decode())

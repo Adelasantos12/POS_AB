@@ -2914,13 +2914,23 @@ def api_cobrar_item(request, tipo, pk):
             # select_for_update serializes concurrent payments (double-click)
             if tipo == 'pedido':
                 item = get_object_or_404(Pedido.objects.select_for_update(), pk=pk)
+                if getattr(item, 'estado', None) == 'CANCELADO':
+                    return JsonResponse({'status': 'error', 'message': 'No se puede cobrar un pedido cancelado.'}, status=400)
                 saldo_actual = item.saldo_pendiente
             else:
                 item = get_object_or_404(Apartado.objects.select_for_update(), pk=pk)
+                if getattr(item, 'estado', None) == 'CANCELADO':
+                    return JsonResponse({'status': 'error', 'message': 'No se puede cobrar un apartado cancelado.'}, status=400)
                 saldo_actual = item.saldo
 
             if saldo_actual <= 0:
                 return JsonResponse({'status': 'error', 'message': 'Este elemento ya está pagado.'}, status=400)
+
+            if monto > saldo_actual:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'El monto (${monto}) supera el saldo pendiente (${saldo_actual}).'
+                }, status=400)
 
             ticket = registrar_cobro(
                 origen_tipo=tipo,
