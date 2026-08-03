@@ -162,13 +162,12 @@ class TC02TicketDesdeVentaInventario(TestCase):
 
 
 # ============================================================
-# TC-03  Ticket desde Pedido — demuestra BUG R1 (items vacíos)
+# TC-03  Ticket desde Pedido — verifica ítem sintético (PR-01 aplicado)
 # ============================================================
 class TC03TicketDesdePedidoItemsVacios(TestCase):
     """
-    FALLARÁ hasta que se aplique PR-01.
-    Documenta que los tickets de pedido muestran 0 artículos porque
-    Pedido no tiene un RelatedManager 'items'.
+    R1 corregido: populate_from_obj genera un ítem sintético desde los campos
+    del Pedido (modelo, color, tela, talla, precio) cuando no hay PedidoItems.
     """
 
     def setUp(self):
@@ -183,10 +182,6 @@ class TC03TicketDesdePedidoItemsVacios(TestCase):
         )
 
     def test_ticket_pedido_tiene_items(self):
-        """
-        FALLA ACTUALMENTE — demuestra bug R1.
-        Una vez aplicada PR-01, este test debe pasar.
-        """
         pedido = Pedido.objects.create(
             novia=self.novia,
             modelo=Modelo.objects.get(nombre='Sirena Enamorada'),
@@ -206,20 +201,13 @@ class TC03TicketDesdePedidoItemsVacios(TestCase):
         )
 
         items = ticket.snapshot_json.get('items', [])
-        self.assertGreater(
-            len(items), 0,
-            "BUG R1: ticket de pedido tiene 0 artículos — Pedido no tiene RelatedManager 'items'. "
-            "Aplicar PR-01 para corregir."
-        )
+        self.assertGreater(len(items), 0, "El ticket de pedido debe tener al menos un ítem sintético.")
         if items:
             self.assertEqual(items[0].get('modelo'), 'Sirena Enamorada')
             self.assertEqual(items[0].get('color'),  'Rosa Palo')
             self.assertEqual(items[0].get('talla'),  'S')
 
     def test_saldo_pedido_correcto_independiente_de_items(self):
-        """
-        DEBE PASAR — el saldo sí es correcto aunque los items estén vacíos.
-        """
         pedido = Pedido.objects.create(
             novia=self.novia,
             precio=Decimal('12000.00'),
@@ -477,11 +465,7 @@ class TC07CreacionServicio(TestCase):
 # TC-08  Flujo completo: crear pedido + cobrar + verificar snapshot
 # ============================================================
 class TC08FlujoPedidoCompleto(TestCase):
-    """
-    Prueba de integración del flujo de pedido/hechura.
-    TC-08a: FALLA (demuestra bug R1, items vacíos en snapshot).
-    TC-08b: PASA (saldo y abonos correctos).
-    """
+    """Prueba de integración del flujo de pedido/hechura."""
 
     def setUp(self):
         self.usuario = crear_usuario_vendedor()
@@ -501,8 +485,7 @@ class TC08FlujoPedidoCompleto(TestCase):
             color_especial='Rosa Palo',
         )
 
-    def test_a_ticket_pedido_items_vacios(self):
-        """FALLA — bug R1. Pendiente PR-01."""
+    def test_a_ticket_pedido_tiene_items(self):
         cat, color, tela, modelo = crear_catalogo()
         pedido = Pedido.objects.create(
             cliente=self.cliente,
@@ -525,15 +508,9 @@ class TC08FlujoPedidoCompleto(TestCase):
         )
 
         items = ticket.snapshot_json.get('items', [])
-        self.assertGreater(
-            len(items), 0,
-            "BUG R1 ACTIVO: ticket de pedido tiene 0 items. "
-            "El vestido (Sirena Enamorada, Rosa Palo, Satin, M) no aparece en el ticket. "
-            "Corregir con PR-01: agregar caso especial en populate_from_obj para Pedido."
-        )
+        self.assertGreater(len(items), 0, "El ticket de pedido debe tener al menos un ítem sintético.")
 
     def test_b_saldo_y_abonos_correctos(self):
-        """DEBE PASAR — saldo y abonos correctos aunque items estén vacíos."""
         cat, color, tela, modelo = crear_catalogo()
         pedido = Pedido.objects.create(
             cliente=self.cliente,

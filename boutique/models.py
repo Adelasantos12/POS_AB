@@ -701,23 +701,6 @@ class Ticket(models.Model):
         self.snapshot_json = snapshot
         self.save()
 
-class TicketItem(models.Model):
-    """Desglose de ítems en el ticket (snapshot)"""
-    ticket = models.ForeignKey(Ticket, related_name='items', on_delete=models.CASCADE)
-    descripcion = models.CharField(max_length=255)
-    sku_snapshot = models.CharField(max_length=100, blank=True)
-    cantidad = models.PositiveIntegerField(default=1)
-    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
-    descuento = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
-
-    # Atributos snapshot
-    modelo = models.CharField(max_length=100, blank=True)
-    color = models.CharField(max_length=100, blank=True)
-    talla = models.CharField(max_length=50, blank=True)
-
-    def __str__(self): return f"{self.descripcion} x {self.cantidad}"
-
 class Venta(models.Model):
     EVENTOS = [
         ('Boda', 'Boda'), ('Graduación', 'Graduación'), ('XV años', 'XV años'),
