@@ -881,6 +881,7 @@ def api_venta_rapida(request):
             if not fecha_entrega_est:
                 return JsonResponse({'status': 'error', 'message': 'La fecha de entrega estimada es obligatoria.'}, status=400)
 
+        log = None
         with transaction.atomic():
             # Idempotency — inside atomic to protect the PROCESSING→DONE window
             if idem_key:
@@ -964,11 +965,25 @@ def api_venta_rapida(request):
                         precio_unitario=precio,
                         subtotal=precio
                     )
-                    ticket = registrar_cobro(
-                        origen_tipo='apartado', origen_obj=apartado,
-                        monto=anticipo, metodo=metodo, usuario=request.active_profile,
-                        notas='Anticipo Venta Rápida'
-                    )
+                    if anticipo > 0:
+                        ticket = registrar_cobro(
+                            origen_tipo='apartado', origen_obj=apartado,
+                            monto=anticipo, metodo=metodo, usuario=request.active_profile,
+                            notas='Anticipo Venta Rápida'
+                        )
+                    else:
+                        from .services.cash_service import get_caja_activa
+                        ticket = Ticket.objects.create(
+                            tipo='APARTADO',
+                            apartado=apartado,
+                            cliente_nombre=cliente_nombre,
+                            cliente_telefono=cliente_telefono or '',
+                            total=precio,
+                            total_pagado=0,
+                            cajero_nombre=request.active_profile.username,
+                            caja=get_caja_activa(),
+                        )
+                        ticket.populate_from_obj(apartado)
 
                     if apartado.fecha_entrega_estimada:
                         sync_delivery_with_agenda(apartado)
@@ -2278,7 +2293,6 @@ def api_crear_servicio(request):
 
             # Register anticipo through caja (requires open CorteCaja)
             anticipo = safe_decimal(data.get('anticipo', 0))
-            ticket_folio = None
             if anticipo > 0:
                 ticket = registrar_cobro(
                     origen_tipo='servicio',
@@ -2288,9 +2302,23 @@ def api_crear_servicio(request):
                     usuario=request.active_profile,
                     notas='Anticipo inicial',
                 )
-                ticket_folio = ticket.folio
+            else:
+                from .services.cash_service import get_caja_activa
+                from .models import Ticket as TicketModel
+                cliente_nm = (data.get('cliente_nombre') or '').strip() or (cliente.nombre if cliente else 'Sin nombre')
+                ticket = TicketModel.objects.create(
+                    tipo='SERVICIO',
+                    servicio=srv,
+                    cliente_nombre=cliente_nm,
+                    cliente_telefono=(data.get('cliente_telefono') or '').strip(),
+                    total=costo,
+                    total_pagado=0,
+                    cajero_nombre=request.active_profile.username,
+                    caja=get_caja_activa(),
+                )
+                ticket.populate_from_obj(srv)
 
-        return JsonResponse({'status': 'ok', 'id': srv.pk, 'folio': ticket_folio})
+        return JsonResponse({'status': 'ok', 'id': srv.pk, 'folio': ticket.folio})
     except ValueError as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
     except Exception as e:

@@ -259,3 +259,102 @@ class S4OverpaymentRejected(TestCase):
             content_type='application/json',
         )
         self.assertEqual(resp.status_code, 200, resp.content.decode())
+
+
+class S5ApartadoAnticipoCero(TestCase):
+    """
+    S5 — api_venta_rapida con es_apartado=true y anticipo=0 debe crear el
+    apartado y devolver un folio de ticket sin pasar por registrar_cobro.
+    """
+
+    def setUp(self):
+        from boutique.models import ConfiguracionTienda, CorteCaja
+        ConfiguracionTienda.get_solo()
+        self.user = _make_user('s5_user', groups=('Vendedor', 'Admin'))
+        CorteCaja.objects.create(abierto_por=self.user, monto_apertura=Decimal('0.00'))
+
+    def test_apartado_sin_anticipo_crea_ticket(self):
+        client = Client()
+        client.login(username='s5_user', password='pass')
+        s = client.session
+        s['active_profile_id'] = self.user.id
+        s.save()
+        resp = client.post(
+            reverse('api_venta_rapida'),
+            data={
+                'tipo_operacion': 'VENTA_NORMAL',
+                'es_apartado': 'true',
+                'cliente_nombre': 'Ana García',
+                'cliente_telefono': '5511223344',
+                'categoria': 'Vestido',
+                'color': 'Rosa',
+                'talla': 'M',
+                'precio': '5000.00',
+                'anticipo': '0',
+                'metodo': 'EFECTIVO',
+            },
+        )
+        data = resp.json()
+        self.assertEqual(data.get('status'), 'ok', data)
+        self.assertEqual(data.get('tipo'), 'apartado')
+        self.assertIsNotNone(data.get('ticket'), 'Debe devolver folio de ticket')
+
+    def test_apartado_con_anticipo_positivo_crea_ticket(self):
+        client = Client()
+        client.login(username='s5_user', password='pass')
+        s = client.session
+        s['active_profile_id'] = self.user.id
+        s.save()
+        resp = client.post(
+            reverse('api_venta_rapida'),
+            data={
+                'tipo_operacion': 'VENTA_NORMAL',
+                'es_apartado': 'true',
+                'cliente_nombre': 'Luisa Pérez',
+                'cliente_telefono': '5599887766',
+                'categoria': 'Vestido',
+                'color': 'Azul',
+                'talla': 'S',
+                'precio': '4000.00',
+                'anticipo': '1000.00',
+                'metodo': 'EFECTIVO',
+            },
+        )
+        data = resp.json()
+        self.assertEqual(data.get('status'), 'ok', data)
+        self.assertIsNotNone(data.get('ticket'))
+
+
+class S6ServicioSinAnticipoEmiteTicket(TestCase):
+    """
+    S6 — api_crear_servicio con anticipo=0 debe crear el servicio Y devolver
+    un folio de ticket de registro (no de cobro).
+    """
+
+    def setUp(self):
+        from boutique.models import ConfiguracionTienda, CorteCaja
+        ConfiguracionTienda.get_solo()
+        self.user = _make_user('s6_user', groups=('Vendedor', 'Admin'))
+        CorteCaja.objects.create(abierto_por=self.user, monto_apertura=Decimal('0.00'))
+
+    def test_servicio_anticipo_cero_devuelve_folio(self):
+        import json
+        client = Client()
+        client.login(username='s6_user', password='pass')
+        s = client.session
+        s['active_profile_id'] = self.user.id
+        s.save()
+        resp = client.post(
+            reverse('api_crear_servicio'),
+            data=json.dumps({
+                'cliente_nombre': 'Carmen López',
+                'cliente_telefono': '5522334455',
+                'lineas': [{'tipo': 'BASTILLA', 'cantidad': 1, 'precio_unitario': 150}],
+                'anticipo': 0,
+                'metodo_pago': 'EFECTIVO',
+            }),
+            content_type='application/json',
+        )
+        data = resp.json()
+        self.assertEqual(data.get('status'), 'ok', data)
+        self.assertIsNotNone(data.get('folio'), 'Debe devolver folio aunque anticipo sea 0')
