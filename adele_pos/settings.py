@@ -172,7 +172,7 @@ if not DEBUG:
 # django-ratelimit: E003/W001 silenciados porque Railway usa Gunicorn con 1
 # worker (start.sh no pasa --workers). Con 1 worker, LocMemCache es efectivo
 # para rate limiting. Si se añaden workers, migrar a Redis.
-SILENCED_SYSTEM_CHECKS = getattr(locals(), 'SILENCED_SYSTEM_CHECKS', []) + [
+SILENCED_SYSTEM_CHECKS = globals().get('SILENCED_SYSTEM_CHECKS', []) + [
     'django_ratelimit.E003',
     'django_ratelimit.W001',
 ]

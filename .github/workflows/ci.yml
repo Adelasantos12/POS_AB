@@ -29,7 +29,7 @@ jobs:
     env:
       DATABASE_URL: postgres://pos:pos@localhost:5432/pos_test
       DB_SSL_REQUIRE: "false"
-      DJANGO_SECRET_KEY: ci-insecure-key-not-for-production
+      DJANGO_SECRET_KEY: ci-only-not-for-production-use-replace-in-railway-env-vars
       ENVIRONMENT: development
 
     steps:
@@ -53,7 +53,7 @@ jobs:
         env:
           ENVIRONMENT: production
           DJANGO_ALLOWED_HOSTS: example.com
-          DJANGO_SECRET_KEY: ci-insecure-key-not-for-production
+          DJANGO_SECRET_KEY: ci-only-not-for-production-use-replace-in-railway-env-vars
 
       - name: Ejecutar tests
         run: python manage.py test --verbosity=2
