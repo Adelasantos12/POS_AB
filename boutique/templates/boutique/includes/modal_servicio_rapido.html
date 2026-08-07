@@ -293,12 +293,23 @@
                 var bsModal = bootstrap.Modal.getInstance(modalEl);
                 if (bsModal) bsModal.hide();
 
-                // Success notification
-                if (anticipo > 0 && data.folio) {
-                    setTimeout(function () {
-                        alert('Servicio registrado. Folio: ' + data.folio);
-                    }, 300);
+                // Register folio globally so imprimirUltimaVenta() works
+                if (data.folio) {
+                    window.lastFolio = data.folio;
                 }
+
+                // Show success modal with print buttons (or fallback alert)
+                setTimeout(function () {
+                    if (data.folio) {
+                        var msgEl = document.getElementById('saleSuccessMsg');
+                        if (msgEl) {
+                            msgEl.textContent = 'Servicio registrado. Folio: ' + data.folio;
+                            new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
+                        } else {
+                            alert('Servicio registrado. Folio: ' + data.folio);
+                        }
+                    }
+                }, 300);
 
                 // Callback or reload
                 if (typeof _srvOpts.onSuccess === 'function') {

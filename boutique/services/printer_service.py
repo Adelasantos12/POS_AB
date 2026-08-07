@@ -141,7 +141,7 @@ def crear_imagen_etiqueta(producto):
 
         next_y = price_y + 58
         if talla_text:
-            draw.text((right_x, next_y), talla_text, fill='#444444', font=f_talla)
+            draw.text((right_x, next_y), talla_text, fill='#222222', font=f_talla)
             next_y += 32
         if color_text:
             draw.text((right_x, next_y), color_text, fill='black', font=f_color)
@@ -150,7 +150,7 @@ def crear_imagen_etiqueta(producto):
     sku_y = LABEL_H - MARGIN_Y - SKU_STRIP_H + 3
     if sku_text:
         if barcode_placed:
-            draw.text((MARGIN_X, sku_y), sku_text, fill='#666666', font=f_sku)
+            draw.text((MARGIN_X, sku_y), sku_text, fill='#222222', font=f_sku)
         else:
             f_sku_big = _font(26, bold=True)
             sku_bw = draw.textlength(sku_text, font=f_sku_big)
@@ -173,7 +173,7 @@ def imprimir_etiqueta_brother(producto, cantidad=1):
         if error:
             return {'success': False, 'message': error}
 
-        label_image = crear_imagen_etiqueta(producto)
+        label_image = crear_imagen_etiqueta(producto).convert('L')
 
         qlr = BrotherQLRaster(BROTHER_PRINTER_MODEL)
         instructions = convert(
@@ -181,7 +181,7 @@ def imprimir_etiqueta_brother(producto, cantidad=1):
             images=[label_image],
             label=BROTHER_LABEL_SIZE,
             rotate='0',           # imagen ya tiene el ancho correcto para cinta 62 mm
-            threshold=70.0,
+            threshold=70,
             dither=False,
             compress=False,
             red=False,
