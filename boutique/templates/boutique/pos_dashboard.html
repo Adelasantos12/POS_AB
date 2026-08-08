@@ -1508,8 +1508,20 @@
         document.getElementById('vr_anticipo_div').classList.toggle('d-none', !checked);
         // Si activa apartado, desactiva "Sin registro" (deuda anónima no permitida)
         if (checked) {
-            vrResetSinRegistro();
             document.getElementById('vr_sin_registro_div').classList.add('d-none');
+            // Solo limpiar el modo "sin registro" si estaba activo — no borrar un nombre ya tecleado
+            const sinRegInput = document.getElementById('vr_sin_registro_input');
+            if (sinRegInput.value === 'true') {
+                sinRegInput.value = '';
+                const nombreField = document.getElementById('vr_cliente_nombre');
+                nombreField.value = '';
+                nombreField.disabled = false;
+                nombreField.required = true;
+                const sinRegBtn = document.getElementById('vr_btn_sin_registro');
+                sinRegBtn.classList.remove('btn-secondary');
+                sinRegBtn.classList.add('btn-outline-secondary');
+                sinRegBtn.innerHTML = '<i class="bi bi-person-slash me-1"></i>Sin registro (venta anónima)';
+            }
         } else {
             const val = document.getElementById('ventaRapidaForm').tipo_operacion.value;
             document.getElementById('vr_sin_registro_div').classList.toggle('d-none', val !== 'VENTA_NORMAL');
@@ -1757,10 +1769,6 @@
 
     document.getElementById('btnSubmitVentaRapida').addEventListener('click', function() {
         const form = document.getElementById('ventaRapidaForm');
-        if (!form.checkValidity()) {
-            form.reportValidity();
-            return;
-        }
 
         // Validación de identidad de cliente
         const tipoOp = form.tipo_operacion.value;
