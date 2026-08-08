@@ -1,10 +1,34 @@
 from django.conf import settings
 from ..models import Ticket, ConfiguracionTienda
 import json
+import logging
+from decimal import Decimal
 from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 import qrcode
+
+logger = logging.getLogger(__name__)
+
+
+def _assert_items_match_total(ticket, items):
+    """
+    Invariant: Σ(líneas impresas) == ticket.total.
+    Raises AssertionError in DEBUG so the discrepancy surfaces immediately.
+    In production it logs a warning and continues.
+    """
+    if not items:
+        return
+    items_sum = sum(Decimal(str(item.get('subtotal', 0))) for item in items)
+    t_total = Decimal(str(ticket.total))
+    if abs(items_sum - t_total) > Decimal('0.05'):
+        msg = (
+            f"[Ticket {ticket.folio}] Σ(items)={items_sum} ≠ ticket.total={t_total}. "
+            "A service or line is printed but not summed into the total."
+        )
+        if settings.DEBUG:
+            raise AssertionError(msg)
+        logger.warning(msg)
 
 
 def _get_live_financial_data(ticket):
@@ -23,7 +47,9 @@ def _get_live_financial_data(ticket):
         if ticket.apartado_id:
             ap = Apartado.objects.get(pk=ticket.apartado_id)
             total_acum = float(ap.anticipo)
-            saldo = float(ap.saldo)
+            # Derive saldo from ticket.total (includes bundled services) not ap.saldo
+            # (ap.total only reflects the product, not services appended to the ticket).
+            saldo = max(0.0, float(ticket.total) - total_acum)
             abonos_live = [
                 {'fecha': p.fecha.isoformat(), 'monto': float(p.monto), 'metodo': p.metodo}
                 for p in ap.pagos_apartado.order_by('fecha', 'id')
@@ -271,6 +297,7 @@ def generate_pdf_ticket(ticket_id):
     y -= 0.15 * inch
 
     items = snapshot.get('items', [])
+    _assert_items_match_total(ticket, items)
     p.setFont("Helvetica", 8)
     for item in items:
         desc = item['descripcion']
@@ -530,6 +557,7 @@ def generate_escpos_data(ticket_id):
 
     # ── Ítems ────────────────────────────────────────────────
     items = snapshot.get('items', [])
+    _assert_items_match_total(ticket, items)
     for item in items:
         desc = item['descripcion']
         d.text(f"{item['cantidad']} x {desc[:40]}\n")

@@ -854,9 +854,17 @@ def _parse_servicios_bundled(servicios_json_str, cliente_obj, perfil, venta, tic
             })
         snapshot['items'] = items
         if adjust_total:
-            snapshot['total'] = float(ticket.total) + sum(float(s.costo) for s in creados)
-        ticket.snapshot_json = snapshot
-        ticket.save(update_fields=['snapshot_json'])
+            extra = sum(s.costo for s in creados)
+            new_total = ticket.total + extra
+            snapshot['total'] = float(new_total)
+            # Keep ticket.total and snapshot in sync — this was the root cause:
+            # the printer reads ticket.total directly while the QR reads snapshot['total'].
+            ticket.total = new_total
+            ticket.snapshot_json = snapshot
+            ticket.save(update_fields=['snapshot_json', 'total'])
+        else:
+            ticket.snapshot_json = snapshot
+            ticket.save(update_fields=['snapshot_json'])
     return creados
 
 
