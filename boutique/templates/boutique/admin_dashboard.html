@@ -295,20 +295,29 @@ if (catCtx && ventasCat.length > 0) {
 }
 
 function obtenerEstrategia() {
+    const btn = document.querySelector('[data-testid="btn-ai-strategy"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generando…'; }
+
     fetch('/api/ai-strategy/', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken
-        }
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken }
     })
     .then(r => r.json())
     .then(data => {
-        document.getElementById('estrategiaText').textContent = data.estrategia;
-        document.getElementById('estrategiaResult').classList.remove('d-none');
+        const el = document.getElementById('estrategiaText');
+        const container = document.getElementById('estrategiaResult');
+        if (data.error) {
+            el.textContent = '⚠️ ' + data.error;
+        } else {
+            el.textContent = data.estrategia || '(Sin respuesta)';
+        }
+        container.classList.remove('d-none');
     })
     .catch(err => {
-        alert('Error al generar estrategia');
+        alert('Error de conexión al generar estrategia:\n' + err.message);
+    })
+    .finally(() => {
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Generar Estrategia IA'; }
     });
 }
 </script>

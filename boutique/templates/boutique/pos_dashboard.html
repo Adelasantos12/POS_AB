@@ -1805,7 +1805,12 @@
             headers: {'X-CSRFToken': csrfToken},
             body: formData
         })
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) {
+                return r.text().then(t => { throw new Error(`Error ${r.status}: ${t.substring(0, 200)}`); });
+            }
+            return r.json();
+        })
         .then(data => {
             if (data.status === 'ok') {
                 lastFolio = data.folio || data.ticket;
@@ -1820,9 +1825,14 @@
                 bootstrap.Modal.getInstance(document.getElementById('ventaRapidaModal')).hide();
                 form.reset();
                 document.getElementById('vr_image_preview').innerHTML = '<i class="bi bi-camera text-muted fs-1"></i>';
+            } else if (data.status === 'caja_cerrada') {
+                new bootstrap.Modal(document.getElementById('modalAbrirCajaEmergente'))?.show();
             } else {
-                alert('Error: ' + data.message);
+                alert('Error al completar la venta:\n' + (data.message || 'Error desconocido'));
             }
+        })
+        .catch(err => {
+            alert('Error de conexión al completar la venta:\n' + err.message);
         })
         .finally(() => {
             btn.disabled = false;

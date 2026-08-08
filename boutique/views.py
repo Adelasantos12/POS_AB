@@ -1022,6 +1022,12 @@ def api_venta_rapida(request):
                     if apartado.fecha_entrega_estimada:
                         sync_delivery_with_agenda(apartado)
 
+                    # Servicios bundled (bastillas, ajustes) para apartados
+                    _servicios_apart = _parse_servicios_bundled(
+                        request.POST.get('servicios_json', '[]'),
+                        cliente_obj, request.active_profile, None, ticket
+                    )
+
                     res = {'status': 'ok', 'tipo': 'apartado', 'ticket': ticket.folio, 'producto': {'id': producto.id, 'sku': producto.sku}}
                 else:
                     # FLUJO VENTA COMPLETA
@@ -2498,47 +2504,53 @@ def api_ai_strategy(request):
     from .ai_utils import generate_sales_strategy
     
     # Recopilar datos de ventas
-    cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
+    hoy = timezone.now()
+    hace_30d = hoy - timedelta(days=30)
+    hace_7d  = hoy - timedelta(days=7)
+
+    cat_top = ItemVenta.objects.values('producto__categoria__nombre').annotate(c=Sum('cantidad'), rev=Sum('precio_unitario')).order_by('-c')[:5]
     color_top = ItemVenta.objects.values('producto__color__nombre').annotate(c=Sum('cantidad')).order_by('-c')[:5]
-    
-    # Ventas por día de la semana
-    ventas_semana = Venta.objects.extra(select={'dia_semana': "strftime('%%w', fecha)"}).values('dia_semana').annotate(
-        total=Sum('total'),
-        cantidad=Count('id')
-    ).order_by('dia_semana')
-    
-    # Stock bajo
+
+    ventas_30d = Venta.objects.filter(fecha__gte=hace_30d)
+    total_ventas_30d = ventas_30d.count()
+    ingresos_30d = ventas_30d.aggregate(t=Sum('total'))['t'] or 0
+
+    ventas_7d = Venta.objects.filter(fecha__gte=hace_7d).count()
+
+    pedidos_pendientes = Pedido.objects.exclude(estado__in=['ENTREGADO', 'CANCELADO']).count()
+    apartados_activos = Apartado.objects.exclude(estado__in=['COMPLETADO', 'CANCELADO']).count()
+
     stock_bajo = Producto.objects.filter(cantidad_actual__lte=2).count()
     total_productos = Producto.objects.count()
-    
+
     # Construir contexto para IA
-    categorias = ', '.join([f"{c['producto__categoria__nombre']} ({c['c']} vendidos)" for c in cat_top]) if cat_top else 'Sin datos'
-    colores = ', '.join([f"{c['producto__color__nombre']} ({c['c']} vendidos)" for c in color_top]) if color_top else 'Sin datos'
-    
-    contexto = f"""DATOS DE LA BOUTIQUE:
+    categorias = ', '.join([
+        f"{c['producto__categoria__nombre']} ({c['c']} piezas, ${c['rev'] or 0:,.0f})"
+        for c in cat_top
+    ]) if cat_top else 'Sin datos'
+    colores = ', '.join([f"{c['producto__color__nombre']} ({c['c']})" for c in color_top]) if color_top else 'Sin datos'
+
+    mes_actual = hoy.strftime('%B %Y')
+    contexto = f"""DATOS REALES DE ADELÉ BOUTIQUE — {mes_actual}:
+- Ventas últimos 30 días: {total_ventas_30d} ventas · ${ingresos_30d:,.0f} MXN en ingresos
+- Ventas últimos 7 días: {ventas_7d} ventas
 - Categorías más vendidas: {categorias}
 - Colores más vendidos: {colores}
-- Productos con stock bajo: {stock_bajo} de {total_productos}
-- Mes actual: Enero 2026"""
+- Pedidos activos pendientes de entrega: {pedidos_pendientes}
+- Apartados activos: {apartados_activos}
+- Productos con stock bajo (≤2 piezas): {stock_bajo} de {total_productos} en catálogo"""
 
     try:
         estrategia = generate_sales_strategy(contexto)
+        if not estrategia or estrategia.startswith('API Key no disponible'):
+            return JsonResponse({
+                'estrategia': None,
+                'error': 'GEMINI_API_KEY no está configurada en las variables de entorno de Railway. '
+                         'Configúrala en Railway → tu proyecto → Variables.',
+            }, status=503)
     except Exception as e:
         logger.error(f"Error con Gemini AI: {e}")
-        # Fallback a respuesta simulada
-        estrategia = f"""📊 **Análisis de Adelé Boutique**
-
-Basado en tus datos:
-- Top categorías: {categorias}
-- Colores tendencia: {colores}
-
-**Recomendaciones:**
-1. 🎯 Refuerza el stock de tus categorías top antes del fin de semana
-2. 🎨 Los colores que más vendes deberían tener más variedad de tallas
-3. ⚠️ Tienes {stock_bajo} productos con stock bajo - revisa reposición
-4. 💡 Considera una promoción "2x1" en categorías de menor rotación
-
-_Nota: Respuesta generada localmente (error de conexión con IA)_"""
+        return JsonResponse({'estrategia': None, 'error': str(e)}, status=502)
 
     return JsonResponse({'estrategia': estrategia})
 
