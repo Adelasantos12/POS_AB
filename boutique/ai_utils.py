@@ -15,9 +15,14 @@ GEMINI_MODEL = "gemini-2.5-flash"
 def get_gemini_client():
     key = getattr(settings, 'GEMINI_API_KEY', '')
     if not key:
-        logger.warning("AI: GEMINI_API_KEY no configurado — funciones de IA desactivadas")
+        logger.warning("AI: GEMINI_API_KEY no configurado — funciones de IA desactivadas. "
+                       "Configura la variable en Railway > Variables.")
         return None
-    return genai.Client(api_key=key)
+    try:
+        return genai.Client(api_key=key)
+    except Exception as e:
+        logger.error(f"AI: Error al inicializar cliente Gemini: {e}")
+        return None
 
 
 def extract_product_attributes(description):
@@ -33,6 +38,7 @@ def extract_product_attributes(description):
 
     client = get_gemini_client()
     if not client:
+        logger.warning("AI: extract_product_attributes omitido — cliente no disponible")
         return None
 
     prompt = f"""Analiza la siguiente descripción de un producto de boutique y extrae sus atributos en formato JSON.
@@ -87,6 +93,7 @@ def analyze_product_image(image_data, mime_type='image/jpeg'):
 
     client = get_gemini_client()
     if not client:
+        logger.warning("AI: analyze_product_image omitido — cliente no disponible")
         return None
 
     prompt = f"""Analiza esta prenda de ropa y extrae sus atributos en formato JSON para un sistema de inventario de boutique de vestidos de novia y quinceañera en México.

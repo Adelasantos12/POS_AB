@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/producto-rapido/', views.api_crear_producto_rapido, name='api_crear_producto_rapido'),
     path('api/check-duplicados/', views.api_check_duplicados, name='api_check_duplicados'),
     path('api/validar-crear-producto/', views.api_validar_crear_producto, name='api_validar_crear_producto'),
+    path('api/ai-status/', views.api_ai_status, name='api_ai_status'),
     path('api/ai-extract-attributes/', views.api_ai_extract_attributes, name='api_ai_extract_attributes'),
     path('api/ai-analyze-image/', views.api_ai_analyze_image, name='api_ai_analyze_image'),
     path('api/search-productos/', views.api_search_productos, name='api_search_productos'),

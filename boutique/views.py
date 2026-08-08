@@ -157,6 +157,40 @@ def api_search_global(request):
 
 @login_required
 @profile_permission_required('Vendedor')
+def api_ai_status(request):
+    """Diagnóstico del estado de la integración con Gemini AI."""
+    from .ai_utils import get_gemini_client, GEMINI_MODEL
+    from django.conf import settings as _s
+
+    key = getattr(_s, 'GEMINI_API_KEY', '')
+    if not key:
+        return JsonResponse({
+            'status': 'no_key',
+            'message': 'GEMINI_API_KEY no está configurada en las variables de entorno.',
+            'model': GEMINI_MODEL,
+        })
+
+    client = get_gemini_client()
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents='Di "ok" en español.',
+        )
+        return JsonResponse({
+            'status': 'ok',
+            'message': f'IA operativa. Respuesta: {response.text.strip()[:80]}',
+            'model': GEMINI_MODEL,
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e),
+            'model': GEMINI_MODEL,
+        }, status=502)
+
+
+@login_required
+@profile_permission_required('Vendedor')
 def api_ai_analyze_image(request):
     """Analiza imagen de producto usando Gemini Vision"""
     from .ai_utils import analyze_product_image
