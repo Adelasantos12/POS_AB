@@ -40,8 +40,7 @@ class Command(BaseCommand):
         fix_mode = options['fix']
         min_diff = Decimal(str(options['min_diff']))
 
-        qs = Ticket.objects.exclude(snapshot_json=None).select_for_update() if fix_mode \
-            else Ticket.objects.exclude(snapshot_json=None)
+        qs = Ticket.objects.exclude(snapshot_json=None)
 
         discrepancies = []
 

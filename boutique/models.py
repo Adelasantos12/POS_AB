@@ -691,7 +691,8 @@ class Ticket(models.Model):
             'dama_nombre': dama_nombre,
             'medidas': medidas_dict,
             'vestido': vestido_data,
-            'total': float(self.total),
+            # 'total' is intentionally omitted — ticket.total is the single source of truth.
+            # The QR template uses ticket.total directly; never read snapshot['total'].
             'total_pagado': float(self.total_pagado),
             'total_pagado_acumulado': total_pagado_acumulado,
             'saldo_pendiente': float(Decimal(str(self.total)) - Decimal(str(total_pagado_acumulado))),

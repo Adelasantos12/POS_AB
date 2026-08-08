@@ -223,7 +223,8 @@ class TC03TicketDesdePedidoItemsVacios(TestCase):
         )
 
         snap = ticket.snapshot_json
-        self.assertEqual(snap['total'], 12000.0)
+        # 'total' is no longer stored in snapshot — ticket.total is the single source of truth
+        self.assertEqual(float(ticket.total), 12000.0)
         self.assertEqual(snap['total_pagado_acumulado'], 3000.0)
         self.assertEqual(snap['saldo_pendiente'], 9000.0)
 

@@ -51,7 +51,6 @@ def _make_apartado_ticket(precio, *, user, folio_suffix=''):
         total_pagado=Decimal('0'),
         apartado=ap,
         snapshot_json={
-            'total': float(precio),
             'items': [{'descripcion': str(prod), 'cantidad': 1,
                        'precio_unitario': float(precio), 'subtotal': float(precio)}],
             'abonos': [],
@@ -96,9 +95,11 @@ class Test1VestidoServicioTotal(TestCase):
         _parse_servicios_bundled(servicios_json, None, user, None, ticket)
 
         ticket.refresh_from_db()
-        snap_total = Decimal(str(ticket.snapshot_json['total']))
-        self.assertEqual(snap_total, ticket.total,
-                         "snapshot_json['total'] must equal ticket.total (single source of truth)")
+        # Paso 3: 'total' is no longer stored in snapshot_json — ticket.total is the only copy.
+        self.assertNotIn('total', ticket.snapshot_json,
+                         "snapshot_json must NOT store 'total' — ticket.total is the single source of truth")
+        self.assertEqual(ticket.total, Decimal('6600'),
+                         "ticket.total must include bundled service cost")
 
     def test_items_sum_equals_total(self):
         """Golden rule: Σ(printed items) == ticket.total"""
@@ -227,7 +228,6 @@ class Test3ServicioAgregadoDespuesAbono(TestCase):
             total_pagado=Decimal('0'),
             apartado=self.ap,
             snapshot_json={
-                'total': 5500.0,
                 'items': [{'descripcion': str(prod), 'cantidad': 1,
                            'precio_unitario': 5500.0, 'subtotal': 5500.0}],
                 'abonos': [],
@@ -276,8 +276,9 @@ class Test3ServicioAgregadoDespuesAbono(TestCase):
         _parse_servicios_bundled(servicios_json, None, self.user, None, self.ticket)
         self.ticket.refresh_from_db()
 
-        snap_total = Decimal(str(self.ticket.snapshot_json['total']))
-        self.assertEqual(snap_total, Decimal('5600'))
+        # snapshot_json no longer stores 'total'; read from ticket.total directly.
+        self.assertNotIn('total', self.ticket.snapshot_json,
+                         "snapshot_json must NOT store 'total'")
         self.assertEqual(self.ticket.total, Decimal('5600'))
 
 
