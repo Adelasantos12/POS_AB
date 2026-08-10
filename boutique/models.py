@@ -1476,6 +1476,8 @@ class PedidoItem(models.Model):
     color = models.ForeignKey('Color', on_delete=models.SET_NULL, null=True, blank=True)
     tela = models.ForeignKey('Tela', on_delete=models.SET_NULL, null=True, blank=True)
 
+    largo = models.CharField(max_length=20, blank=True, verbose_name="Largo")
+
     cantidad = models.PositiveIntegerField(default=1)
     precio = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     notas = models.TextField(blank=True)
@@ -1514,6 +1516,7 @@ class PedidoItem(models.Model):
             'numero_modelo': self.numero_modelo,
             'descripcion_especial': self.descripcion_especial,
             'talla': self.talla,
+            'largo': self.largo,
             'color': self.color.nombre if self.color else '',
             'tela': self.tela.nombre if self.tela else '',
             'cantidad': self.cantidad,

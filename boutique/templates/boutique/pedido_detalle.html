@@ -94,9 +94,9 @@
                     <thead class="bg-light">
                         <tr>
                             <th class="ps-4">Código</th>
-                            <th>Tipo / Descripción</th>
+                            <th>Modelo</th>
                             <th>Dama</th>
-                            <th>Talla / Color / Tela</th>
+                            <th>Talla / Largo / Color / Tela</th>
                             <th class="text-end">Precio</th>
                             <th>Estado</th>
                         </tr>
@@ -106,12 +106,13 @@
                         <tr>
                             <td class="ps-4 text-muted">{{ item.codigo }}</td>
                             <td>
-                                <div class="fw-bold">{{ item.get_tipo_display }}</div>
-                                <div class="text-muted">{{ item.modelo.nombre|default:"" }} {{ item.numero_modelo }}{% if item.descripcion_especial %} — {{ item.descripcion_especial|truncatechars:40 }}{% endif %}</div>
+                                <div class="fw-bold">{% if item.modelo %}{{ item.modelo.nombre }}{% if item.numero_modelo %} <span class="text-muted fw-normal">#{{ item.numero_modelo }}</span>{% endif %}{% else %}{{ item.get_tipo_display }}{% endif %}</div>
+                                {% if item.descripcion_especial %}<div class="text-muted small">{{ item.descripcion_especial|truncatechars:50 }}</div>{% endif %}
                             </td>
                             <td>{{ item.dama.nombre|default:"—" }}</td>
                             <td>
                                 <span class="badge bg-light text-dark me-1">{{ item.talla|default:"—" }}</span>
+                                {% if item.largo %}<span class="badge bg-light text-dark me-1">{{ item.largo }}</span>{% endif %}
                                 <span class="text-muted">{{ item.color.nombre|default:"" }}{% if item.tela %} / {{ item.tela.nombre }}{% endif %}</span>
                             </td>
                             <td class="text-end fw-bold">${{ item.precio }}</td>

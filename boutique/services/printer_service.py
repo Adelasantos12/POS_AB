@@ -2,19 +2,21 @@
 Servicio de impresión de etiquetas Brother QL-800
 Adelé Boutique (Gdl) — ByEasy POS
 
-Cinta instalada : 62 mm continua (DK-22243 o similar)
-Largo de etiqueta: 20 mm  (el QL-800 corta según el alto de la imagen)
+Cinta instalada : 29 mm × 90 mm troquelada (DK-11210 o compatible)
 
 Cálculo de píxeles a 300 DPI:
-  Cinta 62 mm  → 696 px de área imprimible
-  Alto  20 mm  → 236 px  (20 / 25.4 * 300 ≈ 236)
+  Ancho imprimible 29 mm → 306 px
+  Alto troquelado  90 mm → 991 px
 
-Layout (696 × 236 px):
-  ┌──────────────────────────────────────────────┐
-  │ ████████████ barcode ████████████  $1,200    │
-  │                                   T: M       │
-  │  SKU-0042                                    │
-  └──────────────────────────────────────────────┘
+Layout portrait (306 × 991 px):
+  ┌──────────────────┐
+  │  $1,200          │  precio (grande)
+  │  T: M   AZUL     │  talla + color
+  │                  │
+  │  ▌▌▌▌▌▌▌▌▌▌▌▌   │  código de barras (centrado)
+  │                  │
+  │  SKU-0042        │  SKU al pie
+  └──────────────────┘
 """
 import logging
 from io import BytesIO
@@ -24,17 +26,15 @@ logger = logging.getLogger(__name__)
 
 # ── Configuración ────────────────────────────────────────────────────────────
 BROTHER_PRINTER_MODEL = 'QL-800'
-BROTHER_LABEL_SIZE    = '62'      # cinta continua 62 mm (DK-22243); corta a LABEL_H
+BROTHER_LABEL_SIZE    = '29x90'   # DK-11210 / DK-11241 29 mm × 90 mm troquelada
 BROTHER_BACKEND       = 'pyusb'
 
-# 62 mm tape at 300 DPI → 696 px printable width; 20 mm height → 236 px
-LABEL_W  = 696   # px
-LABEL_H  = 236   # px
+# 29 mm × 90 mm a 300 DPI → 306 × 991 px (área imprimible real)
+LABEL_W  = 306   # px  (≈ 29 mm)
+LABEL_H  = 991   # px  (≈ 90 mm)
 
-MARGIN_X = 20    # px lateral (~1.7 mm cada lado)
-MARGIN_Y = 10    # px superior/inferior
-
-SKU_STRIP_H = 30  # px — franja inferior para SKU
+MARGIN_X = 14    # px lateral
+MARGIN_Y = 16    # px superior/inferior
 
 
 # ── Detección de impresora ───────────────────────────────────────────────────
@@ -72,90 +72,93 @@ def _font(size, bold=False):
     return ImageFont.load_default()
 
 
-# ── Diseño de etiqueta ───────────────────────────────────────────────────────
+# ── Diseño de etiqueta portrait 306 × 991 ───────────────────────────────────
 
 def crear_imagen_etiqueta(producto):
     """
-    Genera imagen landscape 566 × 165 px para DK-11204.
+    Genera imagen portrait 306 × 991 px para etiqueta troquelada 29 × 90 mm.
 
-    brother_ql rotate='auto' la rota a portrait (165 × 566) al enviarla
-    a la impresora, de modo que ocupe el ancho completo de la cinta.
+    Zonas (de arriba hacia abajo):
+      1. Precio + talla + color  (~220 px)
+      2. Código de barras        (~580 px)
+      3. SKU al pie              (~130 px)
     """
     img  = Image.new('RGB', (LABEL_W, LABEL_H), color='white')
     draw = ImageDraw.Draw(img)
 
     sku_text    = producto.sku or ""
     precio_text = f"${producto.precio_venta:,.0f}" if producto.precio_venta else "$---"
-    talla_text  = f"T: {producto.talla}" if producto.talla else ""
+    talla_text  = f"T: {producto.talla}" if getattr(producto, 'talla', None) else ""
     color_text  = producto.color.nombre.upper() if getattr(producto, 'color', None) else ""
 
     # Fuentes
-    f_price = _font(52, bold=True)
-    f_talla = _font(28, bold=False)
-    f_color = _font(22, bold=True)
-    f_sku   = _font(20, bold=False)
+    f_price  = _font(46, bold=True)
+    f_talla  = _font(26, bold=False)
+    f_color  = _font(22, bold=True)
+    f_sku    = _font(22, bold=False)
 
-    # Altura disponible para el barcode (sin franja SKU ni márgenes)
-    bc_zone_h = LABEL_H - 2 * MARGIN_Y - SKU_STRIP_H   # ≈ 129 px
+    printable_w = LABEL_W - 2 * MARGIN_X   # 278 px
 
-    barcode_placed = False
-    bc_w = 0
+    # ── Zona 1: Precio ───────────────────────────────────────────────────────
+    y = MARGIN_Y
+    price_w = draw.textlength(precio_text, font=f_price)
+    if price_w > printable_w:
+        f_price = _font(32, bold=True)
+        price_w = draw.textlength(precio_text, font=f_price)
+    draw.text(((LABEL_W - price_w) / 2, y), precio_text, fill='black', font=f_price)
+    y += 54
 
-    if producto.barcode_image:
+    # Talla + color en una misma línea
+    if talla_text or color_text:
+        line = f"{talla_text}  {color_text}".strip()
+        line_w = draw.textlength(line, font=f_talla)
+        # Si color no cabe junto a talla, usa solo talla en esta línea
+        if line_w > printable_w:
+            draw.text((MARGIN_X, y), talla_text, fill='#333333', font=f_talla)
+            y += 32
+            color_w = draw.textlength(color_text, font=f_color)
+            draw.text(((LABEL_W - color_w) / 2, y), color_text, fill='black', font=f_color)
+            y += 30
+        else:
+            draw.text(((LABEL_W - line_w) / 2, y), line, fill='#333333', font=f_talla)
+            y += 34
+
+    y += 10  # espacio antes del barcode
+
+    # ── Zona 2: Código de barras ─────────────────────────────────────────────
+    bc_area_h = LABEL_H - y - MARGIN_Y - 46 - 10   # reserva pie para SKU
+
+    if producto.barcode_image and bc_area_h > 40:
         try:
-            from PIL import Image as PilImage
-
             try:
-                bc_img = PilImage.open(producto.barcode_image.path)
+                bc_img = Image.open(producto.barcode_image.path)
             except Exception:
                 import urllib.request, tempfile, os
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
                 tmp.close()
                 urllib.request.urlretrieve(producto.barcode_image.url, tmp.name)
-                bc_img = PilImage.open(tmp.name)
+                bc_img = Image.open(tmp.name)
                 os.unlink(tmp.name)
 
-            bc_h = bc_zone_h
-            bc_w = int(bc_img.width * bc_h / bc_img.height)
-            bc_w = min(bc_w, int((LABEL_W - 2 * MARGIN_X) * 0.60))
-            bc_img = bc_img.convert('RGB').resize((bc_w, bc_h), Image.LANCZOS)
-            img.paste(bc_img, (MARGIN_X, MARGIN_Y))
-            barcode_placed = True
+            # Escala para que quepa en el ancho disponible manteniendo proporción
+            bc_w_target = printable_w
+            bc_h_target = int(bc_img.height * bc_w_target / bc_img.width)
+            if bc_h_target > bc_area_h:
+                bc_h_target = bc_area_h
+                bc_w_target = int(bc_img.width * bc_h_target / bc_img.height)
 
+            bc_img = bc_img.convert('RGB').resize((bc_w_target, bc_h_target), Image.LANCZOS)
+            bc_x = (LABEL_W - bc_w_target) // 2
+            img.paste(bc_img, (bc_x, y))
+            y += bc_h_target
         except Exception as exc:
             logger.warning(f"No se pudo cargar barcode para {producto.sku}: {exc}")
 
-    # ── Zona derecha: precio + talla ─────────────────────────────────────────
-    right_x = MARGIN_X + bc_w + 14 if barcode_placed else int(LABEL_W * 0.55)
-    right_w = LABEL_W - MARGIN_X - right_x
-
-    if right_w > 40:
-        price_w = draw.textlength(precio_text, font=f_price)
-        if price_w > right_w:
-            f_price = _font(38, bold=True)
-            price_w = draw.textlength(precio_text, font=f_price)
-
-        mid_h = 56 + (32 if talla_text else 0) + (28 if color_text else 0)
-        price_y = MARGIN_Y + max(0, (bc_zone_h - mid_h) // 2)
-        draw.text((right_x, price_y), precio_text, fill='black', font=f_price)
-
-        next_y = price_y + 58
-        if talla_text:
-            draw.text((right_x, next_y), talla_text, fill='#222222', font=f_talla)
-            next_y += 32
-        if color_text:
-            draw.text((right_x, next_y), color_text, fill='black', font=f_color)
-
-    # ── Franja inferior: SKU ─────────────────────────────────────────────────
-    sku_y = LABEL_H - MARGIN_Y - SKU_STRIP_H + 3
+    # ── Zona 3: SKU al pie ───────────────────────────────────────────────────
     if sku_text:
-        if barcode_placed:
-            draw.text((MARGIN_X, sku_y), sku_text, fill='#222222', font=f_sku)
-        else:
-            f_sku_big = _font(26, bold=True)
-            sku_bw = draw.textlength(sku_text, font=f_sku_big)
-            draw.text(((LABEL_W - sku_bw) / 2, MARGIN_Y + 8), sku_text,
-                      fill='black', font=f_sku_big)
+        sku_w = draw.textlength(sku_text, font=f_sku)
+        sku_y = LABEL_H - MARGIN_Y - 28
+        draw.text(((LABEL_W - sku_w) / 2, sku_y), sku_text, fill='#444444', font=f_sku)
 
     return img
 
@@ -180,7 +183,7 @@ def imprimir_etiqueta_brother(producto, cantidad=1):
             qlr=qlr,
             images=[label_image],
             label=BROTHER_LABEL_SIZE,
-            rotate='0',           # imagen ya tiene el ancho correcto para cinta 62 mm
+            rotate='auto',        # la librería orienta automáticamente
             threshold=70,
             dither=False,
             compress=False,
