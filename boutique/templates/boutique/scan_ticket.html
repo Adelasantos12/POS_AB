@@ -48,14 +48,15 @@ body{font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;background:var(
 .photo-icon{font-size:2rem;opacity:.4}
 
 /* Details */
-.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.625rem .75rem}
+@media(max-width:320px){.detail-grid{grid-template-columns:1fr}}
 .detail-item .k{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-.detail-item .v{font-size:.9rem;font-weight:600;color:var(--ink);margin-top:.1rem}
+.detail-item .v{font-size:.9rem;font-weight:600;color:var(--ink);margin-top:.1rem;overflow-wrap:break-word;word-break:break-word}
 
 /* Items list */
 .item-row{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;padding:.625rem 0;border-bottom:1px solid var(--border)}
 .item-row:last-child{border-bottom:none}
-.item-desc{font-size:.875rem;color:var(--ink);flex:1}
+.item-desc{font-size:.875rem;color:var(--ink);flex:1;overflow-wrap:break-word;word-break:break-word}
 .item-qty{font-size:.75rem;color:var(--soft);margin-top:.15rem}
 .item-price{font-size:.875rem;font-weight:600;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
 .srv-tag{font-size:.6rem;background:#F3F4F6;color:var(--soft);padding:.1rem .4rem;border-radius:4px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;margin-left:.3rem}

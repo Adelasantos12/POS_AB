@@ -152,14 +152,28 @@
                             {% for d in damas %}
                             <tr>
                                 <td class="ps-4 fw-bold">{{ d.nombre }}<br><span class="small text-muted fw-normal">{{ d.telefono|default:"" }}</span></td>
+                                {% with vd=d.vestidos_list.0 ped=d.pedidos_list.0 %}
                                 <td class="small">
                                     <span class="badge bg-light text-dark">{{ d.talla|default:"—" }}</span>
-                                    {% if d.m_largo_total %}<br><span class="text-muted">Largo: {{ d.m_largo_total }}</span>{% endif %}
+                                    {% if d.m_largo_total %}
+                                        <br><span class="text-muted">Largo: {{ d.m_largo_total }}</span>
+                                    {% elif ped and ped.medidas and ped.medidas.largo_aproximado %}
+                                        <br><span class="text-muted">Largo: {{ ped.medidas.largo_aproximado }} cm</span>
+                                    {% endif %}
                                 </td>
                                 <td class="small">
-                                    <div class="fw-bold">{% if d.modelo %}{{ d.modelo.nombre }}{% elif d.modelo_especial %}{{ d.modelo_especial }}{% else %}—{% endif %}</div>
-                                    <div class="text-muted">{% if d.color %}{{ d.color.nombre }}{% elif d.color_especial %}{{ d.color_especial }}{% endif %}{% if d.tela %} / {{ d.tela.nombre }}{% elif d.tela_especial %} / {{ d.tela_especial }}{% endif %}</div>
+                                    <div class="fw-bold">
+                                        {% if d.modelo %}{{ d.modelo.nombre }}
+                                        {% elif d.modelo_especial %}{{ d.modelo_especial }}
+                                        {% elif vd and vd.modelo %}{{ vd.modelo.nombre }}
+                                        {% elif ped and ped.modelo %}{{ ped.modelo.nombre }}
+                                        {% else %}—{% endif %}
+                                    </div>
+                                    <div class="text-muted">
+                                        {% if d.color %}{{ d.color.nombre }}{% elif d.color_especial %}{{ d.color_especial }}{% elif vd and vd.color %}{{ vd.color.nombre }}{% endif %}{% if d.tela %} / {{ d.tela.nombre }}{% elif d.tela_especial %} / {{ d.tela_especial }}{% elif vd and vd.tela %} / {{ vd.tela.nombre }}{% endif %}
+                                    </div>
                                 </td>
+                                {% endwith %}
                                 <td class="pe-4 text-end">
                                     <a class="btn btn-sm btn-link text-info" href="{% url 'dama_detalle' d.pk %}" title="Ver expediente">
                                         <i class="bi bi-person-badge"></i>
@@ -235,6 +249,9 @@
                                             <i class="bi bi-check-lg"></i>
                                         </button>
                                         {% endif %}
+                                        <button class="btn btn-sm btn-outline-danger" title="Eliminar pedido" onclick="eliminarPedido({{ p.id }}, '{{ p.numero_ticket }}')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -319,6 +336,12 @@
                             {% if p.saldo_pendiente <= 0 and p.estado != 'ENTREGADO' %}
                             <button class="btn btn-success rounded-pill" title="Entregar" onclick="entregarItem('pedido', {{ p.id }})">
                                 <i class="bi bi-check-circle"></i>
+                            </button>
+                            {% endif %}
+                            {% if not p.pagos_pedido.exists %}
+                            <button class="btn btn-outline-danger rounded-pill" title="Eliminar pedido"
+                                onclick="eliminarPedido({{ p.id }}, '{{ p.numero_ticket }}')">
+                                <i class="bi bi-trash"></i>
                             </button>
                             {% endif %}
                         </div>
@@ -713,6 +736,20 @@
             btn.innerHTML = 'Confirmar y Generar Ticket';
         }
     });
+    async function eliminarPedido(id, folio) {
+        if (!confirm(`¿Eliminar el pedido ${folio}?\n\nEsta acción es permanente y no se puede deshacer.`)) return;
+        const r = await fetch(`/api/pedido/${id}/eliminar/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+        const d = await r.json();
+        if (d.status === 'ok') {
+            location.reload();
+        } else {
+            alert('No se pudo eliminar: ' + d.message);
+        }
+    }
+
     async function eliminarNovia(id) {
         if (!confirm('¿Eliminar novia?')) return;
         await fetch(`/api/novia/${id}/eliminar/`, { method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'} });

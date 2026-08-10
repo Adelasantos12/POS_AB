@@ -519,6 +519,7 @@ def novia_detalle(request, pk):
     """Detalle de una novia con su grupo y pedidos"""
     # Prefetch into pedidos_cache so semaforo_* / total_pagado / resumen_*
     # properties work in memory without extra per-property DB queries.
+    from .models import Medidas, VestidoDama as _VD
     novia_qs = Novia.objects.prefetch_related(
         Prefetch(
             'pedidos',
@@ -527,13 +528,28 @@ def novia_detalle(request, pk):
             ).prefetch_related('pagos_pedido').order_by('-fecha_creacion'),
             to_attr='pedidos_cache',
         ),
-        'damas',
+        Prefetch(
+            'damas',
+            queryset=Dama.objects.filter(activo=True).prefetch_related(
+                Prefetch(
+                    'vestidos',
+                    queryset=_VD.objects.select_related('modelo', 'color', 'tela').order_by('-id'),
+                    to_attr='vestidos_list',
+                ),
+                Prefetch(
+                    'pedidos',
+                    queryset=Pedido.objects.select_related('medidas', 'modelo').order_by('-id'),
+                    to_attr='pedidos_list',
+                ),
+            ).order_by('nombre'),
+            to_attr='damas_cache',
+        ),
     )
     novia = get_object_or_404(novia_qs, pk=pk, activo=True)
 
     # Use in-memory cache; sort is already applied in the Prefetch queryset
     pedidos = novia.pedidos_cache
-    damas = [d for d in novia.damas.all() if d.activo]
+    damas = novia.damas_cache
     citas = novia.citas.all().order_by('fecha', 'hora_inicio')
 
     # Apartados vinculados
@@ -1584,13 +1600,43 @@ def api_pedido_editar(request, pk):
             pedido.precio = safe_decimal(data['precio'])
         if 'estado' in data:
             pedido.estado = data['estado']
+        if 'talla' in data:
+            pedido.talla = (data['talla'] or '').strip()
+        if 'color_id' in data:
+            pedido.color = Color.objects.filter(pk=data['color_id']).first() if data['color_id'] else None
+        if 'tela_id' in data:
+            pedido.tela = Tela.objects.filter(pk=data['tela_id']).first() if data['tela_id'] else None
+        if 'modelo_id' in data:
+            pedido.modelo = Modelo.objects.filter(pk=data['modelo_id']).first() if data['modelo_id'] else None
 
         pedido.save()
-        return JsonResponse({'status': 'ok', 'precio': float(pedido.precio)})
+        return JsonResponse({
+            'status': 'ok',
+            'precio': float(pedido.precio),
+            'modelo': str(pedido.modelo) if pedido.modelo else '',
+            'color': str(pedido.color) if pedido.color else '',
+            'tela': str(pedido.tela) if pedido.tela else '',
+            'talla': pedido.talla,
+        })
     except json.JSONDecodeError:
         return JsonResponse({'status': 'error', 'message': 'JSON inválido'}, status=400)
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
+def api_pedido_eliminar(request, pk):
+    """Elimina un pedido. Solo permitido si no tiene abonos registrados."""
+    pedido = get_object_or_404(Pedido, pk=pk)
+    if pedido.pagos_pedido.exists():
+        return JsonResponse(
+            {'status': 'error', 'message': 'No se puede eliminar un pedido con abonos registrados. Cancélalo en su lugar.'},
+            status=400
+        )
+    pedido.delete()
+    return JsonResponse({'status': 'ok'})
 
 
 @require_POST

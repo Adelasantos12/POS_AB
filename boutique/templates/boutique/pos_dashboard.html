@@ -369,6 +369,24 @@
                             </div>
                         </div>
 
+                        <!-- Modelo + Notas (para todo tipo de pedido) -->
+                        <div id="vr_section_pedido_extra" class="p-3 bg-success-subtle rounded-3 mb-3 border border-success-subtle d-none">
+                            <h6 class="fw-bold mb-2 small"><i class="bi bi-tag me-1"></i>Datos del Pedido</h6>
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <label class="form-label small">Modelo</label>
+                                    <select name="modelo_id" class="form-select form-select-sm">
+                                        <option value="">— Sin modelo especificado —</option>
+                                        {% for m in modelos %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small">Notas / Especificaciones</label>
+                                    <textarea name="pedido_notas" class="form-control form-control-sm" rows="2" placeholder="Color especial, detalles de hechura, etc."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Medidas -->
                         <div id="vr_section_medidas" class="p-3 bg-light rounded-3 mb-3 border d-none">
                             <h6 class="fw-bold mb-2 small"><i class="bi bi-rulers me-1"></i>Medidas (cm)</h6>
@@ -1596,6 +1614,7 @@
         const isVentaNormal = (val === 'VENTA_NORMAL');
         document.getElementById('vr_section_dama').classList.toggle('d-none', val !== 'DAMA_HONOR');
         document.getElementById('vr_section_hechura').classList.toggle('d-none', !isHechuraOrExterno);
+        document.getElementById('vr_section_pedido_extra').classList.toggle('d-none', isVentaNormal);
         document.getElementById('vr_section_medidas').classList.toggle('d-none', val === 'VENTA_NORMAL');
         document.getElementById('hechura_fecha_evento_col').classList.toggle('d-none', !isHechuraOrExterno);
         if (val === 'HECHURA') {

@@ -90,7 +90,7 @@ def generate_pdf_ticket(ticket_id):
     buffer = BytesIO()
 
     width = 3.15 * inch
-    height = 15 * inch
+    height = 25 * inch
 
     p = canvas.Canvas(buffer, pagesize=(width, height))
     y = height - 0.5 * inch

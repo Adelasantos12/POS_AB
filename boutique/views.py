@@ -532,6 +532,7 @@ def pos_dashboard(request):
         'telas': Tela.objects.filter(activa=True),
         'colores': Color.objects.filter(activo=True),
         'categorias': Categoria.objects.all(),
+        'modelos': Modelo.objects.all().order_by('nombre'),
         'rasgos_estilo': RASGOS_ESTILO,
         'rasgos_corte': RASGOS_CORTE,
         'rasgos_escote': RASGOS_ESCOTE,
@@ -1079,6 +1080,9 @@ def api_venta_rapida(request):
 
             elif tipo_op in ['DAMA_HONOR', 'HECHURA', 'PEDIDO_EXTERNO']:
                 # FLUJO PEDIDO (Dama, Hechura o Pedido Externo)
+                modelo_id = request.POST.get('modelo_id')
+                modelo_obj = Modelo.objects.filter(pk=modelo_id).first() if modelo_id else None
+                pedido_notas = request.POST.get('pedido_notas', '').strip()
                 novia_id = request.POST.get('novia_id')
                 dama_id = request.POST.get('dama_id')
                 nueva_dama_nombre = request.POST.get('nueva_dama_nombre')
@@ -1119,11 +1123,13 @@ def api_venta_rapida(request):
                     novia=novia_obj or (dama_obj.novia if dama_obj else None),
                     dama=dama_obj,
                     producto=producto,
+                    modelo=modelo_obj,
                     color=color,
                     tela=tela_obj,
                     talla=talla,
                     precio=precio,
                     evento=evento,
+                    notas=pedido_notas,
                     tipo_operacion=tipo_op,
                     tipo_pedido=tp,
                     estado=est,
@@ -1131,6 +1137,9 @@ def api_venta_rapida(request):
                     fecha_evento=fecha_evento or None,
                     creado_por=request.active_profile
                 )
+                if foto:
+                    pedido.imagen_referencia = foto
+                    pedido.save(update_fields=['imagen_referencia'])
 
                 # Guardar medidas si vienen en el POST
                 if any([request.POST.get('m_busto'), request.POST.get('medidas_busto'), request.POST.get('m_cintura'), request.POST.get('m_notas')]):
