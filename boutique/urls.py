@@ -140,6 +140,7 @@ urlpatterns = [
     path('api/pedido/nuevo/', views_agenda.api_pedido_nuevo, name='api_pedido_nuevo'),
     path('api/pedido/<int:pk>/editar/', views_agenda.api_pedido_editar, name='api_pedido_editar'),
     path('api/pedido-item/<int:pk>/estado/', views_agenda.api_pedido_item_estado, name='api_pedido_item_estado'),
+    path('api/pedido-item/<int:pk>/editar/', views_agenda.api_pedido_item_editar, name='api_pedido_item_editar'),
     path('resumen-nocturno/', views_agenda.resumen_nocturno, name='resumen_nocturno'),
 
     # Dashboards y Analítica

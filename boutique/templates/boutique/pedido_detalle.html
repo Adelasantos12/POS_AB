@@ -117,13 +117,21 @@
                             </td>
                             <td class="text-end fw-bold">${{ item.precio }}</td>
                             <td>
-                                <select class="form-select form-select-sm border-0 bg-transparent fw-bold"
-                                        style="font-size:0.7rem; width:auto;"
-                                        onchange="cambiarEstadoItem({{ item.pk }}, this.value)">
-                                    {% for code, label in ITEM_ESTADOS %}
-                                    <option value="{{ code }}" {% if item.estado == code %}selected{% endif %}>{{ label }}</option>
-                                    {% endfor %}
-                                </select>
+                                <div class="d-flex align-items-center gap-1">
+                                    <select class="form-select form-select-sm border-0 bg-transparent fw-bold"
+                                            style="font-size:0.7rem; width:auto;"
+                                            onchange="cambiarEstadoItem({{ item.pk }}, this.value)">
+                                        {% for code, label in ITEM_ESTADOS %}
+                                        <option value="{{ code }}" {% if item.estado == code %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button"
+                                            class="btn btn-xs btn-outline-secondary"
+                                            title="Editar ítem"
+                                            onclick="abrirEditarItem({{ item.pk }}, '{{ item.talla|escapejs }}', '{{ item.largo|escapejs }}', {{ item.modelo_id|default:'null' }}, '{{ item.numero_modelo|escapejs }}', {{ item.color_id|default:'null' }}, {{ item.tela_id|default:'null' }}, '{{ item.notas|escapejs }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         {% empty %}
@@ -293,6 +301,70 @@
 
 {% include 'boutique/includes/modal_cobro_unificado.html' %}
 
+<!-- Modal Editar Ítem -->
+<div class="modal fade" id="modalEditarItem" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Editar ítem</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editItemId">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Modelo</label>
+                        <select class="form-select" id="editItemModelo">
+                            <option value="">— Sin modelo —</option>
+                            {% for m in modelos %}<option value="{{ m.pk }}">{{ m.nombre }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Núm. modelo</label>
+                        <input type="text" class="form-control" id="editItemNumModelo" placeholder="Referencia">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Talla</label>
+                        <input type="text" class="form-control" id="editItemTalla" placeholder="S / M / L / XS">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Largo</label>
+                        <input type="text" class="form-control" id="editItemLargo" placeholder="Ej: 1.30 m">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Color</label>
+                        <select class="form-select" id="editItemColor">
+                            <option value="">— Sin color —</option>
+                            {% for c in colores %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Tela</label>
+                        <select class="form-select" id="editItemTela">
+                            <option value="">— Sin tela —</option>
+                            {% for t in telas %}<option value="{{ t.pk }}">{{ t.nombre }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Descripción especial</label>
+                        <input type="text" class="form-control" id="editItemDesc" placeholder="Detalles...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Notas</label>
+                        <input type="text" class="form-control" id="editItemNotas" placeholder="Opcional">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button class="btn btn-light rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-primary rounded-pill" onclick="guardarItem()">
+                    <i class="bi bi-check-lg me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const CSRF = '{{ csrf_token }}';
 const PEDIDO_ID = {{ pedido.pk }};
@@ -319,6 +391,51 @@ async function cambiarEstadoItem(id, estado) {
     });
     const d = await res.json();
     if (d.status !== 'ok') alert('Error: ' + (d.message || ''));
+}
+
+function abrirEditarItem(id, talla, largo, modeloId, numModelo, colorId, telaId, notas) {
+    document.getElementById('editItemId').value       = id;
+    document.getElementById('editItemTalla').value    = talla;
+    document.getElementById('editItemLargo').value    = largo;
+    document.getElementById('editItemNumModelo').value = numModelo;
+    document.getElementById('editItemNotas').value    = notas;
+    const selModelo = document.getElementById('editItemModelo');
+    selModelo.value = modeloId || '';
+    const selColor  = document.getElementById('editItemColor');
+    selColor.value  = colorId  || '';
+    const selTela   = document.getElementById('editItemTela');
+    selTela.value   = telaId   || '';
+    new bootstrap.Modal(document.getElementById('modalEditarItem')).show();
+}
+
+async function guardarItem() {
+    const id = document.getElementById('editItemId').value;
+    const data = {
+        talla:               document.getElementById('editItemTalla').value.trim(),
+        largo:               document.getElementById('editItemLargo').value.trim(),
+        modelo_id:           document.getElementById('editItemModelo').value || null,
+        numero_modelo:       document.getElementById('editItemNumModelo').value.trim(),
+        color_id:            document.getElementById('editItemColor').value || null,
+        tela_id:             document.getElementById('editItemTela').value || null,
+        descripcion_especial:document.getElementById('editItemDesc').value.trim(),
+        notas:               document.getElementById('editItemNotas').value.trim(),
+    };
+    try {
+        const res = await fetch(`/api/pedido-item/${id}/editar/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(data),
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+            bootstrap.Modal.getInstance(document.getElementById('modalEditarItem')).hide();
+            location.reload();
+        } else {
+            alert('Error al guardar: ' + (d.message || 'Error desconocido'));
+        }
+    } catch (e) {
+        alert('Error de red: ' + e.message);
+    }
 }
 
 async function guardarEdicion() {

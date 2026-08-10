@@ -1510,6 +1510,7 @@ def api_pedido_nuevo(request):
                 numero_modelo=it.get('numero_modelo', ''),
                 descripcion_especial=it.get('descripcion_especial', ''),
                 talla=it.get('talla', ''),
+                largo=it.get('largo', ''),
                 color=color_obj,
                 tela=tela_obj,
                 cantidad=int(it.get('cantidad', 1)),
@@ -1595,6 +1596,36 @@ def api_pedido_editar(request, pk):
 @require_POST
 @login_required
 @profile_permission_required(['Agenda', 'Vendedor'])
+@require_POST
+@login_required
+def api_pedido_item_editar(request, pk):
+    """Actualiza campos editables de un PedidoItem (talla, largo, color, tela, modelo, notas)."""
+    from .models import Modelo as _Modelo, Color as _Color, Tela as _Tela
+    item = get_object_or_404(PedidoItem, pk=pk)
+    data = json.loads(request.body)
+
+    if 'talla' in data:
+        item.talla = data['talla'].strip()
+    if 'largo' in data:
+        item.largo = data['largo'].strip()
+    if 'numero_modelo' in data:
+        item.numero_modelo = data['numero_modelo'].strip()
+    if 'descripcion_especial' in data:
+        item.descripcion_especial = data['descripcion_especial'].strip()
+    if 'notas' in data:
+        item.notas = data['notas'].strip()
+
+    if 'modelo_id' in data:
+        item.modelo = _Modelo.objects.filter(pk=data['modelo_id']).first() if data['modelo_id'] else None
+    if 'color_id' in data:
+        item.color = _Color.objects.filter(pk=data['color_id']).first() if data['color_id'] else None
+    if 'tela_id' in data:
+        item.tela = _Tela.objects.filter(pk=data['tela_id']).first() if data['tela_id'] else None
+
+    item.save()
+    return JsonResponse({'status': 'ok', 'item': item.to_dict()})
+
+
 def api_pedido_item_estado(request, pk):
     """Cambia el estado de un PedidoItem."""
     item = get_object_or_404(PedidoItem, pk=pk)
