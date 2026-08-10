@@ -1642,6 +1642,19 @@ def api_pedido_eliminar(request, pk):
 @require_POST
 @login_required
 @profile_permission_required(['Agenda', 'Vendedor'])
+def api_pedido_cancelar(request, pk):
+    """Cancela un pedido cambiando su estado a CANCELADO. No elimina el registro."""
+    pedido = get_object_or_404(Pedido, pk=pk)
+    if pedido.estado == 'CANCELADO':
+        return JsonResponse({'status': 'error', 'message': 'El pedido ya está cancelado.'}, status=400)
+    pedido.estado = 'CANCELADO'
+    pedido.save(update_fields=['estado'])
+    return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Agenda', 'Vendedor'])
 @require_POST
 @login_required
 def api_pedido_item_editar(request, pk):

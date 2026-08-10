@@ -1125,22 +1125,22 @@ class Novia(models.Model):
 
     @property
     def total_pagado(self):
-        return sum(p.total_pagado for p in self._pedidos_list())
+        return sum(p.total_pagado for p in self._pedidos_list() if p.estado != 'CANCELADO')
 
     @property
     def total_pendiente(self):
-        return sum(p.saldo_pendiente for p in self._pedidos_list())
+        return sum(p.saldo_pendiente for p in self._pedidos_list() if p.estado != 'CANCELADO')
 
     @property
     def medidas_completitud_promedio(self):
-        peds = self._pedidos_list()
+        peds = [p for p in self._pedidos_list() if p.estado != 'CANCELADO']
         if not peds: return 100
         total_pct = sum(p.medidas_completitud for p in peds)
         return int(total_pct / len(peds))
 
     @property
     def semaforo_medidas(self):
-        peds = self._pedidos_list()
+        peds = [p for p in self._pedidos_list() if p.estado != 'CANCELADO']
         if not peds: return 'secondary'
 
         completos = sum(1 for p in peds if p.medidas_completitud == 100)

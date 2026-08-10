@@ -128,6 +128,34 @@ def api_apartado_editar(request, pk):
     except Exception as e:
         return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
+@require_POST
+@login_required
+@profile_permission_required(['Vendedor', 'Caja', 'Admin', 'CEO'])
+def api_apartado_cancelar(request, pk):
+    """Cancela un apartado cambiando su estado a CANCELADO. No elimina el registro."""
+    apartado = get_object_or_404(Apartado, pk=pk)
+    if apartado.estado == 'CANCELADO':
+        return JsonResponse({'status': 'error', 'message': 'El apartado ya está cancelado.'}, status=400)
+    apartado.estado = 'CANCELADO'
+    apartado.save(update_fields=['estado'])
+    return JsonResponse({'status': 'ok'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Vendedor', 'Caja', 'Admin', 'CEO'])
+def api_apartado_eliminar(request, pk):
+    """Elimina un apartado. Solo permitido si no tiene pagos registrados."""
+    apartado = get_object_or_404(Apartado, pk=pk)
+    if apartado.pagos_apartado.exists():
+        return JsonResponse(
+            {'status': 'error', 'message': 'No se puede eliminar un apartado con pagos registrados. Cancélalo en su lugar.'},
+            status=400
+        )
+    apartado.delete()
+    return JsonResponse({'status': 'ok'})
+
+
 @login_required
 def detalle_apartado(request, pk):
     apartado = get_object_or_404(Apartado, pk=pk)

@@ -125,6 +125,8 @@ urlpatterns = [
     path('apartados/<int:pk>/', views_apartados.detalle_apartado, name='detalle_apartado'),
     path('api/apartado/crear/', views_apartados.api_crear_apartado, name='api_crear_apartado'),
     path('api/apartado/editar/<int:pk>/', views_apartados.api_apartado_editar, name='api_apartado_editar'),
+    path('api/apartado/<int:pk>/cancelar/', views_apartados.api_apartado_cancelar, name='api_apartado_cancelar'),
+    path('api/apartado/<int:pk>/eliminar/', views_apartados.api_apartado_eliminar, name='api_apartado_eliminar'),
     
     # Servicios y ajustes
     path('servicios/', views.servicios_list, name='servicios_list'),
@@ -140,6 +142,7 @@ urlpatterns = [
     path('api/pedido/nuevo/', views_agenda.api_pedido_nuevo, name='api_pedido_nuevo'),
     path('api/pedido/<int:pk>/editar/', views_agenda.api_pedido_editar, name='api_pedido_editar'),
     path('api/pedido/<int:pk>/eliminar/', views_agenda.api_pedido_eliminar, name='api_pedido_eliminar'),
+    path('api/pedido/<int:pk>/cancelar/', views_agenda.api_pedido_cancelar, name='api_pedido_cancelar'),
     path('api/pedido-item/<int:pk>/estado/', views_agenda.api_pedido_item_estado, name='api_pedido_item_estado'),
     path('api/pedido-item/<int:pk>/editar/', views_agenda.api_pedido_item_editar, name='api_pedido_item_editar'),
     path('resumen-nocturno/', views_agenda.resumen_nocturno, name='resumen_nocturno'),

@@ -216,7 +216,7 @@
                         </thead>
                         <tbody>
                             {% for p in pedidos %}
-                            {% if p.estado != 'ENTREGADO' %}
+                            {% if p.estado != 'ENTREGADO' and p.estado != 'CANCELADO' %}
                             <tr>
                                 <td class="ps-4">
                                     <div class="fw-bold">{% if p.es_vestido_novia %}👰 Novia{% elif p.dama %}{{ p.dama.nombre }}{% else %}Sin asignar{% endif %}</div>
@@ -249,9 +249,14 @@
                                             <i class="bi bi-check-lg"></i>
                                         </button>
                                         {% endif %}
+                                        <button class="btn btn-sm btn-outline-warning" title="Cancelar pedido" onclick="cancelarPedido({{ p.id }}, '{{ p.numero_ticket }}')">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                        {% if not p.pagos_pedido.exists %}
                                         <button class="btn btn-sm btn-outline-danger" title="Eliminar pedido" onclick="eliminarPedido({{ p.id }}, '{{ p.numero_ticket }}')">
                                             <i class="bi bi-trash"></i>
                                         </button>
+                                        {% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -271,7 +276,7 @@
 
             {% for p in pedidos %}
             <div class="col-md-6">
-                <div class="card h-100 shadow-sm border-0" style="border-radius: 15px;">
+                <div class="card h-100 shadow-sm border-0{% if p.estado == 'CANCELADO' %} opacity-75{% endif %}" style="border-radius: 15px;{% if p.estado == 'CANCELADO' %}border-left: 4px solid #dc3545 !important;{% endif %}">
                     <div class="card-body p-4 d-flex flex-column">
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <div>
@@ -279,7 +284,7 @@
                                 <h6 class="fw-bold mb-0">{% if p.es_vestido_novia %}👰 Novia{% else %}{{ p.dama.nombre }}{% endif %}</h6>
                                 <small class="text-muted">{{ p.numero_ticket }}</small>
                             </div>
-                            <span class="status-badge {% if p.estado == 'ENTREGADO' %}status-active{% else %}status-warning{% endif %}">
+                            <span class="status-badge {% if p.estado == 'ENTREGADO' %}status-active{% elif p.estado == 'CANCELADO' %}status-inactive{% else %}status-warning{% endif %}">
                                 {{ p.get_estado_display }}
                             </span>
                         </div>
@@ -314,7 +319,8 @@
                         {% endif %}
                         {% endwith %}
 
-                        <div class="d-flex gap-2 mt-auto">
+                        <div class="d-flex gap-2 mt-auto flex-wrap">
+                            {% if p.estado != 'CANCELADO' %}
                             {% if p.saldo_pendiente > 0 %}
                             <button class="btn btn-primary flex-grow-1 rounded-pill shadow-sm" onclick="abrirModalCobro('pedido', {{ p.id }}, '{{ p.saldo_pendiente|stringformat:".2f" }}', '{{ p.numero_ticket }}')">
                                 <i class="bi bi-cash-stack me-2"></i>Cobrar
@@ -338,11 +344,19 @@
                                 <i class="bi bi-check-circle"></i>
                             </button>
                             {% endif %}
+
+                            <button class="btn btn-outline-warning rounded-pill" title="Cancelar pedido" onclick="cancelarPedido({{ p.id }}, '{{ p.numero_ticket }}')">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+
                             {% if not p.pagos_pedido.exists %}
                             <button class="btn btn-outline-danger rounded-pill" title="Eliminar pedido"
                                 onclick="eliminarPedido({{ p.id }}, '{{ p.numero_ticket }}')">
                                 <i class="bi bi-trash"></i>
                             </button>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted small fst-italic">Pedido cancelado — sin acciones disponibles</span>
                             {% endif %}
                         </div>
                     </div>
@@ -747,6 +761,20 @@
             location.reload();
         } else {
             alert('No se pudo eliminar: ' + d.message);
+        }
+    }
+
+    async function cancelarPedido(id, folio) {
+        if (!confirm(`¿Cancelar el pedido ${folio}?\n\nEl pedido quedará marcado como CANCELADO y no sumará a los totales, pero el registro se conserva en el sistema.`)) return;
+        const r = await fetch(`/api/pedido/${id}/cancelar/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'}
+        });
+        const d = await r.json();
+        if (d.status === 'ok') {
+            location.reload();
+        } else {
+            alert('No se pudo cancelar: ' + d.message);
         }
     }
 

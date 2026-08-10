@@ -20,6 +20,16 @@
             <i class="bi bi-printer me-1"></i>Imprimir
         </a>
         {% endif %}
+        {% if pedido.estado != 'CANCELADO' %}
+        <button class="btn btn-outline-warning rounded-pill" onclick="cancelarPedidoDetalle()">
+            <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        {% endif %}
+        {% if not pedido.pagos_pedido.exists and pedido.estado != 'CANCELADO' %}
+        <button class="btn btn-outline-danger rounded-pill" onclick="eliminarPedidoDetalle()">
+            <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
+        {% endif %}
         <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalEditarPedido">
             <i class="bi bi-pencil me-1"></i>Editar
         </button>
@@ -371,6 +381,28 @@ const PEDIDO_ID = {{ pedido.pk }};
 
 function abrirCobro(id, saldo) {
     abrirModalCobro('pedido', id, saldo, '{{ pedido.numero_ticket }}');
+}
+
+async function cancelarPedidoDetalle() {
+    if (!confirm('¿Cancelar el pedido {{ pedido.numero_ticket }}?\n\nEl pedido quedará marcado como CANCELADO y no sumará a los totales, pero el registro se conserva en el sistema.')) return;
+    const res = await fetch(`/api/pedido/{{ pedido.pk }}/cancelar/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': CSRF}
+    });
+    const d = await res.json();
+    if (d.status === 'ok') { location.reload(); }
+    else { alert('No se pudo cancelar: ' + (d.message || '')); }
+}
+
+async function eliminarPedidoDetalle() {
+    if (!confirm('¿Eliminar el pedido {{ pedido.numero_ticket }}?\n\nEsta acción es permanente y no se puede deshacer.')) return;
+    const res = await fetch(`/api/pedido/{{ pedido.pk }}/eliminar/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': CSRF}
+    });
+    const d = await res.json();
+    if (d.status === 'ok') { window.location.href = "{% url 'pedidos_en_puerta' %}"; }
+    else { alert('No se pudo eliminar: ' + (d.message || '')); }
 }
 
 async function cambiarEstadoPedido(id, estado) {

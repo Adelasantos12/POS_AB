@@ -169,6 +169,18 @@
                     </button>
                     {% endif %}
                     {% endwith %}
+
+                    {% if apartado.estado != 'CANCELADO' %}
+                    <button class="btn btn-outline-warning py-2 rounded-pill" onclick="cancelarApartado()">
+                        <i class="bi bi-x-circle me-2"></i>Cancelar Apartado
+                    </button>
+                    {% endif %}
+
+                    {% if not apartado.pagos_apartado.exists %}
+                    <button class="btn btn-outline-danger py-2 rounded-pill" onclick="eliminarApartado()">
+                        <i class="bi bi-trash me-2"></i>Eliminar Apartado
+                    </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -190,6 +202,32 @@ async function marcarEntregado() {
         const d = await res.json();
         if (d.status === 'ok') { location.reload(); }
         else { alert(d.message || 'Error al marcar entregado'); }
+    } catch (e) { alert('Error de red'); }
+}
+
+async function cancelarApartado() {
+    if (!confirm('¿Cancelar este apartado?\n\nEl apartado quedará marcado como CANCELADO y no sumará a los totales, pero el registro se conserva en el sistema.')) return;
+    try {
+        const res = await fetch(`/api/apartado/{{ apartado.id }}/cancelar/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken}
+        });
+        const d = await res.json();
+        if (d.status === 'ok') { location.reload(); }
+        else { alert(d.message || 'Error al cancelar apartado'); }
+    } catch (e) { alert('Error de red'); }
+}
+
+async function eliminarApartado() {
+    if (!confirm('¿Eliminar este apartado?\n\nEsta acción es permanente y no se puede deshacer.')) return;
+    try {
+        const res = await fetch(`/api/apartado/{{ apartado.id }}/eliminar/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken}
+        });
+        const d = await res.json();
+        if (d.status === 'ok') { window.location.href = "{% url 'lista_apartados' %}"; }
+        else { alert(d.message || 'Error al eliminar apartado'); }
     } catch (e) { alert('Error de red'); }
 }
 </script>
