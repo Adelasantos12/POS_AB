@@ -791,25 +791,10 @@
     }
 
     function imprimirEtiqueta(id, sku) {
-        const cantidad = prompt(`¿Cuántas etiquetas de ${sku} deseas imprimir?`, '1');
-        if (!cantidad) return;
-        
-        fetch(`/api/imprimir-etiqueta/${id}/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-            body: JSON.stringify({ cantidad: parseInt(cantidad) })
-        })
-        .then(r => r.json())
-        .then(res => {
-            if (res.success) {
-                alert(res.message);
-            } else {
-                alert('⚠️ ' + res.message);
-            }
-        })
-        .catch(err => {
-            alert('Error al conectar con la impresora');
-        });
+        // Abre la página de impresión en una ventana nueva; macOS/Chrome
+        // envía el trabajo a la Brother QL-800 por USB sin necesidad de
+        // un servidor local ni la app de Brother.
+        window.open(`/imprimir-etiquetas/?ids=${id}`, '_blank', 'width=420,height=700');
     }
 
     async function regenerarBarcodes() {

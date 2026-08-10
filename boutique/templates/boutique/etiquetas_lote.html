@@ -12,112 +12,87 @@
         }
 
         /*
-         * Etiqueta: cinta continua 62 mm × 20 mm de largo
-         * Layout Opción A:
-         *  ┌──────────────────────────────────────────────┐
-         *  │ ████████ barcode ████████   $1,200           │
-         *  │                             T: M             │
-         *  │  SKU-0042                                    │
-         *  └──────────────────────────────────────────────┘
+         * Etiqueta: DK-11210 troquelada 29 mm × 90 mm (portrait)
+         *
+         * Layout (de arriba hacia abajo):
+         *  ┌────────────────────────┐
+         *  │       $1,200           │  precio
+         *  │     T: M  AZUL         │  talla + color
+         *  │                        │
+         *  │  ▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌  │  código de barras
+         *  │                        │
+         *  │       SKU-0042         │  SKU
+         *  └────────────────────────┘
          */
         .etiqueta {
             background: white;
-            width: 62mm;
-            height: 20mm;
-            padding: 0.5mm 0.8mm;
+            width: 29mm;
+            height: 90mm;
+            padding: 2mm 1.5mm;
             margin: 10px auto;
             border: 1px dashed #bbb;
             display: flex;
-            flex-direction: row;
-            gap: 1.2mm;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
             overflow: hidden;
             page-break-after: always;
         }
 
-        /* ── Zona izquierda: barcode + SKU ── */
-        .left-zone {
-            flex: 0 0 60%;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            overflow: hidden;
+        .precio {
+            font-size: 11pt;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
+
+        .talla-color {
+            font-size: 6.5pt;
+            color: #333;
+            text-align: center;
+            white-space: nowrap;
+            line-height: 1.3;
         }
 
         .barcode-wrap {
             flex: 1;
             display: flex;
-            align-items: flex-start;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 1.5mm 0;
             overflow: hidden;
         }
 
         .barcode-wrap img {
-            height: 11mm;
-            width: auto;
             max-width: 100%;
+            max-height: 34mm;
             object-fit: contain;
-            object-position: left center;
             display: block;
         }
 
         .no-barcode {
-            display: flex;
-            align-items: center;
-            width: 100%;
-            height: 11mm;
-            font-size: 12pt;
+            font-size: 9pt;
             font-weight: bold;
             letter-spacing: 1px;
             color: #222;
+            text-align: center;
         }
 
         .sku-text {
-            font-size: 4.5pt;
-            color: #666;
+            font-size: 5.5pt;
+            color: #555;
+            text-align: center;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            line-height: 1;
-            padding-top: 0.2mm;
-        }
-
-        /* ── Zona derecha: precio + talla + color ── */
-        .right-zone {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        .precio {
-            font-size: 9.5pt;
-            font-weight: bold;
-            white-space: nowrap;
-            line-height: 1.1;
-        }
-
-        .talla {
-            font-size: 6pt;
-            color: #444;
-            white-space: nowrap;
-            line-height: 1.2;
-            margin-top: 0.4mm;
-        }
-
-        .color-tag {
-            font-size: 5.5pt;
-            color: #000;
-            font-weight: bold;
-            white-space: nowrap;
-            line-height: 1.2;
-            margin-top: 0.3mm;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
+            width: 100%;
         }
 
         /* ── Print ── */
         @page {
-            size: 62mm 20mm;
+            size: 29mm 90mm;
             margin: 0;
         }
         @media print {
@@ -167,7 +142,7 @@
             padding: 4px 8px;
             font-size: 11px;
             color: #334155;
-            width: 62mm;
+            width: 29mm;
             margin: 0 auto;
         }
         .qty-controls input {
@@ -183,47 +158,39 @@
 </head>
 <body>
     <div class="no-print">
-        Etiqueta <strong>62 mm × 20 mm</strong> (cinta continua DK-22243) · Márgenes en 0.
+        Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210 troquelada) · Márgenes en 0 al imprimir.
         <button onclick="imprimirConCantidades()">🖨️ Imprimir</button>
-        <small>Ajusta las cantidades de cada modelo antes de imprimir · Brother QL-800</small>
+        <small>Al imprimir: selecciona Brother QL-800 · Tamaño DK-11210 (29×90 mm) · Sin márgenes</small>
     </div>
 
     {% for p in productos %}
-    <!-- Selector de cantidad (solo visible en pantalla) -->
     <div class="qty-controls" id="ctrl-{{ p.pk }}">
         <label>{{ p.sku }}{% if p.color %} · {{ p.color.nombre }}{% endif %}{% if p.talla %} · T:{{ p.talla }}{% endif %}</label>
         <input type="number" min="1" max="50" value="1" id="qty-{{ p.pk }}" title="Cantidad de etiquetas">
         <span>copias</span>
     </div>
 
-    <!-- Etiqueta real (se duplica via JS según cantidad) -->
     <template id="tpl-{{ p.pk }}">
     <div class="etiqueta">
-        <!-- Zona izquierda: barcode + SKU -->
-        <div class="left-zone">
-            <div class="barcode-wrap">
-                {% if p.barcode_image %}
-                    <img src="{{ p.barcode_image.url }}" alt="{{ p.sku }}">
-                {% else %}
-                    <div class="no-barcode">{{ p.sku }}</div>
-                {% endif %}
-            </div>
+        <div class="precio">${{ p.precio_venta|floatformat:0 }}</div>
+
+        <div class="talla-color">
+            {% if p.talla %}T: {{ p.talla }}{% endif %}{% if p.talla and p.color %}  {% endif %}{% if p.color %}{{ p.color.nombre|upper }}{% endif %}
+        </div>
+
+        <div class="barcode-wrap">
             {% if p.barcode_image %}
-            <div class="sku-text">{{ p.sku }}</div>
+                <img src="{{ p.barcode_image.url }}" alt="{{ p.sku }}">
+            {% else %}
+                <div class="no-barcode">{{ p.sku }}</div>
             {% endif %}
         </div>
 
-        <!-- Zona derecha: precio + talla + color -->
-        <div class="right-zone">
-            <div class="precio">${{ p.precio_venta|floatformat:0 }}</div>
-            {% if p.talla %}<div class="talla">T: {{ p.talla }}</div>{% endif %}
-            {% if p.color %}<div class="color-tag">{{ p.color.nombre }}</div>{% endif %}
-        </div>
+        <div class="sku-text">{{ p.sku }}</div>
     </div>
     </template>
     {% endfor %}
 
-    <!-- Contenedor donde se inyectan las etiquetas reales -->
     <div id="etiquetas-container"></div>
 
     <script>
