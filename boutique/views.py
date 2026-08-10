@@ -1182,7 +1182,10 @@ def api_venta_rapida(request):
                 )
 
                 if pedido.fecha_entrega_estimada:
-                    sync_delivery_with_agenda(pedido)
+                    try:
+                        sync_delivery_with_agenda(pedido)
+                    except Exception:
+                        logger.warning("sync_delivery_with_agenda falló para pedido %s — no crítico", pedido.pk)
 
                 res = {'status': 'ok', 'tipo': 'pedido', 'id': pedido.id, 'folio': ticket.folio}
 

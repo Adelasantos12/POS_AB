@@ -91,13 +91,17 @@
         }
 
         /* ── Print ── */
-        @page {
-            size: 29mm 90mm;
-            margin: 0;
-        }
+        /*
+         * NO ponemos size: en @page — el driver de la impresora ya define el tamaño
+         * cuando el usuario selecciona DK-11210 (29×90 mm) en el diálogo de impresión.
+         * Poner size: aquí conflictúa con Safari/macOS y produce hoja en blanco.
+         */
+        @page { margin: 0; }
         @media print {
             body { background: white; }
             .etiqueta {
+                width: 29mm;
+                height: 90mm;
                 margin: 0;
                 border: none;
             }
@@ -158,9 +162,9 @@
 </head>
 <body>
     <div class="no-print">
-        Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210 troquelada) · Márgenes en 0 al imprimir.
+        Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210 troquelada)
         <button onclick="imprimirConCantidades()">🖨️ Imprimir</button>
-        <small>Al imprimir: selecciona Brother QL-800 · Tamaño DK-11210 (29×90 mm) · Sin márgenes</small>
+        <small>En el diálogo: impresora = Brother QL-800 · Papel = DK-11210 (29×90 mm) · Márgenes = 0 · Escala = 100%</small>
     </div>
 
     {% for p in productos %}
