@@ -101,19 +101,38 @@
 
         /* ── Print ── */
         /*
-         * NO se define size: en @page — conflictuaría con el driver Brother en macOS.
-         * El driver ya controla el tamaño cuando el usuario selecciona DK-11210.
+         * @page size: 90mm × 29mm (landscape: ancho primero, alto después).
+         * DK-11210 horizontal: 90 mm de largo como ancho impreso, 29 mm de alto.
+         * Sin este size el navegador manda Carta (216×279 mm) y la etiqueta
+         * aparece como un recuadro tiny en la esquina superior izquierda.
+         *
+         * En macOS con driver Brother QL-800:
+         *   1. Abrir diálogo de impresión → seleccionar "Brother QL-800"
+         *   2. "Mostrar detalles"
+         *   3. Tamaño de papel → "DK-11210 (29×90 mm)"
+         *   4. Orientación → Horizontal (landscape)
+         *   5. Escala → 100%   Márgenes → Ninguno
          */
-        @page { margin: 0; }
+        @page {
+            size: 90mm 29mm;
+            margin: 0;
+        }
 
         @media print {
-            body { background: white; }
+            html, body {
+                width: 90mm;
+                height: 29mm;
+                background: white;
+                margin: 0;
+                padding: 0;
+            }
             .etiqueta {
                 width: 90mm;
                 height: 29mm;
                 margin: 0;
                 border: none;
                 padding: 1mm;
+                page-break-after: always;
             }
             .no-print { display: none !important; }
             .qty-controls { display: none !important; }
@@ -174,7 +193,14 @@
     <div class="no-print">
         Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210) — diseño horizontal
         <button onclick="imprimirConCantidades()">🖨️ Imprimir</button>
-        <small>En el diálogo: Brother QL-800 · Papel = DK-11210 (29×90 mm) · Orientación = Horizontal · Márgenes = 0 · Escala = 100%</small>
+        <small>
+            <strong>macOS + Brother QL-800:</strong>
+            1) Seleccionar impresora → <strong>Brother QL-800</strong> &nbsp;·&nbsp;
+            2) "Mostrar detalles" → Tamaño de papel → <strong>DK-11210 (29×90 mm)</strong> &nbsp;·&nbsp;
+            3) Orientación → <strong>Horizontal</strong> &nbsp;·&nbsp;
+            4) Escala → <strong>100%</strong> &nbsp;·&nbsp;
+            5) Márgenes → <strong>Ninguno</strong>
+        </small>
     </div>
 
     {% for p in productos %}
