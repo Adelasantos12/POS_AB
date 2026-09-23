@@ -101,22 +101,20 @@
 
         /* ── Print ── */
         /*
-         * @page size: 90mm × 29mm (landscape: ancho primero, alto después).
-         * DK-11210 horizontal: 90 mm de largo como ancho impreso, 29 mm de alto.
-         * Sin este size el navegador manda Carta (216×279 mm) y la etiqueta
-         * aparece como un recuadro tiny en la esquina superior izquierda.
+         * NO usar @page size: con el driver Brother en macOS.
+         * El driver ignora el size CSS (muestra tamaño raro como 330×483mm)
+         * Y cuando el usuario corrige el papel manualmente, el size en CSS
+         * hace que el contenido aparezca en blanco por conflicto con el driver.
          *
-         * En macOS con driver Brother QL-800:
-         *   1. Abrir diálogo de impresión → seleccionar "Brother QL-800"
-         *   2. "Mostrar detalles"
-         *   3. Tamaño de papel → "DK-11210 (29×90 mm)"
-         *   4. Orientación → Horizontal (landscape)
-         *   5. Escala → 100%   Márgenes → Ninguno
+         * Flujo correcto en macOS:
+         *   1. Clic en Imprimir → el diálogo abre en Brother QL-800
+         *   2. Si no, cambiar impresora a "Brother QL-800"
+         *   3. Tamaño del papel → "Etiqueta de dirección estándar 29×90 mm"
+         *      (o el nombre que tenga DK-11210 en tu driver)
+         *   4. Orientación → Horizontal
+         *   5. Escala → 100%  ·  Guardar como preajuste "Etiquetas" para no repetirlo
          */
-        @page {
-            size: 90mm 29mm;
-            margin: 0;
-        }
+        @page { margin: 0; }
 
         @media print {
             html, body {
@@ -194,12 +192,12 @@
         Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210) — diseño horizontal
         <button onclick="imprimirConCantidades()">🖨️ Imprimir</button>
         <small>
-            <strong>macOS + Brother QL-800:</strong>
-            1) Seleccionar impresora → <strong>Brother QL-800</strong> &nbsp;·&nbsp;
-            2) "Mostrar detalles" → Tamaño de papel → <strong>DK-11210 (29×90 mm)</strong> &nbsp;·&nbsp;
-            3) Orientación → <strong>Horizontal</strong> &nbsp;·&nbsp;
-            4) Escala → <strong>100%</strong> &nbsp;·&nbsp;
-            5) Márgenes → <strong>Ninguno</strong>
+            <strong>Brother QL-800:</strong>
+            Impresora → <strong>Brother QL-800</strong> &nbsp;·&nbsp;
+            Papel → <strong>Etiqueta de dirección estándar 29×90 mm</strong> &nbsp;·&nbsp;
+            Orientación → <strong>Horizontal</strong> &nbsp;·&nbsp;
+            Escala → <strong>100%</strong>
+            &nbsp;·&nbsp; Guarda esos ajustes como preajuste <strong>"Etiquetas"</strong> para no configurarlo cada vez.
         </small>
     </div>
 
