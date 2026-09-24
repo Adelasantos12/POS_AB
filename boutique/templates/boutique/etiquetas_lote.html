@@ -218,16 +218,8 @@
     }
 
     function imprimirConCantidades() {
-        // Capturar templates y datos de cada producto
-        const templates = {}, labelsInfo = {}, qtys = {};
-        PRODUCTO_IDS.forEach(pid => {
-            const tpl = document.getElementById('tpl-' + pid);
-            if (tpl) templates[pid] = tpl.innerHTML.trim();
-            const ctrl = document.getElementById('ctrl-' + pid);
-            if (ctrl) labelsInfo[pid] = ctrl.querySelector('label')?.textContent?.trim() || String(pid);
-            const input = document.getElementById('qty-' + pid);
-            qtys[pid] = parseInt(input?.value || 1, 10);
-        });
+        // Pre-render all labels on main page first
+        renderizarPreview();
 
         const win = window.open('', '_blank');
         if (!win) {
@@ -235,140 +227,51 @@
             return;
         }
 
-        const pidsJSON      = JSON.stringify(PRODUCTO_IDS);
-        const templatesJSON = JSON.stringify(templates);
-        const infoJSON      = JSON.stringify(labelsInfo);
-        const qtysJSON      = JSON.stringify(qtys);
-        const baseHref      = location.origin;
+        const baseHref = location.origin;
 
-        win.document.write(`<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<base href="${baseHref}">
-<title>Imprimir Etiquetas — Adelé</title>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; background: #f1f5f9; }
-
-.toolbar {
-    background: #1e293b; color: white;
-    padding: 10px 16px;
-    display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
-}
-.qty-row {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 12px;
-    background: rgba(255,255,255,.08);
-    padding: 4px 10px; border-radius: 6px;
-}
-.qty-row input {
-    width: 40px; text-align: center;
-    border: 1px solid #475569; border-radius: 4px;
-    padding: 2px 4px; font-size: 12px;
-    background: #1e293b; color: white;
-}
-.btn-print {
-    background: #2563EB; color: white; border: none;
-    padding: 8px 20px; border-radius: 8px;
-    cursor: pointer; font-size: 14px; font-weight: 600;
-    margin-left: auto; white-space: nowrap;
-}
-.btn-print:hover { background: #1d4ed8; }
-.tip {
-    background: #0f172a; color: #64748b;
-    font-size: 10px; padding: 4px 16px;
-}
-#labels { padding: 16px; display: block; }
-
-/* ── Etiqueta ── */
-.etiqueta {
-    background: white;
-    width: 90mm; height: 29mm;
-    padding: 1mm;
-    display: flex; flex-direction: row; align-items: stretch;
-    overflow: hidden;
-    border: 1.5px dashed #94a3b8;
-    margin-bottom: 10px;
-}
-.col-info {
-    display: flex; flex-direction: column;
-    justify-content: center; align-items: flex-start;
-    width: 22mm; min-width: 22mm;
-    padding-right: 1mm; border-right: 1px solid #ddd;
-}
-.precio { font-size: 9pt; font-weight: bold; line-height: 1.1; white-space: nowrap; }
-.talla-color { font-size: 5.5pt; color: #333; line-height: 1.4; margin-top: 1mm; }
-.col-barcode {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    padding: 0 1mm; overflow: hidden;
-}
-.col-barcode img { max-width: 100%; max-height: 18mm; object-fit: contain; display: block; }
-.no-barcode { font-size: 8pt; font-weight: bold; letter-spacing: 1px; color: #222; text-align: center; }
-.sku-text { font-size: 4.5pt; color: #555; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; margin-top: 1mm; }
-
-/* ── Print ── */
-@page { margin: 0; }
-@media print {
-    .toolbar, .tip { display: none !important; }
-    #labels { padding: 0; display: block; }
-    body { background: white; }
-    .etiqueta { border: none; margin: 0; page-break-after: always; }
-}
-</style>
-</head>
-<body>
-<div class="toolbar" id="toolbar">
-    <button class="btn-print" onclick="imprimir()">🖨️ Imprimir</button>
-</div>
-<div class="tip">Brother QL-800 &nbsp;·&nbsp; Papel: Etiqueta estándar 29×90 mm &nbsp;·&nbsp; Orientación: Horizontal &nbsp;·&nbsp; Escala: 100%</div>
-<div id="labels"></div>
-<script>
-const PRODUCTO_IDS = ${pidsJSON};
-const TEMPLATES    = ${templatesJSON};
-const LABELS_INFO  = ${infoJSON};
-const INITIAL_QTYS = ${qtysJSON};
-
-function renderizar() {
-    const container = document.getElementById('labels');
-    container.innerHTML = '';
-    PRODUCTO_IDS.forEach(pid => {
-        const qty = parseInt(document.getElementById('qp-' + pid)?.value || 1, 10);
-        const html = TEMPLATES[pid];
-        if (!html) return;
-        for (let i = 0; i < qty; i++) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = html;
-            // Insertar cada etiqueta directamente en #labels (sin wrapper)
-            Array.from(tmp.children).forEach(el => container.appendChild(el.cloneNode(true)));
-        }
-    });
-}
-
-function imprimir() {
-    renderizar();
-    window.print();
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-    const toolbar = document.getElementById('toolbar');
-    const btn = toolbar.querySelector('.btn-print');
-    PRODUCTO_IDS.forEach(pid => {
-        const row = document.createElement('div');
-        row.className = 'qty-row';
-        row.innerHTML = \`<span>\${LABELS_INFO[pid] || pid}</span>
-            <input type="number" id="qp-\${pid}" min="1" max="50" value="\${INITIAL_QTYS[pid] || 1}">
-            <span>copias</span>\`;
-        toolbar.insertBefore(row, btn);
-        row.querySelector('input').addEventListener('change', renderizar);
-    });
-    renderizar();
-});
-</script>
-</body>
-</html>`);
+        // No <script> tags in this string — avoids the </script> parser-closing bug
+        win.document.write(
+            '<!DOCTYPE html><html lang="es"><head>' +
+            '<meta charset="UTF-8">' +
+            '<base href="' + baseHref + '">' +
+            '<title>Imprimir Etiquetas — Adelé<\/title>' +
+            '<style>' +
+            '* { box-sizing: border-box; margin: 0; padding: 0; }' +
+            'body { font-family: Arial, sans-serif; background: #f1f5f9; }' +
+            '.toolbar { background: #1e293b; color: white; padding: 10px 16px; display: flex; align-items: center; gap: 10px; }' +
+            '.btn-print { background: #2563EB; color: white; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }' +
+            '.tip { background: #0f172a; color: #64748b; font-size: 10px; padding: 4px 16px; }' +
+            '#labels { padding: 16px; display: block; }' +
+            '.etiqueta { background: white; width: 90mm; height: 29mm; padding: 1.5mm 1mm; display: flex; flex-direction: row; align-items: stretch; overflow: hidden; border: 1.5px dashed #94a3b8; margin-bottom: 10px; }' +
+            '.col-info { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; width: 22mm; min-width: 22mm; padding-right: 1mm; border-right: 1px solid #ddd; }' +
+            '.precio { font-size: 9pt; font-weight: bold; line-height: 1.1; white-space: nowrap; }' +
+            '.talla-color { font-size: 5.5pt; color: #333; line-height: 1.4; margin-top: 1mm; }' +
+            '.col-barcode { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 1mm; overflow: hidden; }' +
+            '.col-barcode img { max-width: 100%; max-height: 18mm; object-fit: contain; display: block; }' +
+            '.no-barcode { font-size: 8pt; font-weight: bold; letter-spacing: 1px; color: #222; text-align: center; }' +
+            '.sku-text { font-size: 4.5pt; color: #555; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; margin-top: 1mm; }' +
+            '@page { margin: 0; }' +
+            '@media print {' +
+            '  .toolbar, .tip { display: none !important; }' +
+            '  #labels { padding: 0; display: block; }' +
+            '  body { background: white; }' +
+            '  .etiqueta { border: none; margin: 0; page-break-after: always; }' +
+            '}' +
+            '<\/style><\/head><body>' +
+            '<div class="toolbar">' +
+            '<button class="btn-print" onclick="window.print()">🖨️ Imprimir<\/button>' +
+            '<\/div>' +
+            '<div class="tip">Brother QL-800 &nbsp;·&nbsp; Papel: Etiqueta estándar 29×90 mm &nbsp;·&nbsp; Orientación: Horizontal &nbsp;·&nbsp; Escala: 100%<\/div>' +
+            '<div id="labels"><\/div>' +
+            '<\/body><\/html>'
+        );
         win.document.close();
+
+        // Inject pre-rendered labels via DOM (no HTML parser issues)
+        const labelsEl = win.document.getElementById('labels');
+        if (labelsEl) {
+            labelsEl.innerHTML = document.getElementById('etiquetas-container').innerHTML;
+        }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
