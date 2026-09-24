@@ -118,7 +118,7 @@
 
             .etiqueta {
                 width: 90mm;
-                height: 29mm;
+                height: 28mm;          /* 28 mm fits inside the QL-800 printable area */
                 box-sizing: border-box;
                 display: flex;
                 flex-direction: row;
@@ -127,17 +127,16 @@
                 margin: 0;
                 padding: 1.5mm 1mm;
                 border: none;
-                /* No transform, position:absolute/fixed, or extra margins */
-                break-after: page;
-                page-break-after: always;
+                outline: none;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                /* No break-after — page break is forced BEFORE each subsequent label */
             }
 
-            /* Last label: don't force a blank trailing page */
-            .etiqueta:last-child {
-                break-after: auto;
-                page-break-after: auto;
+            /* Page break before every label except the first */
+            .etiqueta + .etiqueta {
+                break-before: page;
+                page-break-before: always;
             }
         }
 
