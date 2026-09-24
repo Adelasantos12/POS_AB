@@ -717,6 +717,23 @@
         }
     });
 
+    // Barcode scanner (and keyboard): Enter on productSearch clicks the first result.
+    // The scanner types all chars then sends Enter; by then the fetch has usually returned.
+    // If results aren't ready yet, we wait 400 ms and try once more.
+    document.getElementById('productSearch').addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var first = document.querySelector('#searchResults .list-group-item');
+        if (first) {
+            first.click();
+        } else {
+            setTimeout(function() {
+                var first = document.querySelector('#searchResults .list-group-item');
+                if (first) first.click();
+            }, 400);
+        }
+    });
+
     // Global Search (Products, Orders, Layaways)
     document.getElementById('productSearch').addEventListener('input', function(e) {
         const q = e.target.value;
