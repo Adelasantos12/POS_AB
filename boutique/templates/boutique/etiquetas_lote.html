@@ -31,25 +31,28 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            align-items: flex-start;
-            width: 22mm;
-            min-width: 22mm;
-            padding-right: 1mm;
+            align-items: center;
+            width: 26mm;
+            min-width: 26mm;
+            padding-left: 1.5mm;
+            padding-right: 1.5mm;
             border-right: 1px solid #ddd;
+            text-align: center;
         }
 
         .precio {
-            font-size: 9pt;
+            font-size: 12pt;
             font-weight: bold;
             line-height: 1.1;
             white-space: nowrap;
         }
 
         .talla-color {
-            font-size: 5.5pt;
+            font-size: 7.5pt;
             color: #333;
             line-height: 1.4;
             margin-top: 1mm;
+            text-align: center;
         }
 
         .col-barcode {
@@ -251,23 +254,7 @@
     }
 
     function imprimir() {
-        renderizarPreview();
-        // Wait for any <img> fallbacks to load before opening the print dialog
-        var imgs = Array.from(document.querySelectorAll('#etiquetas-container img'));
-        var pending = imgs.filter(function(img) {
-            return !img.complete || img.naturalWidth === 0;
-        });
-        if (pending.length === 0) {
-            window.print();
-            return;
-        }
-        var done = 0;
-        pending.forEach(function(img) {
-            img.onload = img.onerror = function() {
-                done++;
-                if (done >= pending.length) window.print();
-            };
-        });
+        window.print();
     }
 
     window.addEventListener('DOMContentLoaded', function() {
