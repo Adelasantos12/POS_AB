@@ -11,19 +11,6 @@
             background: #eee;
         }
 
-        /*
-         * DK-11210  29 mm × 90 mm — diseño HORIZONTAL (landscape)
-         * La cinta mide 29 mm de ancho; la etiqueta ya troquelada 90 mm de largo.
-         * En horizontal la dimensión larga (90 mm) queda como ancho → código de barras amplio.
-         *
-         * Layout (izquierda → derecha):
-         *  ┌──────────┬─────────────────────────────────┐
-         *  │ $1,200   │  ▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌▌ │
-         *  │ T: M     │           SKU-0042              │
-         *  │ AZUL     │                                 │
-         *  └──────────┴─────────────────────────────────┘
-         */
-
         .etiqueta {
             background: white;
             width: 90mm;
@@ -35,7 +22,6 @@
             flex-direction: row;
             align-items: stretch;
             overflow: hidden;
-            page-break-after: always;
         }
 
         .col-info {
@@ -99,14 +85,20 @@
             margin-top: 1mm;
         }
 
-        /* ── Print (esta página no se imprime directamente) ── */
         @page { margin: 0; }
+
         @media print {
             body { background: white; }
             .no-print, .qty-controls { display: none !important; }
+            #etiquetas-container { display: block; }
+            .etiqueta {
+                border: none;
+                margin: 0;
+                page-break-after: always;
+                break-after: page;
+            }
         }
 
-        /* ── Header ── */
         .no-print {
             background: #1e293b;
             color: white;
@@ -131,7 +123,6 @@
             font-size: 11px;
         }
 
-        /* ── Selector de cantidad ── */
         .qty-controls {
             display: flex;
             align-items: center;
@@ -160,14 +151,13 @@
 <body>
     <div class="no-print">
         Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210) — diseño horizontal
-        <button onclick="imprimirConCantidades()">🖨️ Imprimir</button>
+        <button onclick="imprimir()">🖨️ Imprimir</button>
         <small>
             <strong>Brother QL-800:</strong>
             Impresora → <strong>Brother QL-800</strong> &nbsp;·&nbsp;
             Papel → <strong>Etiqueta de dirección estándar 29×90 mm</strong> &nbsp;·&nbsp;
             Orientación → <strong>Horizontal</strong> &nbsp;·&nbsp;
             Escala → <strong>100%</strong>
-            &nbsp;·&nbsp; Guarda esos ajustes como preajuste <strong>"Etiquetas"</strong> para no configurarlo cada vez.
         </small>
     </div>
 
@@ -202,116 +192,30 @@
     <div id="etiquetas-container"></div>
 
     <script>
-    const PRODUCTO_IDS = [{% for p in productos %}{{ p.pk }},{% endfor %}];
+    var PRODUCTO_IDS = [{% for p in productos %}{{ p.pk }},{% endfor %}];
 
     function renderizarPreview() {
-        const container = document.getElementById('etiquetas-container');
+        var container = document.getElementById('etiquetas-container');
         container.innerHTML = '';
-        PRODUCTO_IDS.forEach(pid => {
-            const qty = parseInt(document.getElementById(`qty-${pid}`)?.value || 1, 10);
-            const tpl = document.getElementById(`tpl-${pid}`);
+        PRODUCTO_IDS.forEach(function(pid) {
+            var qty = parseInt(document.getElementById('qty-' + pid).value || 1, 10);
+            var tpl = document.getElementById('tpl-' + pid);
             if (!tpl) return;
-            for (let i = 0; i < qty; i++) {
+            for (var i = 0; i < qty; i++) {
                 container.appendChild(tpl.content.cloneNode(true));
             }
         });
     }
 
-    function imprimirConCantidades() {
-        // Pre-render all labels on main page first
+    function imprimir() {
         renderizarPreview();
-
-        const win = window.open('', '_blank');
-        if (!win) {
-            alert('El navegador bloqueó la ventana emergente.\nPermite ventanas emergentes para esta página e intenta de nuevo.');
-            return;
-        }
-
-        const baseHref = location.origin;
-
-        win.document.write(
-            '<!DOCTYPE html><html lang="es"><head>' +
-            '<meta charset="UTF-8">' +
-            '<base href="' + baseHref + '">' +
-            '<title>Imprimir Etiquetas<\/title>' +
-            '<style>' +
-            '* { box-sizing: border-box; margin: 0; padding: 0; }' +
-            'body { font-family: Arial, sans-serif; background: #f1f5f9; }' +
-            '.toolbar { background: #1e293b; color: white; padding: 10px 16px; display: flex; align-items: center; gap: 10px; }' +
-            '.btn-print { background: #2563EB; color: white; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }' +
-            '.btn-print:disabled { background: #64748b; cursor: wait; }' +
-            '.tip { background: #0f172a; color: #64748b; font-size: 10px; padding: 4px 16px; }' +
-            '#labels { padding: 16px; display: block; }' +
-            '.etiqueta { background: white; width: 90mm; height: 29mm; padding: 1.5mm 1mm;' +
-            '  display: flex; flex-direction: row; align-items: stretch;' +
-            '  overflow: hidden; border: 1.5px dashed #94a3b8; margin-bottom: 10px; }' +
-            '.col-info { display: flex; flex-direction: column; justify-content: center;' +
-            '  align-items: flex-start; width: 22mm; min-width: 22mm;' +
-            '  padding-right: 1mm; border-right: 1px solid #ddd; }' +
-            '.precio { font-size: 9pt; font-weight: bold; line-height: 1.1; white-space: nowrap; }' +
-            '.talla-color { font-size: 5.5pt; color: #333; line-height: 1.4; margin-top: 1mm; }' +
-            '.col-barcode { flex: 1; display: flex; flex-direction: column;' +
-            '  align-items: center; justify-content: center; padding: 0 1mm; overflow: hidden; }' +
-            '.col-barcode img { max-width: 100%; max-height: 18mm; object-fit: contain; display: block; }' +
-            '.no-barcode { font-size: 8pt; font-weight: bold; letter-spacing: 1px; color: #222; text-align: center; }' +
-            '.sku-text { font-size: 4.5pt; color: #555; text-align: center; white-space: nowrap;' +
-            '  overflow: hidden; text-overflow: ellipsis; width: 100%; margin-top: 1mm; }' +
-            '@page { margin: 0; }' +
-            '@media print {' +
-            '  .toolbar, .tip { display: none !important; }' +
-            '  #labels { padding: 0; display: block; }' +
-            '  body { background: white; }' +
-            '  .etiqueta { border: none; margin: 0; page-break-after: always; break-after: page; }' +
-            '}' +
-            '<\/style><\/head><body>' +
-            '<div class="toolbar">' +
-            '<button id="btnPrint" class="btn-print" disabled>Cargando...</button>' +
-            '<\/div>' +
-            '<div class="tip">Brother QL-800 · Papel: Etiqueta estándar 29×90 mm · Orientación: Horizontal · Escala: 100%<\/div>' +
-            '<div id="labels"><\/div>' +
-            '<script>' +
-            'function esperarImagenesYImprimir() {' +
-            '  var btn = document.getElementById("btnPrint");' +
-            '  var imgs = Array.from(document.querySelectorAll("#labels img"));' +
-            '  var pending = imgs.filter(function(i) { return !i.complete || i.naturalWidth === 0; });' +
-            '  if (pending.length === 0) {' +
-            '    btn.textContent = "🖨️ Imprimir";' +
-            '    btn.disabled = false;' +
-            '    btn.onclick = function() { window.print(); };' +
-            '    return;' +
-            '  }' +
-            '  var done = 0;' +
-            '  pending.forEach(function(img) {' +
-            '    img.onload = img.onerror = function() {' +
-            '      done++;' +
-            '      if (done >= pending.length) {' +
-            '        btn.textContent = "🖨️ Imprimir";' +
-            '        btn.disabled = false;' +
-            '        btn.onclick = function() { window.print(); };' +
-            '      }' +
-            '    };' +
-            '  });' +
-            '}' +
-            '<\/script>' +
-            '<\/body><\/html>'
-        );
-        win.document.close();
-
-        // Inject pre-rendered labels via DOM, then wait for images
-        const labelsEl = win.document.getElementById('labels');
-        if (labelsEl) {
-            labelsEl.innerHTML = document.getElementById('etiquetas-container').innerHTML;
-        }
-        // Run image-wait script after labels are injected
-        if (win.esperarImagenesYImprimir) {
-            win.esperarImagenesYImprimir();
-        }
+        window.print();
     }
 
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', function() {
         renderizarPreview();
-        PRODUCTO_IDS.forEach(pid => {
-            const input = document.getElementById(`qty-${pid}`);
+        PRODUCTO_IDS.forEach(function(pid) {
+            var input = document.getElementById('qty-' + pid);
             if (input) input.addEventListener('change', renderizarPreview);
         });
     });
