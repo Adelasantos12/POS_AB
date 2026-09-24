@@ -232,10 +232,45 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<title>Imprimir Etiquetas — Adelé</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; background: white; margin: 0; padding: 0; }
-@page { margin: 0; }
+body { font-family: Arial, sans-serif; background: #f1f5f9; }
+
+/* Barra superior (solo en pantalla, se oculta al imprimir) */
+.toolbar {
+    background: #1e293b;
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+}
+.toolbar strong { color: #93c5fd; }
+.btn-print {
+    background: #2563EB;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.btn-print:hover { background: #1d4ed8; }
+
+/* Área de previsualización (solo en pantalla) */
+.preview-area {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+/* Etiqueta — se ve igual en pantalla y en papel */
 .etiqueta {
     background: white;
     width: 90mm;
@@ -245,7 +280,7 @@ body { font-family: Arial, sans-serif; background: white; margin: 0; padding: 0;
     flex-direction: row;
     align-items: stretch;
     overflow: hidden;
-    page-break-after: always;
+    border: 1.5px dashed #94a3b8;
 }
 .col-info {
     display: flex;
@@ -271,27 +306,31 @@ body { font-family: Arial, sans-serif; background: white; margin: 0; padding: 0;
 .col-barcode img { max-width: 100%; max-height: 18mm; object-fit: contain; display: block; }
 .no-barcode { font-size: 8pt; font-weight: bold; letter-spacing: 1px; color: #222; text-align: center; }
 .sku-text { font-size: 4.5pt; color: #555; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; margin-top: 1mm; }
+
+/* Al imprimir: ocultar toolbar y quitar bordes/padding */
+@page { margin: 0; }
+@media print {
+    .toolbar { display: none !important; }
+    body { background: white; }
+    .preview-area { padding: 0; gap: 0; }
+    .etiqueta { border: none; page-break-after: always; }
+}
 </style>
 </head>
-<body>${labelsHTML}</body>
+<body>
+<div class="toolbar">
+    <div>
+        <div>✅ Verifica que el código de barras se vea correcto, <strong>luego haz clic en Imprimir</strong></div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:3px;">Brother QL-800 · Papel: Etiqueta estándar 29×90mm · Orientación: Horizontal · Escala: 100%</div>
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
+</div>
+<div class="preview-area">
+${labelsHTML}
+</div>
+</body>
 </html>`);
         win.document.close();
-
-        // Esperar a que carguen las imágenes de código de barras antes de imprimir
-        const imgs = win.document.images;
-        if (imgs.length === 0) {
-            setTimeout(() => { win.focus(); win.print(); }, 300);
-        } else {
-            let pending = imgs.length;
-            function tryPrint() {
-                pending--;
-                if (pending <= 0) setTimeout(() => { win.focus(); win.print(); }, 150);
-            }
-            Array.from(imgs).forEach(img => {
-                if (img.complete) tryPrint();
-                else { img.onload = tryPrint; img.onerror = tryPrint; }
-            });
-        }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
