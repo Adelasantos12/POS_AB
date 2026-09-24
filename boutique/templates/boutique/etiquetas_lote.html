@@ -95,25 +95,25 @@
         @page { size: 90mm 29mm; margin: 0; }
 
         @media print {
+            /* Let the document grow to fit N labels; never clip it */
             html, body {
                 margin: 0;
                 padding: 0;
                 width: 90mm;
-                height: 29mm;
-                overflow: hidden;
+                height: auto;
+                overflow: visible;
                 background: white;
             }
-            /* Hide everything except labels */
+
+            /* Hide every non-label element with display:none */
             .no-print,
             .qty-controls,
-            template { display: none !important; }
+            template,
+            script { display: none !important; }
 
             #etiquetas-container { display: block; }
 
             .etiqueta {
-                border: none;
-                margin: 0;
-                padding: 1.5mm 1mm;
                 width: 90mm;
                 height: 29mm;
                 box-sizing: border-box;
@@ -121,10 +121,20 @@
                 flex-direction: row;
                 align-items: stretch;
                 overflow: hidden;
-                page-break-after: always;
+                margin: 0;
+                padding: 1.5mm 1mm;
+                border: none;
+                /* No transform, position:absolute/fixed, or extra margins */
                 break-after: page;
+                page-break-after: always;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }
+
+            /* Last label: don't force a blank trailing page */
+            .etiqueta:last-child {
+                break-after: auto;
+                page-break-after: auto;
             }
         }
 
