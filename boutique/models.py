@@ -415,6 +415,40 @@ class Producto(models.Model):
                 logging.getLogger(__name__).error(f"Error generando barcode: {e}")
 
         super().save(*args, **kwargs)
+
+    @property
+    def barcode_svg(self):
+        """Return inline SVG barcode (solid fill rects, prints without 'Print backgrounds')."""
+        try:
+            import re
+            import barcode
+            from barcode.writer import SVGWriter
+            from io import BytesIO
+            CODE128 = barcode.get_barcode_class('code128')
+            buf = BytesIO()
+            CODE128(self.sku, writer=SVGWriter()).write(buf, options={
+                'write_text': True,
+                'module_height': 15.0,
+                'text_distance': 5.0,
+                'font_size': 10,
+            })
+            svg = buf.getvalue().decode('utf-8')
+            # Strip XML declaration
+            svg = re.sub(r'^<\?xml[^?]*\?>\s*', '', svg, flags=re.DOTALL)
+            # Extract dimensions and build a viewBox so CSS can resize the SVG
+            m = re.search(r'<svg\b[^>]*width="([\d.]+)mm"[^>]*height="([\d.]+)mm"', svg)
+            if m:
+                w, h = m.group(1), m.group(2)
+                svg = re.sub(
+                    r'(<svg\b[^>]*?)\s+width="[^"]*"(\s+height="[^"]*")?',
+                    f'\\1 viewBox="0 0 {w} {h}" width="100%" height="auto"',
+                    svg,
+                    count=1,
+                )
+            return svg
+        except Exception:
+            return ''
+
     def __str__(self):
         cat_nombre = self.categoria.nombre if self.categoria else "Sin Categoria"
         modelo_str = self.modelo.nombre if self.modelo else "Sin Modelo"

@@ -11,6 +11,7 @@
             background: #eee;
         }
 
+        /* ── Label (screen) ── */
         .etiqueta {
             background: white;
             width: 90mm;
@@ -22,6 +23,8 @@
             flex-direction: row;
             align-items: stretch;
             overflow: hidden;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
         .col-info {
@@ -59,13 +62,16 @@
             overflow: hidden;
         }
 
-        .col-barcode img {
+        /* Inline SVG barcode */
+        .col-barcode svg {
             max-width: 100%;
             max-height: 18mm;
-            object-fit: contain;
             display: block;
+            width: 100%;
+            height: auto;
         }
 
+        /* Fallback for products without barcode */
         .no-barcode {
             font-size: 8pt;
             font-weight: bold;
@@ -85,20 +91,44 @@
             margin-top: 1mm;
         }
 
-        @page { margin: 0; }
+        /* ── Print ── */
+        @page { size: 90mm 29mm; margin: 0; }
 
         @media print {
-            body { background: white; }
-            .no-print, .qty-controls { display: none !important; }
+            html, body {
+                margin: 0;
+                padding: 0;
+                width: 90mm;
+                height: 29mm;
+                overflow: hidden;
+                background: white;
+            }
+            /* Hide everything except labels */
+            .no-print,
+            .qty-controls,
+            template { display: none !important; }
+
             #etiquetas-container { display: block; }
+
             .etiqueta {
                 border: none;
                 margin: 0;
+                padding: 1.5mm 1mm;
+                width: 90mm;
+                height: 29mm;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: row;
+                align-items: stretch;
+                overflow: hidden;
                 page-break-after: always;
                 break-after: page;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
 
+        /* ── Header ── */
         .no-print {
             background: #1e293b;
             color: white;
@@ -123,6 +153,7 @@
             font-size: 11px;
         }
 
+        /* ── Qty controls ── */
         .qty-controls {
             display: flex;
             align-items: center;
@@ -178,8 +209,10 @@
             </div>
         </div>
         <div class="col-barcode">
-            {% if p.barcode_image %}
-                <img src="{{ p.barcode_image.url }}" alt="{{ p.sku }}">
+            {% if p.barcode_svg %}
+                {{ p.barcode_svg|safe }}
+            {% elif p.barcode_image %}
+                <img src="{{ p.barcode_image.url }}" alt="{{ p.sku }}" style="max-width:100%;max-height:18mm;display:block;">
             {% else %}
                 <div class="no-barcode">{{ p.sku }}</div>
             {% endif %}
@@ -209,7 +242,22 @@
 
     function imprimir() {
         renderizarPreview();
-        window.print();
+        // Wait for any <img> fallbacks to load before opening the print dialog
+        var imgs = Array.from(document.querySelectorAll('#etiquetas-container img'));
+        var pending = imgs.filter(function(img) {
+            return !img.complete || img.naturalWidth === 0;
+        });
+        if (pending.length === 0) {
+            window.print();
+            return;
+        }
+        var done = 0;
+        pending.forEach(function(img) {
+            img.onload = img.onerror = function() {
+                done++;
+                if (done >= pending.length) window.print();
+            };
+        });
     }
 
     window.addEventListener('DOMContentLoaded', function() {
