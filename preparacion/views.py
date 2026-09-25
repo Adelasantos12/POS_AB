@@ -127,8 +127,8 @@ def agregar_existente(request):
         return _pagina(request, 'No se encontró ese SKU. Revisa el código impreso.')
     if VariantePreparada.objects.filter(producto=producto).exists():
         return _pagina(request, 'Ese vestido ya está en preparación; usa su tarjeta para imprimir etiquetas.')
-    VariantePreparada.objects.create(producto=producto)
-    return redirect('preparacion:inicio')
+    variante = VariantePreparada.objects.create(producto=producto)
+    return redirect(f'{reverse("preparacion:inicio")}#variante-{variante.pk}')
 
 
 def _etiquetas_pdf(piezas):

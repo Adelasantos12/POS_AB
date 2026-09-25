@@ -104,13 +104,13 @@
                     <th>Talla/Color</th>
                     <th>Precio</th>
                     <th>Stock</th>
-                    {% if es_admin %}<th>Acciones</th>{% endif %}
+                    <th>Etiquetas y acciones</th>
                 </tr>
             </thead>
             <tbody>
                 {% for p in productos %}
                 <tr id="row-{{ p.id }}">
-                    <td style="padding-left: 20px;"><input type="checkbox" class="product-check form-check-input" value="{{ p.id }}"></td>
+                    <td style="padding-left: 20px;">{% if not p.en_preparacion %}<input type="checkbox" class="product-check form-check-input" value="{{ p.id }}">{% endif %}</td>
                     <td>
                         {% if p.foto %}
                         <img src="{{ p.foto.url }}"
@@ -130,14 +130,16 @@
                         {% endif %}
                     </td>
                     <td>
-                        <div class="fw-bold">{{ p.categoria.nombre }}</div>
-                        <small class="text-muted">{{ p.sku }}</small>
+                        <div class="fw-bold">{{ p.modelo.nombre|default:p.rasgo1|default:p.categoria.nombre }}</div>
+                        <small class="text-muted">{{ p.categoria.nombre }} · {{ p.sku }}</small>
                     </td>
                     <td class="rasgos-col">{{ p.rasgo1 }} <br> <small>{{ p.rasgo2 }}</small></td>
-                    <td>{{ p.talla }} / {{ p.color.nombre }}</td>
+                    <td><strong>{{ p.color.nombre }}</strong> · Talla {{ p.talla }}{% if p.tela %}<br><small class="text-muted">{{ p.tela.nombre }}</small>{% endif %}</td>
                     <td class="precio-col fw-bold">${{ p.precio_venta }}</td>
                     <td class="stock-col">
-                        {% if p.cantidad_actual == 0 %}
+                        {% if p.en_preparacion and not p.activo %}
+                        <span class="badge bg-secondary">Pendiente de conteo</span>
+                        {% elif p.cantidad_actual == 0 %}
                         <span class="status-badge status-inactive">
                             <i class="bi bi-exclamation-circle me-1"></i>Agotado
                         </span>
@@ -155,22 +157,37 @@
                         </span>
                         {% endif %}
                     </td>
-                    {% if es_admin %}
                     <td>
+                        {% if p.en_preparacion %}
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'preparacion:inicio' %}#variante-{{ p.preparacion_id }}">Imprimir etiquetas de esta variante</a>
+                        {% else %}
+                        <form action="{% url 'preparacion:agregar_existente' %}" method="post" class="d-inline">{% csrf_token %}
+                            <input type="hidden" name="sku" value="{{ p.sku }}">
+                            <button class="btn btn-sm btn-outline-primary" type="submit">Preparar y etiquetar</button>
+                        </form>
+                        {% endif %}
+                        {% if es_admin %}
                         <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteProduct({{ p.id }})">
                             <i class="bi bi-trash"></i>
                         </button>
+                        {% endif %}
                     </td>
-                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+{% if productos.paginator.num_pages > 1 %}
+<nav aria-label="Páginas del inventario" class="d-flex justify-content-center align-items-center gap-3 mt-3">
+    {% if productos.has_previous %}<a href="?q={{ q|urlencode }}&page={{ productos.previous_page_number }}">← Anteriores</a>{% endif %}
+    <span>Página {{ productos.number }} de {{ productos.paginator.num_pages }}</span>
+    {% if productos.has_next %}<a href="?q={{ q|urlencode }}&page={{ productos.next_page_number }}">Siguientes →</a>{% endif %}
+</nav>
+{% endif %}
 
 <!-- Modal Nuevo Producto -->
 <div class="modal fade" id="modalNuevoProducto" tabindex="-1">

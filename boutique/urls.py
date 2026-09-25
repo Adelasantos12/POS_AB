@@ -4,6 +4,7 @@ from . import views
 from . import views_agenda
 from . import views_apartados
 from .services import label_pdf
+from preparacion import inventory as prep_inventory
 
 urlpatterns = [
     # ── Pública — sin login ──────────────────────────────────────
@@ -44,7 +45,7 @@ urlpatterns = [
     path('api/sync/', views.api_sync, name='api_sync'),
 
     # Inventario
-    path('inventario/', views.inventario_view, name='inventario_view'),
+    path('inventario/', prep_inventory.inventario_view, name='inventario_view'),
     path('inventario/pendientes/', views.pendientes_regularizacion, name='pendientes_regularizacion'),
     path('inventario/subida-bloque/', views.subida_bloque, name='subida_bloque'),
     path('api/subida-bloque/', views.api_subida_bloque, name='api_subida_bloque'),

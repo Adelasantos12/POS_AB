@@ -85,10 +85,10 @@
     </div>
   {% endif %}
 
-  <div class="prep-card">
+  <div class="prep-card" id="variantes">
     <div class="prep-title">{{ variantes|length }} variantes preparadas</div>
     {% for v in variantes %}
-      <div class="prep-variant">
+      <div class="prep-variant" id="variante-{{ v.pk }}">
         <strong>{{ v.producto.modelo.nombre }}</strong> · {{ v.producto.color.nombre }} · {{ v.producto.talla }}{% if v.producto.tela %} · {{ v.producto.tela.nombre }}{% endif %}
         <div class="prep-code">{{ v.producto.sku }}</div>
         {% if not jornada %}<a href="?modelo={{ v.producto.modelo_id }}#nuevo">Añadir otra talla o color de este modelo</a>{% endif %}
