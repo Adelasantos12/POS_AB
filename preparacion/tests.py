@@ -39,9 +39,17 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         pieces = list(PiezaEtiqueta.objects.order_by('pk'))
         self.assertEqual(len({p.codigo for p in pieces}), 3)
+        verification = self.client.post(reverse('preparacion:verificar_etiqueta'),
+                                        {'codigo': pieces[0].codigo})
+        self.assertEqual(verification.status_code, 200)
+        self.assertEqual(verification.json()['sku'], product.sku)
+        self.assertIn('pendiente de conteo', verification.json()['estado'])
+        self.assertEqual(self.client.post(reverse('preparacion:verificar_etiqueta'),
+                                          {'codigo': '800009999999'}).status_code, 404)
         pending = self.client.get('/api/search-global/', {'q': pieces[0].codigo}).json()
         self.assertEqual(pending['results'], [])
         self.assertIn('aún no se contó', pending['message'])
+        self.assertIn(product.sku, pending['message'])
         product.refresh_from_db()
         self.assertEqual(product.cantidad_actual, 0)
 

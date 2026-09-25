@@ -20,6 +20,16 @@
   <p class="prep-note">1. Registrar una cantidad estimada · 2. Etiquetar · 3. Contar. La estimación no suma inventario: el número definitivo será el de etiquetas distintas escaneadas.</p>
   {% if error %}<div class="prep-error mb-3" role="alert">{{ error }}</div>{% endif %}
 
+  <div class="prep-card">
+    <div class="prep-title">Comprobar una etiqueta</div>
+    <p class="prep-note">Escanéala para ver su modelo, variante y estado. Esta comprobación no suma inventario.</p>
+    <form id="verify-form" action="{% url 'preparacion:verificar_etiqueta' %}" method="post">{% csrf_token %}
+      <label for="verify-code">Código de la etiqueta</label>
+      <div class="d-flex gap-2"><input id="verify-code" name="codigo" class="form-control" autocomplete="off" placeholder="Ej. 800000000002" required><button class="btn btn-outline-primary" type="submit">Comprobar</button></div>
+    </form>
+    <div id="verify-result" class="mt-3" role="status" aria-live="polite"></div>
+  </div>
+
   {% if cerrada %}
     <div class="prep-ok">Inventario inicial cerrado. Se contaron {{ total_contadas }} vestidos. Las etiquetas no escaneadas no se sumaron.</div>
     <div class="prep-card mt-3">
@@ -110,6 +120,19 @@
 </div>
 <script>
 (function() {
+  var verify = document.getElementById('verify-form');
+  verify.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var input = document.getElementById('verify-code'), box = document.getElementById('verify-result');
+    var data = new FormData(verify);
+    try {
+      var response = await fetch(verify.action, {method:'POST', body:data});
+      var result = await response.json();
+      box.className = result.ok ? 'prep-ok mt-3' : 'prep-error mt-3';
+      box.textContent = result.message;
+    } catch (_) { box.className = 'prep-error mt-3'; box.textContent = 'Sin conexión. Intenta de nuevo.'; }
+    input.focus();
+  });
   var model = document.getElementById('modelo_id'), name = document.getElementById('modelo_nuevo');
   if (model) {
     function toggleModel() { name.disabled = !!model.value; name.placeholder = model.value ? 'Se usará el modelo elegido' : 'Ej. Vestido Aurora'; }

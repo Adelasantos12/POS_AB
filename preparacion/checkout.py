@@ -32,12 +32,13 @@ def buscar(request):
             'unit_code': piece.codigo,
         }]})
     if piece:
+        sku = piece.variante.producto.sku
         if piece.vendida:
-            message = 'Esta etiqueta ya se vendió. Revisa el vestido antes de cobrar.'
+            message = f'La etiqueta {piece.codigo} corresponde a {sku}, pero ya se vendió. Revisa el vestido antes de cobrar.'
         elif piece.contada:
-            message = 'Esta etiqueta ya se contó, pero el inventario inicial sigue abierto. Cierra el conteo cuando terminen toda la tienda.'
+            message = f'La etiqueta {piece.codigo} corresponde a {sku}. Ya se contó, pero el inventario inicial sigue abierto. Cierra el conteo cuando terminen toda la tienda.'
         else:
-            message = 'La etiqueta existe, pero aún no se contó ni se recibió. Preparar o imprimir no suma inventario.'
+            message = f'La etiqueta {piece.codigo} corresponde a {sku}, pero aún no se contó ni se recibió. Preparar o imprimir no suma inventario.'
         return JsonResponse({'results': [], 'message': message})
     # An unknown serial must never fall through to an unrelated product.
     if code.isdigit() and code.startswith('8') and len(code) == 12:

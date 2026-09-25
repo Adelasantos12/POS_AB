@@ -55,6 +55,39 @@ def inicio(request):
 @require_POST
 @login_required
 @profile_permission_required(['Inventario', 'Vendedor'])
+def verificar_etiqueta(request):
+    codigo = request.POST.get('codigo', '').strip()
+    pieza = (PiezaEtiqueta.objects.select_related(
+        'variante__producto__modelo', 'variante__producto__color',
+        'variante__producto__tela')
+        .filter(codigo=codigo).first())
+    if not pieza:
+        return JsonResponse({'ok': False, 'message':
+                             'Este código no existe en la app. Revisa la etiqueta antes de imprimir más.'}, status=404)
+    producto = pieza.variante.producto
+    cierre = JornadaConteo.objects.filter(abierta=False).first()
+    if pieza.vendida:
+        estado = 'Vendida'
+    elif pieza.contada and pieza.variante.confirmada:
+        estado = 'Lista para vender'
+    elif pieza.contada:
+        estado = 'Contada; falta cerrar el inventario inicial'
+    elif cierre and pieza.emitida <= cierre.cerrada:
+        estado = 'No fue contada al cerrar el inventario; revisar antes de usar'
+    else:
+        estado = 'Creada; pendiente de conteo. Aún no se puede vender'
+    detalles = ' · '.join(filter(None, [producto.modelo.nombre if producto.modelo else '',
+                                      producto.color.nombre if producto.color else '',
+                                      producto.talla,
+                                      producto.tela.nombre if producto.tela else '']))
+    return JsonResponse({'ok': True, 'codigo': pieza.codigo, 'sku': producto.sku,
+                         'estado': estado,
+                         'message': f'{pieza.codigo} → {producto.sku} · {detalles}. {estado}.'})
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
 def guardar_variante(request):
     try:
         estimada = int(request.POST.get('cantidad_estimada') or 0)
