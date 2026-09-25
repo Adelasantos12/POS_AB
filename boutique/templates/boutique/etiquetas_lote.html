@@ -32,23 +32,23 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            width: 26mm;
-            min-width: 26mm;
-            padding-left: 1.5mm;
-            padding-right: 1.5mm;
+            width: 22mm;
+            min-width: 22mm;
+            padding-left: 1mm;
+            padding-right: 1mm;
             border-right: 1px solid #ddd;
             text-align: center;
         }
 
         .precio {
-            font-size: 12pt;
+            font-size: 11pt;
             font-weight: bold;
             line-height: 1.1;
             white-space: nowrap;
         }
 
         .talla-color {
-            font-size: 7.5pt;
+            font-size: 7pt;
             color: #333;
             line-height: 1.4;
             margin-top: 1mm;
@@ -61,16 +61,14 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 0 1mm;
+            padding: 0 3mm;
             overflow: hidden;
         }
 
-        /* Inline SVG barcode */
+        /* Screen: allow SVG to scale down if label preview is small */
         .col-barcode svg {
-            max-width: 100%;
-            max-height: 18mm;
             display: block;
-            width: 100%;
+            max-width: 100%;
             height: auto;
         }
 
@@ -84,14 +82,15 @@
         }
 
         .sku-text {
-            font-size: 4.5pt;
-            color: #555;
+            font-size: 6pt;
+            color: #222;
             text-align: center;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             width: 100%;
             margin-top: 1mm;
+            letter-spacing: 0.3px;
         }
 
         /* ── Print ── */
@@ -137,6 +136,14 @@
             .etiqueta + .etiqueta {
                 break-before: page;
                 page-break-before: always;
+            }
+
+            /* Barcode: render at native mm size — no CSS scaling */
+            .col-barcode svg {
+                max-width: none;
+                max-height: none;
+                width: auto;
+                height: auto;
             }
         }
 

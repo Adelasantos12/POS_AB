@@ -418,7 +418,14 @@ class Producto(models.Model):
 
     @property
     def barcode_svg(self):
-        """Return inline SVG barcode (solid fill rects, prints without 'Print backgrounds')."""
+        """Return inline SVG barcode sized to its native mm dimensions.
+
+        module_width=0.3 mm → correct physical bar width at 300 dpi (≈3.5 px/module).
+        write_text=False → SKU is shown as a separate text element in the template.
+        Native width/height are kept so @media print renders at exact physical size.
+        viewBox is added so CSS max-width:100% can scale it down on screen when needed.
+        shape-rendering=crispEdges prevents anti-aliasing on bar edges.
+        """
         try:
             import re
             import barcode
@@ -427,23 +434,26 @@ class Producto(models.Model):
             CODE128 = barcode.get_barcode_class('code128')
             buf = BytesIO()
             CODE128(self.sku, writer=SVGWriter()).write(buf, options={
-                'write_text': True,
+                'write_text': False,
+                'module_width': 0.3,
                 'module_height': 15.0,
-                'text_distance': 5.0,
-                'font_size': 10,
+                'quiet_zone': 3.0,
             })
             svg = buf.getvalue().decode('utf-8')
-            # Strip XML declaration
             svg = re.sub(r'^<\?xml[^?]*\?>\s*', '', svg, flags=re.DOTALL)
-            # Extract dimensions and build a viewBox so CSS can resize the SVG
-            m = re.search(r'<svg\b[^>]*width="([\d.]+)mm"[^>]*height="([\d.]+)mm"', svg)
-            if m:
-                w, h = m.group(1), m.group(2)
+            # Extract native mm dimensions
+            wm = re.search(r'width="([\d.]+)mm"', svg)
+            hm = re.search(r'height="([\d.]+)mm"', svg)
+            if wm and hm:
+                w, h = wm.group(1), hm.group(1)
+                # Rebuild <svg> tag: keep native mm width/height, add viewBox + crispEdges
                 svg = re.sub(
-                    r'(<svg\b[^>]*?)\s+width="[^"]*"(\s+height="[^"]*")?',
-                    f'\\1 viewBox="0 0 {w} {h}" width="100%" height="auto"',
-                    svg,
-                    count=1,
+                    r'<svg\b[^>]*>',
+                    (f'<svg xmlns="http://www.w3.org/2000/svg"'
+                     f' viewBox="0 0 {w} {h}"'
+                     f' width="{w}mm" height="{h}mm"'
+                     f' shape-rendering="crispEdges">'),
+                    svg, count=1,
                 )
             return svg
         except Exception:
