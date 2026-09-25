@@ -12,8 +12,8 @@ from boutique.models import Producto
 
 LABEL_WIDTH = 90 * mm
 LABEL_HEIGHT = 29 * mm
-MODULE_WIDTH = 0.3 * mm
-QUIET_ZONE = 3 * mm
+MODULE_WIDTH = 0.4 * mm
+QUIET_ZONE = 4 * mm
 BAR_HEIGHT = 15 * mm
 
 
@@ -32,22 +32,22 @@ def render_labels(pdf_file, products):
         sku = product.sku or ''
         modules = barcode.get_barcode_class('code128')(sku).build()[0]
         symbol_width = len(modules) * MODULE_WIDTH + 2 * QUIET_ZONE
-        if symbol_width > 66 * mm:
-            raise ValueError(f'El SKU {sku} no cabe en la etiqueta a 0.3 mm por módulo')
+        if symbol_width > 70 * mm:
+            raise ValueError(f'El SKU {sku} no cabe en la etiqueta a 0.4 mm por módulo')
 
-        # Price and variants occupy a fixed left column. The barcode, including
-        # both quiet zones, is centred in the remaining 66 mm of the label.
-        left_centre = 10 * mm
+        # The narrow information column leaves enough physical space for wide
+        # bars and untouched white quiet zones on both sides.
+        left_centre = 9 * mm
         pdf.setFillColorRGB(0, 0, 0)
         _fit_text(pdf, f'${product.precio_venta:,.0f}', left_centre, 17 * mm,
-                  17 * mm, font='Helvetica-Bold', size=11)
+                  16 * mm, font='Helvetica-Bold', size=10)
         if product.talla:
-            _fit_text(pdf, f'T: {product.talla}', left_centre, 11.5 * mm, 17 * mm)
+            _fit_text(pdf, f'T: {product.talla}', left_centre, 11.5 * mm, 16 * mm)
         if product.color:
             _fit_text(pdf, product.color.nombre.upper(), left_centre, 8 * mm,
-                      17 * mm, size=6.5)
+                      16 * mm, size=6.5)
 
-        symbol_x = 22 * mm + (66 * mm - symbol_width) / 2
+        symbol_x = 19 * mm + (70 * mm - symbol_width) / 2
         bars_x = symbol_x + QUIET_ZONE
         run_start = None
         for index, bit in enumerate(modules + '0'):
@@ -58,7 +58,7 @@ def render_labels(pdf_file, products):
                          (index - run_start) * MODULE_WIDTH, BAR_HEIGHT,
                          fill=1, stroke=0)
                 run_start = None
-        _fit_text(pdf, sku, 55 * mm, 4.2 * mm, 60 * mm, size=7)
+        _fit_text(pdf, sku, 54 * mm, 4.2 * mm, 68 * mm, size=7)
         pdf.showPage()
     pdf.save()
 
