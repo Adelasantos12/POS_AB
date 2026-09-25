@@ -736,12 +736,14 @@
 
     // Global Search (Products, Orders, Layaways)
     document.getElementById('productSearch').addEventListener('input', function(e) {
-        const q = e.target.value;
+        // Some scanners configured as a different keyboard layout emit an
+        // apostrophe for the hyphen in our SKU. Keep the stored SKU intact.
+        const q = e.target.value.replace(/[’']/g, '-');
         if (q.length < 2) {
             document.getElementById('searchResults').innerHTML = '';
             return;
         }
-        fetch(`/api/search-global/?q=${q}`)
+        fetch(`/api/search-global/?q=${encodeURIComponent(q)}`)
             .then(r => r.json())
             .then(data => {
                 let html = '';
