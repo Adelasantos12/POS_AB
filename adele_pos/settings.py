@@ -27,6 +27,7 @@ if ALLOWED_HOSTS_STRING:
 INSTALLED_APPS = [
     'whitenoise.runserver_nostatic',
     'boutique.apps.BoutiqueConfig',
+    'preparacion.apps.PreparacionConfig',
     'django_ratelimit',
     'django.contrib.admin',
     'django.contrib.auth',

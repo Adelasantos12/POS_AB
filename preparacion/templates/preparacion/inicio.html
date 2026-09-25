@@ -1,0 +1,163 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Preparar vestidos{% endblock %}
+{% block extra_css %}
+.prep-wrap { max-width: 1050px; margin: auto; }
+.prep-card { background: white; border: 1px solid #e4e7eb; border-radius: 18px; padding: 1.5rem; margin-bottom: 1.25rem; }
+.prep-title { font-size: 1.4rem; font-weight: 800; }
+.prep-note { font-size: 1rem; color: #45536a; }
+.prep-card label { font-weight: 700; margin-bottom: .4rem; }
+.prep-card .form-control, .prep-card .form-select { min-height: 48px; font-size: 1rem; }
+.prep-card .btn { min-height: 48px; font-size: 1rem; }
+.prep-variant { border-top: 1px solid #e4e7eb; padding: 1rem 0; }
+.prep-code { font-family: monospace; font-size: 1.1rem; font-weight: 700; }
+.prep-ok { background: #e8f7ec; color: #12532d; padding: 1rem; border-radius: 12px; font-size: 1.15rem; }
+.prep-error { background: #fce8e8; color: #8a1111; padding: 1rem; border-radius: 12px; font-size: 1.15rem; }
+{% endblock %}
+{% block content %}
+<div class="prep-wrap">
+  <a href="{% url 'inventario_view' %}">← Inventario</a>
+  <h1 class="mt-3">Preparar vestidos</h1>
+  <p class="prep-note">1. Registrar · 2. Etiquetar · 3. Contar. Preparar etiquetas no suma existencias. En el conteo inicial solo se activarán los vestidos que sigan en la tienda.</p>
+  {% if error %}<div class="prep-error mb-3" role="alert">{{ error }}</div>{% endif %}
+
+  {% if cerrada %}
+    <div class="prep-ok">Inventario inicial cerrado. Se contaron {{ total_contadas }} vestidos. Las etiquetas no escaneadas no se sumaron.</div>
+    <div class="prep-card mt-3">
+      <div class="prep-title">Recibir mercancía nueva</div>
+      <p class="prep-note">Primero imprime y pega una etiqueta por vestido. Después escanea cada etiqueta aquí para sumar una pieza. Un segundo escaneo no suma nada.</p>
+      <form id="scan-form" action="{% url 'preparacion:recibir' %}" method="post">{% csrf_token %}
+        <label for="scan-code">Código del vestido recibido</label>
+        <div class="d-flex gap-2"><input id="scan-code" name="codigo" class="form-control" autocomplete="off" autofocus placeholder="Escanea aquí"><button class="btn btn-primary" type="submit">Recibir</button></div>
+      </form>
+      <div id="scan-result" class="mt-3" role="status" aria-live="assertive"></div>
+    </div>
+  {% elif jornada %}
+    <div class="prep-card">
+      <div class="prep-title">2. Contar los vestidos que están aquí</div>
+      <p class="prep-note">Escanea una etiqueta por vestido. Si repites una etiqueta, aparecerá una alerta y no se sumará dos veces.</p>
+      <form id="scan-form" action="{% url 'preparacion:escanear' %}" method="post">
+        {% csrf_token %}
+        <label for="scan-code">Código del vestido</label>
+        <div class="d-flex gap-2"><input id="scan-code" name="codigo" class="form-control" autocomplete="off" autofocus placeholder="Escanea aquí">
+        <button class="btn btn-primary" type="submit">Contar</button></div>
+      </form>
+      <div id="scan-result" class="mt-3" role="status" aria-live="assertive">{{ total_contadas }} vestidos contados</div>
+    </div>
+    <div class="prep-card">
+      <div class="prep-title">Revisar antes de terminar</div>
+      <p class="prep-note">Etiquetas impresas: {{ total_etiquetas }} · Vestidos escaneados: <span id="total-counted">{{ total_contadas }}</span>. Las etiquetas que no están físicamente en tienda quedarán fuera.</p>
+      <form action="{% url 'preparacion:cerrar_conteo' %}" method="post" onsubmit="return confirm('¿Terminaste de recorrer toda la tienda? Después del cierre ya no podrás sumar otra pieza a este inventario inicial.');">
+        {% csrf_token %}<input type="hidden" name="confirmar" value="SI">
+        <button type="submit" class="btn btn-outline-primary">Cerrar conteo y activar inventario</button>
+      </form>
+    </div>
+  {% endif %}
+  {% if not jornada %}
+    <div class="prep-card" id="nuevo">
+      <div class="prep-title">{% if cerrada %}Agregar nueva variante{% else %}1. Registrar un vestido y sus variantes{% endif %}</div>
+      <p class="prep-note">Elige un modelo existente o escribe uno nuevo. Después agrega color, tela y talla. Puedes volver otro día.</p>
+      <form action="{% url 'preparacion:guardar_variante' %}" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-6"><label for="modelo_id">Modelo existente</label><select class="form-select" name="modelo_id" id="modelo_id"><option value="">Crear modelo nuevo</option>{% for m in modelos %}<option value="{{ m.pk }}" {% if selected_model_id == m.pk|stringformat:'s' %}selected{% endif %}>{{ m.nombre }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><label for="modelo_nuevo">Nombre del modelo nuevo</label><input class="form-control" id="modelo_nuevo" name="modelo_nuevo" placeholder="Ej. Vestido Aurora"></div>
+          <div class="col-md-6"><label for="categoria_id">Categoría</label><select class="form-select" id="categoria_id" name="categoria_id"><option value="">Elige una categoría</option>{% for c in categorias %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><label for="foto">Foto del modelo (opcional)</label><input type="file" accept="image/*" class="form-control" id="foto" name="foto"></div>
+          <div class="col-12"><button type="button" id="ai-suggest" class="btn btn-outline-secondary">Sugerir datos de la foto con IA</button><span id="ai-message" class="ms-2 prep-note"></span></div>
+          <div class="col-md-6"><label for="color_id">Color</label><select class="form-select" id="color_id" name="color_id"><option value="">Escribir un color nuevo</option>{% for c in colores %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" id="color_nuevo" name="color_nuevo" placeholder="Color nuevo"></div>
+          <div class="col-md-6"><label for="tela_id">Tela</label><select class="form-select" id="tela_id" name="tela_id"><option value="">Escribir tela nueva (opcional)</option>{% for t in telas %}<option value="{{ t.pk }}">{{ t.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" id="tela_nueva" name="tela_nueva" placeholder="Tela nueva"></div>
+          <div class="col-md-6"><label for="talla">Talla</label><select class="form-select" id="talla" name="talla" required><option value="">Elige una talla</option>{% for t in tallas %}<option value="{{ t.nombre }}">{{ t.nombre }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><label for="precio">Precio</label><input class="form-control" type="number" min="1" step="0.01" id="precio" name="precio" required></div>
+          <div class="col-12"><button class="btn btn-primary" type="submit">Guardar variante sin sumar inventario</button></div>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+
+  {% if not jornada %}
+    <div class="prep-card">
+      <div class="prep-title">¿El modelo ya existe en el POS?</div>
+      <p class="prep-note">Escribe su SKU una vez para preparar sus etiquetas individuales, sin duplicar el producto.</p>
+      <form action="{% url 'preparacion:agregar_existente' %}" method="post" class="d-flex gap-2">{% csrf_token %}
+        <input class="form-control" name="sku" placeholder="Ej. VES-A8B609" required aria-label="SKU existente">
+        <button class="btn btn-outline-primary" type="submit">Usar este producto</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <div class="prep-card">
+    <div class="prep-title">{{ variantes|length }} variantes preparadas</div>
+    {% for v in variantes %}
+      <div class="prep-variant">
+        <strong>{{ v.producto.modelo.nombre }}</strong> · {{ v.producto.color.nombre }} · {{ v.producto.talla }}{% if v.producto.tela %} · {{ v.producto.tela.nombre }}{% endif %}
+        <div class="prep-code">{{ v.producto.sku }}</div>
+        {% if not jornada %}<a href="?modelo={{ v.producto.modelo_id }}#nuevo">Añadir otra talla o color de este modelo</a>{% endif %}
+        <div class="prep-note">Etiquetas creadas: {{ v.emitidas }}{% if jornada or cerrada %} · Piezas incorporadas: {{ v.contadas }}{% endif %}</div>
+        {% if not jornada %}
+          <form class="d-flex gap-2 mt-2" action="{% url 'preparacion:emitir_etiquetas' v.pk %}" method="post" target="_blank">
+            {% csrf_token %}<input type="number" class="form-control" name="cantidad" min="1" max="20" value="1" aria-label="Número de etiquetas" style="max-width:90px">
+            <button class="btn btn-outline-primary" type="submit">Crear e imprimir etiquetas</button>
+          </form>
+        {% endif %}
+        {% if v.ultimas %}<details class="mt-2"><summary>Reimprimir una etiqueta existente</summary><div class="d-flex flex-wrap gap-2 mt-2">{% for p in v.ultimas %}<a target="_blank" rel="noopener" href="{% url 'preparacion:reimprimir' p.pk %}">{{ p.codigo }}</a>{% endfor %}</div></details>{% endif %}
+      </div>
+    {% empty %}<p class="prep-note mt-3">Todavía no hay variantes. Empieza por un modelo.</p>{% endfor %}
+  </div>
+  {% if variantes and not jornada and not cerrada %}
+    <div class="prep-card">
+      <div class="prep-title">Cuando TODO esté etiquetado</div>
+      <p class="prep-note">Hazlo después de cerrar la tienda, el día en que comenzarán a registrar las ventas en el POS. Recorre la tienda y escanea solo los vestidos presentes. Lo vendido antes de ese día no se contará.</p>
+      <form action="{% url 'preparacion:iniciar_conteo' %}" method="post" onsubmit="return confirm('¿Ya terminaron de etiquetar y están listas para contar toda la tienda?');">
+        {% csrf_token %}<button class="btn btn-primary" type="submit">Comenzar conteo final</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+<script>
+(function() {
+  var model = document.getElementById('modelo_id'), name = document.getElementById('modelo_nuevo');
+  if (model) {
+    function toggleModel() { name.disabled = !!model.value; name.placeholder = model.value ? 'Se usará el modelo elegido' : 'Ej. Vestido Aurora'; }
+    model.addEventListener('change', toggleModel); toggleModel();
+  }
+  var scan = document.getElementById('scan-form');
+  if (scan) scan.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var input = document.getElementById('scan-code'), box = document.getElementById('scan-result');
+    if (!input.value.trim()) return;
+    var code = input.value.trim(); input.value = ''; input.focus();
+    var data = new FormData(scan); data.set('codigo', code);
+    try {
+      var response = await fetch(scan.action, {method:'POST', body:data});
+      var result = await response.json();
+      box.className = result.ok ? 'prep-ok mt-3' : 'prep-error mt-3';
+      box.textContent = result.message;
+      if (result.ok && document.getElementById('total-counted')) document.getElementById('total-counted').textContent = result.total;
+    } catch (_) { box.className = 'prep-error mt-3'; box.textContent = 'Sin conexión. Vuelve a escanear esta etiqueta.'; }
+  });
+  var ai = document.getElementById('ai-suggest');
+  if (ai) ai.addEventListener('click', async function() {
+    var file = document.getElementById('foto').files[0], message = document.getElementById('ai-message');
+    if (!file) { message.textContent = 'Primero elige una foto.'; return; }
+    message.textContent = 'Analizando foto…';
+    var data = new FormData(); data.append('image', file);
+    data.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    try {
+      var response = await fetch('/api/ai-analyze-image/', {method:'POST', body:data});
+      var result = await response.json();
+      if (!response.ok || result.status !== 'ok') throw new Error(result.message || 'No se pudo analizar');
+      function choose(id, value) {
+        if (!value) return;
+        var select = document.getElementById(id);
+        var option = Array.from(select.options).find(function(o) { return o.text.toLowerCase() === value.toLowerCase(); });
+        if (option) select.value = option.value;
+      }
+      choose('categoria_id', result.atributos.categoria);
+      choose('color_id', result.atributos.color);
+      choose('tela_id', result.atributos.rasgo2);
+      message.textContent = 'Sugerencias listas. Revísalas antes de guardar.';
+    } catch (error) { message.textContent = 'No hubo sugerencias. Puedes llenar los campos manualmente.'; }
+  });
+})();
+</script>
+{% endblock %}

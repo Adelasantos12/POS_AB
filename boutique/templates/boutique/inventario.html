@@ -50,6 +50,7 @@
 <div class="inv-toolbar d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4" id="invToolbar">
     <h2 class="fw-bold mb-0">Inventario</h2>
     <div class="d-flex flex-wrap gap-2">
+        <a href="{% url 'preparacion:inicio' %}" class="btn btn-primary rounded-pill">Preparar vestidos</a>
         {% if es_admin %}
         <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
             <i class="bi bi-plus-lg me-2"></i>Nuevo Producto

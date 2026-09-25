@@ -2,8 +2,13 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from preparacion import checkout
 
 urlpatterns = [
+    path('api/search-global/', checkout.buscar),
+    path('api/registrar-venta/', checkout.vender),
+    path('api/sync/', checkout.sincronizar),
+    path('preparar/', include('preparacion.urls')),
     # La ruta '/admin/' seguirá mostrando el panel de administración de Django.
     path('admin/', admin.site.urls),
     
