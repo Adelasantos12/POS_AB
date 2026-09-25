@@ -226,13 +226,13 @@
 <body>
     <div class="no-print">
         Etiqueta <strong>29 mm × 90 mm</strong> (DK-11210) — diseño horizontal
-        <button onclick="imprimir()">🖨️ Imprimir</button>
+        <button onclick="imprimir()">🖨️ Abrir PDF para imprimir</button>
         <small>
             <strong>Brother QL-800:</strong>
             Impresora → <strong>Brother QL-800</strong> &nbsp;·&nbsp;
             Papel → <strong>Etiqueta de dirección estándar 29×90 mm</strong> &nbsp;·&nbsp;
             Orientación → <strong>Horizontal</strong> &nbsp;·&nbsp;
-            Escala → <strong>100%</strong>
+            Escala → <strong>100%</strong> · En el PDF pulsa ⌘P (no hace falta «Imprimir fondos»)
         </small>
     </div>
 
@@ -288,22 +288,11 @@
     }
 
     function imprimir() {
-        renderizarPreview();
-        var images = Array.from(document.querySelectorAll('#etiquetas-container img'));
-        Promise.all(images.map(function(img) {
-            if (img.complete && img.naturalWidth) return Promise.resolve();
-            if (img.decode) return img.decode();
-            return new Promise(function(resolve) {
-                img.onload = resolve;
-                img.onerror = resolve;
-            });
-        })).then(function() {
-            requestAnimationFrame(function() {
-                requestAnimationFrame(function() { window.print(); });
-            });
-        }).catch(function() {
-            window.print();
+        var items = PRODUCTO_IDS.map(function(pid) {
+            var qty = parseInt(document.getElementById('qty-' + pid).value || 1, 10);
+            return pid + ':' + Math.max(1, Math.min(50, qty));
         });
+        window.open('{% url "imprimir_etiquetas_pdf" %}?items=' + items.join(','), '_blank');
     }
 
     window.addEventListener('DOMContentLoaded', function() {
