@@ -39,12 +39,17 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
         pieces = list(PiezaEtiqueta.objects.order_by('pk'))
         self.assertEqual(len({p.codigo for p in pieces}), 3)
+        pending = self.client.get('/api/search-global/', {'q': pieces[0].codigo}).json()
+        self.assertEqual(pending['results'], [])
+        self.assertIn('aún no se contó', pending['message'])
         product.refresh_from_db()
         self.assertEqual(product.cantidad_actual, 0)
 
         self.client.post(reverse('preparacion:iniciar_conteo'))
         response = self.client.post(reverse('preparacion:escanear'), {'codigo': pieces[0].codigo})
         self.assertEqual(response.status_code, 200)
+        during_count = self.client.get('/api/search-global/', {'q': pieces[0].codigo}).json()
+        self.assertIn('inventario inicial sigue abierto', during_count['message'])
         repeat = self.client.post(reverse('preparacion:escanear'), {'codigo': pieces[0].codigo})
         self.assertEqual(repeat.status_code, 409)
         self.assertIn('No se sumó otra vez', repeat.json()['message'])
@@ -132,3 +137,5 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(variant.producto.stock_teorico, 0)
         self.assertIsNotNone(piece.vendida)
         self.assertEqual(self.client.get('/api/search-global/', {'q': piece.codigo}).json()['results'], [])
+        self.assertIn('ya se vendió', self.client.get('/api/search-global/',
+                                                     {'q': piece.codigo}).json()['message'])

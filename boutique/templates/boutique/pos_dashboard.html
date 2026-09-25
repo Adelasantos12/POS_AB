@@ -797,7 +797,8 @@
                             </div>`;
                     }
                 });
-                document.getElementById('searchResults').innerHTML = html || '<div class="p-3 text-muted text-center">No se encontraron resultados</div>';
+                document.getElementById('searchResults').innerHTML = html ||
+                    `<div class="p-3 ${data.message ? 'text-warning' : 'text-muted'} text-center">${data.message || 'No se encontraron resultados'}</div>`;
             }).catch(() => {
                 if (serial !== searchSerial) return;
                 document.getElementById('searchResults').innerHTML = '<div class="p-3 text-danger">Sin conexión. Intenta otra vez.</div>';

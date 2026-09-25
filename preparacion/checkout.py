@@ -21,9 +21,8 @@ def buscar(request):
     raw = request.GET.get('q', '').strip()
     code = raw.upper()
     piece = (PiezaEtiqueta.objects.select_related('variante__producto')
-             .filter(codigo=code, contada__isnull=False, vendida__isnull=True,
-                     variante__confirmada__isnull=False).first()) if code.isdigit() else None
-    if piece:
+             .filter(codigo=code).first()) if code.isdigit() else None
+    if piece and piece.contada and not piece.vendida and piece.variante.confirmada:
         product = piece.variante.producto
         return JsonResponse({'results': [{
             'type': 'PRODUCTO', 'id': product.pk, 'sku': product.sku,
@@ -32,9 +31,17 @@ def buscar(request):
             'foto_url': product.foto.url if product.foto else None,
             'unit_code': piece.codigo,
         }]})
-    # An already sold or uncounted serial must never fall through to a product.
+    if piece:
+        if piece.vendida:
+            message = 'Esta etiqueta ya se vendió. Revisa el vestido antes de cobrar.'
+        elif piece.contada:
+            message = 'Esta etiqueta ya se contó, pero el inventario inicial sigue abierto. Cierra el conteo cuando terminen toda la tienda.'
+        else:
+            message = 'La etiqueta existe, pero aún no se contó ni se recibió. Preparar o imprimir no suma inventario.'
+        return JsonResponse({'results': [], 'message': message})
+    # An unknown serial must never fall through to an unrelated product.
     if code.isdigit() and code.startswith('8') and len(code) == 12:
-        return JsonResponse({'results': []})
+        return JsonResponse({'results': [], 'message': 'No existe esta etiqueta individual. Revisa el número.'})
 
     # Some HID scanner/Spanish-Mac combinations type the hyphen as an apostrophe.
     normalized = code.replace("'", '-')
