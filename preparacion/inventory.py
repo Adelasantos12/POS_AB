@@ -8,7 +8,7 @@ from django.shortcuts import render
 from boutique.middleware import profile_permission_required
 from boutique.models import Categoria, Color, Modelo, Producto, Talla, Tela
 from boutique.views import es_admin
-from .models import VariantePreparada
+from .models import JornadaConteo, VariantePreparada
 
 
 @login_required
@@ -46,6 +46,7 @@ def inventario_view(request):
     return render(request, 'boutique/inventario.html', {
         'productos': productos, 'q': q,
         'es_admin': es_admin(request.active_profile),
+        'conteo_inicial_cerrado': JornadaConteo.objects.filter(abierta=False).exists(),
         'categorias': Categoria.objects.all().order_by('nombre'),
         'colores': Color.objects.filter(activo=True).order_by('nombre'),
         'tallas': Talla.objects.filter(activa=True).order_by('orden', 'nombre'),

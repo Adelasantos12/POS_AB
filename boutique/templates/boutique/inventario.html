@@ -51,9 +51,9 @@
     <h2 class="fw-bold mb-0">Inventario</h2>
     <div class="d-flex flex-wrap gap-2">
         <a href="{% url 'preparacion:inicio' %}" class="btn btn-primary rounded-pill">Preparar vestidos</a>
-        {% if es_admin %}
+        {% if es_admin and conteo_inicial_cerrado %}
         <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
-            <i class="bi bi-plus-lg me-2"></i>Nuevo Producto
+            <i class="bi bi-plus-lg me-2"></i>Registro avanzado
         </button>
         <a href="{% url 'subida_bloque' %}" class="btn btn-outline-primary rounded-pill">
             <i class="bi bi-table me-2"></i>Subida en Bloque
@@ -166,7 +166,7 @@
                             <button class="btn btn-sm btn-outline-primary" type="submit">Preparar y etiquetar</button>
                         </form>
                         {% endif %}
-                        {% if es_admin %}
+                        {% if es_admin and not p.pendiente_conteo %}
                         <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
                             <i class="bi bi-pencil"></i>
                         </button>

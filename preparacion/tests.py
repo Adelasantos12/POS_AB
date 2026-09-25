@@ -107,6 +107,8 @@ class PreparacionInicialTests(TestCase):
         self.assertContains(response, first.sku)
         self.assertContains(response, variants[1].sku)
         self.assertContains(response, 'Imprimir etiquetas de esta variante', count=2)
+        self.assertNotContains(response, 'Registro avanzado')
+        self.assertContains(response, 'Pendiente de conteo', count=2)
 
     def test_existing_sku_is_prepared_without_duplicate_product(self):
         self._variant()
