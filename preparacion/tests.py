@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from unittest.mock import patch
 import json
 
-from boutique.models import Categoria, Color, Producto, Talla
+from boutique.models import Categoria, Color, MovimientoInventario, Producto, Talla
 from .models import PiezaEtiqueta, VariantePreparada
 
 
@@ -108,8 +108,13 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(search['results'][0]['unit_code'], piece.codigo)
         payload = {'items': [{'id': variant.producto_id, 'cantidad': 1,
                               'unit_codes': [piece.codigo]}]}
-        with patch('preparacion.checkout.original.api_registrar_venta',
-                   return_value=JsonResponse({'status': 'ok', 'venta_id': 1})) as sale:
+        def record_sale(request):
+            MovimientoInventario.objects.create(
+                producto=variant.producto, tipo='VENTA', cantidad=-1, motivo='VENTA',
+                perfil_activo=self.user, stock_resultante=0)
+            return JsonResponse({'status': 'ok', 'venta_id': 1})
+
+        with patch('preparacion.checkout.original.api_registrar_venta', side_effect=record_sale) as sale:
             self.assertEqual(self.client.post('/api/registrar-venta/',
                                               json.dumps(payload), content_type='application/json').status_code, 200)
             self.assertEqual(sale.call_count, 1)
@@ -117,5 +122,8 @@ class PreparacionInicialTests(TestCase):
                                               json.dumps(payload), content_type='application/json').status_code, 409)
             self.assertEqual(sale.call_count, 1)
         piece.refresh_from_db()
+        variant.producto.refresh_from_db()
+        self.assertEqual(variant.producto.cantidad_actual, 0)
+        self.assertEqual(variant.producto.stock_teorico, 0)
         self.assertIsNotNone(piece.vendida)
         self.assertEqual(self.client.get('/api/search-global/', {'q': piece.codigo}).json()['results'], [])
