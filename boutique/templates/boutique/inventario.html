@@ -4,10 +4,41 @@
 
 {% block extra_css %}
 .product-table img { height: 40px; }
+
+/* ── Sticky toolbar ── */
+.inv-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-page, #f8f9fa);
+    padding-top: 1rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem !important;
+}
+@media (max-width: 1024px) {
+    /* offset for the fixed mobile topbar (~56 px) */
+    .inv-toolbar { top: 56px; }
+}
+
+/* ── Sticky thead ── */
+.product-table thead th {
+    position: sticky;
+    top: var(--inv-thead-top, 72px);
+    z-index: 10;
+    background: #f8f9fa; /* matches bg-light */
+}
+
+/* ── Print: undo sticky so headers don't repeat ── */
+@media print {
+    .inv-toolbar,
+    .product-table thead th {
+        position: static !important;
+    }
+}
 {% endblock %}
 
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+<div class="inv-toolbar d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4" id="invToolbar">
     <h2 class="fw-bold mb-0">Inventario</h2>
     <div class="d-flex flex-wrap gap-2">
         {% if es_admin %}
@@ -51,7 +82,7 @@
     </div>
 </div>
 
-<div class="card shadow-sm border-0" style="border-radius: 15px; overflow: hidden;">
+<div class="card shadow-sm border-0" style="border-radius: 15px; overflow-x: clip;">
     <div class="table-responsive">
         <table class="table table-hover align-middle product-table mb-0">
             <thead class="bg-light">
@@ -353,6 +384,17 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
     const csrfToken = '{{ csrf_token }}';
+
+    // Set --inv-thead-top dynamically to match the actual toolbar height
+    (function() {
+        var toolbar = document.getElementById('invToolbar');
+        if (!toolbar) return;
+        function updateTheadTop() {
+            document.documentElement.style.setProperty('--inv-thead-top', toolbar.offsetHeight + 'px');
+        }
+        updateTheadTop();
+        new ResizeObserver(updateTheadTop).observe(toolbar);
+    })();
 
     // Generar códigos de barras en el navegador (sin archivos en el servidor)
     document.querySelectorAll('.inv-barcode').forEach(el => {
