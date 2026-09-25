@@ -59,6 +59,7 @@
         pending = pending.then(async function() {
         try {
           var response = await fetch(form.action, {method:'POST', body:data});
+          if (response.status >= 500) throw new Error('server');
           var result = await response.json();
           status.className = 'count-status mt-3 ' + (result.ok ? 'count-success' : 'count-error');
           status.textContent = result.ok ? '✓ ' + result.modelo + ' · ' + result.color + ' · ' + result.talla + ' (' + result.sku + '). Total de esta variante: ' + result.cantidad_variante : 'Atención: ' + result.message;
@@ -73,9 +74,9 @@
             list.prepend(li);
             while (list.children.length > 10) list.lastElementChild.remove();
           }
-        } catch (_) {
+        } catch (error) {
           status.className = 'count-status mt-3 count-error';
-          status.textContent = 'Sin conexión. ' + code + ' no se confirmó; vuelve a escanearlo.';
+          status.textContent = (error.message === 'server' ? 'Error del servidor. ' : 'No se pudo conectar. ') + code + ' no se confirmó ni se sumó. Vuelve a escanearlo cuando el servicio esté disponible.';
         } finally { input.focus(); }
         });
       });

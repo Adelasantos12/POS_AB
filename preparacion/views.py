@@ -336,7 +336,9 @@ def escanear(request):
         jornada = JornadaConteo.objects.select_for_update().filter(abierta=True).first()
         if not jornada:
             return JsonResponse({'ok': False, 'message': 'Inicia el conteo primero.'}, status=409)
-        pieza = (PiezaEtiqueta.objects.select_for_update()
+        # Lock only the physical label. Modelo and Tela are nullable joins;
+        # PostgreSQL rejects FOR UPDATE on the nullable side of an outer join.
+        pieza = (PiezaEtiqueta.objects.select_for_update(of=('self',))
                  .select_related('variante__producto__modelo', 'variante__producto__color',
                                  'variante__producto__tela').filter(codigo=codigo).first())
         if not pieza:
@@ -366,7 +368,7 @@ def recibir(request):
         cierre = JornadaConteo.objects.filter(abierta=False).first()
         if not cierre:
             return JsonResponse({'ok': False, 'message': 'Primero termina el inventario inicial.'}, status=409)
-        pieza = (PiezaEtiqueta.objects.select_for_update()
+        pieza = (PiezaEtiqueta.objects.select_for_update(of=('self',))
                  .select_related('variante__producto__modelo', 'variante__producto__color')
                  .filter(codigo=codigo).first())
         if not pieza:
