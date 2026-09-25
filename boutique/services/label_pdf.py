@@ -1,8 +1,13 @@
 """Vector labels for the Brother QL-800's 90 × 29 mm stock."""
 
 import barcode
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
+from io import BytesIO
+
+from boutique.models import Producto
 
 
 LABEL_WIDTH = 90 * mm
@@ -56,3 +61,39 @@ def render_labels(pdf_file, products):
         _fit_text(pdf, sku, 55 * mm, 4.2 * mm, 60 * mm, size=7)
         pdf.showPage()
     pdf.save()
+
+
+@login_required
+def imprimir_etiquetas_pdf(request):
+    """Print-ready vector PDF; Safari's background setting does not affect it."""
+    entries = []
+    for item in request.GET.get('items', '').split(','):
+        if not item:
+            continue
+        try:
+            product_id, count = (int(value) for value in item.split(':'))
+        except (ValueError, TypeError):
+            return HttpResponse('Selección de etiquetas inválida', status=400)
+        if product_id <= 0 or count < 1 or count > 50:
+            return HttpResponse('Cantidad inválida (1 a 50)', status=400)
+        entries.append((product_id, count))
+    if not entries or sum(count for _, count in entries) > 200:
+        return HttpResponse('Selecciona entre 1 y 200 etiquetas', status=400)
+
+    products_by_id = Producto.objects.select_related('color').in_bulk(
+        [product_id for product_id, _ in entries]
+    )
+    if len(products_by_id) != len(set(product_id for product_id, _ in entries)):
+        return HttpResponse('Producto no encontrado', status=404)
+
+    output = BytesIO()
+    try:
+        render_labels(output, (
+            products_by_id[product_id]
+            for product_id, count in entries for _ in range(count)
+        ))
+    except ValueError as exc:
+        return HttpResponse(str(exc), status=400)
+    response = HttpResponse(output.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename="etiquetas-90x29.pdf"'
+    return response
