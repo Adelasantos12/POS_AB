@@ -1,0 +1,23 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Agregar variante{% endblock %}
+{% block content %}
+<div style="max-width:760px;margin:auto;">
+  <a href="{% url 'inventario_view' %}?q={{ base.sku|urlencode }}">← Volver al modelo</a>
+  <div class="card shadow-sm border-0 mt-3" style="border-radius:18px;"><div class="card-body p-4">
+    <h1 class="h3">Agregar variante</h1>
+    <p>Modelo: <strong>{{ base.modelo.nombre|default:base.rasgo1|default:base.categoria.nombre }}</strong>. Elige un color, tela o talla diferente. La foto y el modelo se comparten.</p>
+    {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+    <form action="{% url 'preparacion:guardar_variante' %}" method="post">{% csrf_token %}
+      <input type="hidden" name="base_producto_id" value="{{ base.pk }}">
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label fw-bold" for="nv-color">Color</label><select class="form-select" id="nv-color" name="color_id"><option value="">Escribir nuevo color</option>{% for c in colores %}<option value="{{ c.pk }}" {% if c.pk == base.color_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" name="color_nuevo" placeholder="Otro color"></div>
+        <div class="col-md-6"><label class="form-label fw-bold" for="nv-tela">Tela</label><select class="form-select" id="nv-tela" name="tela_id"><option value="">Sin tela o escribir otra</option>{% for t in telas %}<option value="{{ t.pk }}" {% if t.pk == base.tela_id %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" name="tela_nueva" placeholder="Otra tela (opcional)"></div>
+        <div class="col-md-6"><label class="form-label fw-bold" for="nv-talla">Talla</label><select class="form-select" id="nv-talla" name="talla" required>{% for t in tallas %}<option value="{{ t.nombre }}" {% if t.nombre == base.talla %}selected{% endif %}>{{ t.nombre }}</option>{% endfor %}</select></div>
+        <div class="col-md-6"><label class="form-label fw-bold" for="nv-precio">Precio</label><input class="form-control" id="nv-precio" name="precio" type="number" min="1" step="0.01" value="{{ base.precio_venta|stringformat:'.2f' }}" required></div>
+        <div class="col-md-6"><label class="form-label fw-bold" for="nv-cantidad">Cantidad aproximada (opcional)</label><input class="form-control" id="nv-cantidad" name="cantidad_estimada" type="number" min="0" max="10000" value="0"><small>No suma inventario; el conteo lo decidirá.</small></div>
+        <div class="col-12"><button class="btn btn-primary btn-lg" type="submit">Guardar variante</button></div>
+      </div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}

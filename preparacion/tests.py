@@ -82,8 +82,8 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(self._variant(cantidad_estimada='5').status_code, 302)
         first = VariantePreparada.objects.get()
         self.assertEqual(first.cantidad_estimada, 5)
-        self.assertContains(self.client.get(reverse('preparacion:inicio')),
-                            'value="5" aria-label="Número de etiquetas"')
+        self.assertContains(self.client.get(reverse('inventario_view')),
+                            'Imprimir para esta variante')
         self.client.post(reverse('preparacion:emitir_etiquetas', args=[first.pk]),
                          {'cantidad': 5})
         other, _ = Color.objects.get_or_create(nombre='Azul Rey')
@@ -125,7 +125,8 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, first.sku)
         self.assertContains(response, variants[1].sku)
-        self.assertContains(response, 'Imprimir etiquetas de esta variante', count=2)
+        self.assertContains(response, 'Imprimir para esta variante', count=2)
+        self.assertContains(response, 'Agregar variante de este modelo')
         self.assertContains(response, 'modelos/aurora.jpg')
         self.assertEqual(len(response.context['familias']), 1)
         self.assertEqual(len(response.context['familias'][0]['productos']), 2)
@@ -142,6 +143,45 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(Producto.objects.count(), 1)
         self.assertTrue(VariantePreparada.objects.filter(producto=product).exists())
 
+    def test_inventory_print_creates_unique_labels_and_variant_form_stays_in_family(self):
+        self._variant()
+        base = Producto.objects.get()
+        self.assertContains(self.client.get(reverse('preparacion:nueva_variante', args=[base.pk])),
+                            'Agregar variante')
+        response = self.client.post(reverse('preparacion:imprimir_producto', args=[base.pk]),
+                                    {'cantidad': 2})
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        codes = list(PiezaEtiqueta.objects.values_list('codigo', flat=True))
+        self.assertEqual(len(set(codes)), 2)
+        self.assertEqual(Producto.objects.get(pk=base.pk).cantidad_actual, 0)
+        self.assertEqual(self.client.get(reverse('imprimir_etiquetas_pdf'),
+                                         {'items': f'{base.pk}:1'}).status_code, 409)
+        new_color = Color.objects.create(nombre='Azul')
+        response = self.client.post(reverse('preparacion:guardar_variante'), {
+            'base_producto_id': base.pk, 'color_id': new_color.pk,
+            'talla': 'M', 'precio': '1590', 'cantidad_estimada': '1',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('inventario/?q=', response.url)
+        second = Producto.objects.exclude(pk=base.pk).get()
+        self.assertEqual(second.modelo_id, base.modelo_id)
+        self.assertEqual(second.cantidad_actual, 0)
+
+    def test_existing_family_without_model_can_add_color(self):
+        base = Producto.objects.create(categoria=self.categoria, color=self.color,
+                                       rasgo1='Vestido', talla='M', precio_venta=1590)
+        azul, _ = Color.objects.get_or_create(nombre='Azul Rey')
+        result = self.client.post(reverse('preparacion:guardar_variante'), {
+            'base_producto_id': base.pk, 'color_id': azul.pk, 'talla': 'M',
+            'precio': '1590', 'cantidad_estimada': '0',
+        })
+        self.assertEqual(result.status_code, 302)
+        new = Producto.objects.exclude(pk=base.pk).get()
+        self.assertEqual(new.rasgo1, base.rasgo1)
+        self.assertEqual(new.modelo_id, base.modelo_id)
+        self.assertEqual(len(self.client.get(reverse('inventario_view'),
+                                             {'q': new.sku}).context['familias'][0]['productos']), 2)
+
     def test_after_initial_count_receiving_adds_exactly_once(self):
         self._variant()
         variant = VariantePreparada.objects.get()
@@ -150,7 +190,7 @@ class PreparacionInicialTests(TestCase):
         self.client.post(reverse('preparacion:cerrar_conteo'), {'confirmar': 'SI'})
         page = self.client.get(reverse('preparacion:inicio'))
         self.assertContains(page, 'Recibir mercancía nueva')
-        self.assertContains(page, 'Agregar nueva variante')
+        self.assertContains(page, 'Registrar un modelo nuevo')
         sobrante = PiezaEtiqueta.objects.first()
         endpoint = reverse('preparacion:recibir')
         self.assertEqual(self.client.post(endpoint, {'codigo': sobrante.codigo}).status_code, 409)

@@ -8,6 +8,7 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 
 from boutique.models import Producto
+from preparacion.models import VariantePreparada
 
 
 LABEL_WIDTH = 90 * mm
@@ -86,6 +87,8 @@ def imprimir_etiquetas_pdf(request):
     )
     if len(products_by_id) != len(set(product_id for product_id, _ in entries)):
         return HttpResponse('Producto no encontrado', status=404)
+    if VariantePreparada.objects.filter(producto_id__in=products_by_id).exists():
+        return HttpResponse('Esta variante usa etiquetas individuales. Imprime desde su fila en Inventario.', status=409)
 
     output = BytesIO()
     try:

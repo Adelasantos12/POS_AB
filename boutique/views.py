@@ -1884,6 +1884,9 @@ def api_imprimir_etiqueta(request, pk):
     from .services.printer_service import imprimir_etiqueta_brother
     
     producto = get_object_or_404(Producto, pk=pk)
+    from preparacion.models import VariantePreparada
+    if VariantePreparada.objects.filter(producto=producto).exists():
+        return JsonResponse({'success': False, 'message': 'Imprime las etiquetas individuales desde Inventario.'}, status=409)
     data = json.loads(request.body) if request.body else {}
     cantidad = int(data.get('cantidad', 1))
     
@@ -1923,6 +1926,12 @@ def api_imprimir_etiquetas_lote(request):
     for pid, cantidad in producto_entries:
         try:
             producto = Producto.objects.get(pk=pid)
+            from preparacion.models import VariantePreparada
+            if VariantePreparada.objects.filter(producto=producto).exists():
+                resultados.append({'sku': producto.sku, 'success': False,
+                                   'message': 'Imprime etiquetas individuales desde Inventario.'})
+                fallidos += 1
+                continue
             resultado = imprimir_etiqueta_brother(producto, cantidad)
             resultados.append({
                 'sku': producto.sku,
@@ -2188,6 +2197,9 @@ def imprimir_etiquetas(request):
     """Genera una página para imprimir etiquetas en lote"""
     ids = request.GET.get('ids', '').split(',')
     productos = Producto.objects.filter(id__in=[i for i in ids if i.isdigit()])
+    from preparacion.models import VariantePreparada
+    if VariantePreparada.objects.filter(producto__in=productos).exists():
+        return HttpResponse('Esta variante usa etiquetas individuales. Imprime desde Inventario.', status=409)
     return render(request, 'boutique/etiquetas_lote.html', {'productos': productos})
 
 

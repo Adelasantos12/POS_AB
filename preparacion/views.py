@@ -23,18 +23,11 @@ from .models import JornadaConteo, PiezaEtiqueta, VariantePreparada
 
 
 def _pagina(request, error=None):
-    variantes = list(VariantePreparada.objects.select_related(
-        'producto__modelo', 'producto__color', 'producto__tela', 'producto__categoria'
-    ).order_by('producto__modelo__nombre', 'producto__talla', 'producto__color__nombre'))
-    for variante in variantes:
-        variante.emitidas = variante.piezas.count()
-        variante.contadas = variante.piezas.filter(contada__isnull=False).count()
-        variante.por_imprimir = max(1, min(20, variante.cantidad_estimada - variante.emitidas))
-        variante.ultimas = list(variante.piezas.order_by('-pk')[:200])
     jornada = JornadaConteo.objects.filter(abierta=True).first()
     cerrada = JornadaConteo.objects.filter(abierta=False).first()
     return render(request, 'preparacion/inicio.html', {
-        'variantes': variantes, 'jornada': jornada, 'cerrada': cerrada,
+        'hay_variantes': VariantePreparada.objects.exists(),
+        'jornada': jornada, 'cerrada': cerrada,
         'error': error, 'modelos': Modelo.objects.order_by('nombre')[:200],
         'categorias': Categoria.objects.order_by('nombre'),
         'colores': Color.objects.filter(activo=True).order_by('nombre'),
@@ -51,6 +44,17 @@ def _pagina(request, error=None):
 @profile_permission_required(['Inventario', 'Vendedor'])
 def inicio(request):
     return _pagina(request)
+
+
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
+def nueva_variante(request, producto_id):
+    base = get_object_or_404(Producto.objects.select_related('modelo', 'categoria'), pk=producto_id)
+    return render(request, 'preparacion/nueva_variante.html', {
+        'base': base, 'colores': Color.objects.filter(activo=True).order_by('nombre'),
+        'telas': Tela.objects.filter(activa=True).order_by('nombre'),
+        'tallas': Talla.objects.filter(activa=True),
+    })
 
 
 @require_POST
@@ -128,8 +132,14 @@ def guardar_variante(request):
         if not request.POST.get('color_id') and not request.POST.get('color_nuevo', '').strip():
             raise ValueError('Elige o escribe un color.')
         with transaction.atomic():
+            base_id = request.POST.get('base_producto_id')
+            base = (get_object_or_404(Producto.objects.select_for_update(), pk=base_id)
+                    if base_id else None)
             modelo_id = request.POST.get('modelo_id')
-            if modelo_id:
+            if base:
+                modelo = base.modelo
+                categoria = base.categoria
+            elif modelo_id:
                 modelo = get_object_or_404(Modelo.objects.select_for_update(), pk=modelo_id)
                 categoria = modelo.categoria or get_object_or_404(
                     Categoria, pk=request.POST.get('categoria_id'))
@@ -153,26 +163,40 @@ def guardar_variante(request):
                 if not tela:
                     tela = Tela.objects.create(nombre=tela_nombre)
             talla_obj = Talla.buscar_por_alias(talla)
-            if Producto.objects.filter(modelo=modelo, color=color, tela=tela, talla=talla).exists():
+            family = (Producto.objects.filter(modelo=modelo) if modelo else
+                      Producto.objects.filter(modelo__isnull=True, categoria=categoria,
+                                             rasgo1=base.rasgo1 if base else ''))
+            if family.filter(color=color, tela=tela, talla=talla).exists():
                 raise ValueError('Esta combinación ya existe. Busca su tarjeta y agrega etiquetas ahí.')
-            secuencia = 1
-            while Producto.objects.filter(sku=f'M{modelo.pk:05d}-{secuencia:02d}').exists():
-                secuencia += 1
-            # Count across the family, including variants whose SKU came from older flows.
-            secuencia = max(secuencia, Producto.objects.filter(modelo=modelo).count() + 1)
-            while Producto.objects.filter(sku=f'M{modelo.pk:05d}-{secuencia:02d}').exists():
-                secuencia += 1
+            sku = ''
+            if modelo:
+                secuencia = max(1, family.count() + 1)
+                while Producto.objects.filter(sku=f'M{modelo.pk:05d}-{secuencia:02d}').exists():
+                    secuencia += 1
+                sku = f'M{modelo.pk:05d}-{secuencia:02d}'
             producto = Producto.objects.create(
-                sku=f'M{modelo.pk:05d}-{secuencia:02d}', modelo=modelo,
+                sku=sku, modelo=modelo,
                 categoria=categoria, color=color, tela=tela, talla=talla,
-                talla_obj=talla_obj, rasgo1=modelo.nombre,
+                talla_obj=talla_obj, rasgo1=base.rasgo1 if base else modelo.nombre,
                 rasgo2=tela.nombre if tela else '', precio_venta=precio,
                 cantidad_actual=0, stock_teorico=0, activo=False,
-                foto=modelo.foto_principal.name if modelo.foto_principal else None,
+                foto=(base.foto.name if base and base.foto else
+                      modelo.foto_principal.name if modelo and modelo.foto_principal else None),
             )
             VariantePreparada.objects.create(producto=producto, cantidad_estimada=estimada)
-        return redirect(f'{reverse("preparacion:inicio")}?modelo={modelo.pk}#nuevo')
+        if base:
+            return redirect(f'{reverse("inventario_view")}?q={producto.sku}')
+        return redirect(f'{reverse("inventario_view")}?q={producto.sku}')
     except (ValueError, InvalidOperation, IntegrityError) as exc:
+        if request.POST.get('base_producto_id'):
+            base = get_object_or_404(Producto.objects.select_related('modelo', 'categoria'),
+                                     pk=request.POST['base_producto_id'])
+            return render(request, 'preparacion/nueva_variante.html', {
+                'base': base, 'error': str(exc),
+                'colores': Color.objects.filter(activo=True).order_by('nombre'),
+                'telas': Tela.objects.filter(activa=True).order_by('nombre'),
+                'tallas': Talla.objects.filter(activa=True),
+            })
         return _pagina(request, str(exc))
 
 
@@ -238,6 +262,25 @@ def emitir_etiquetas(request, variante_id):
     if not 1 <= cantidad <= 20:
         return HttpResponse('Imprime entre 1 y 20 etiquetas a la vez.', status=400)
     with transaction.atomic():
+        piezas = [PiezaEtiqueta.objects.create(variante=variante)
+                  for _ in range(cantidad)]
+    return _etiquetas_pdf(piezas)
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
+def imprimir_producto(request, producto_id):
+    producto = get_object_or_404(Producto, pk=producto_id)
+    try:
+        cantidad = int(request.POST.get('cantidad', '1'))
+    except ValueError:
+        cantidad = 0
+    if not 1 <= cantidad <= 20:
+        return HttpResponse('Imprime entre 1 y 20 etiquetas a la vez.', status=400)
+    with transaction.atomic():
+        variante, _ = VariantePreparada.objects.get_or_create(
+            producto=producto, defaults={'cantidad_estimada': producto.cantidad_actual})
         piezas = [PiezaEtiqueta.objects.create(variante=variante)
                   for _ in range(cantidad)]
     return _etiquetas_pdf(piezas)

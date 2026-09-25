@@ -45,7 +45,7 @@
   {% elif jornada %}
     <div class="prep-card">
       <div class="prep-title">2. Contar los vestidos que están aquí</div>
-      <p class="prep-note">Escanea una etiqueta por vestido. Si aparecen más vestidos de los estimados, imprime etiquetas adicionales en su variante más abajo y escanéalas aquí.</p>
+      <p class="prep-note">Escanea una etiqueta por vestido. Si aparecen más vestidos de los estimados, imprime sus etiquetas desde Inventario y escanéalas aquí.</p>
       <form id="scan-form" action="{% url 'preparacion:escanear' %}" method="post">
         {% csrf_token %}
         <label for="scan-code">Código del vestido</label>
@@ -64,8 +64,8 @@
     </div>
   {% endif %}
     <div class="prep-card" id="nuevo">
-      <div class="prep-title">{% if jornada %}¿Apareció una variante que faltaba?{% elif cerrada %}Agregar nueva variante{% else %}1. Registrar un vestido y sus variantes{% endif %}</div>
-      <p class="prep-note">Elige un modelo existente o escribe uno nuevo. Después agrega color, tela y talla. Puedes volver otro día.</p>
+      <div class="prep-title">Registrar un modelo nuevo</div>
+      <p class="prep-note">Para añadir color, tela o talla a un modelo que ya existe, usa «Agregar variante» en Inventario.</p>
       <form action="{% url 'preparacion:guardar_variante' %}" method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="row g-3">
@@ -84,32 +84,7 @@
       </form>
     </div>
 
-    <div class="prep-card">
-      <div class="prep-title">¿El modelo ya existe en el POS?</div>
-      <p class="prep-note">Escribe su SKU una vez para preparar sus etiquetas individuales, sin duplicar el producto.</p>
-      <form action="{% url 'preparacion:agregar_existente' %}" method="post" class="d-flex gap-2">{% csrf_token %}
-        <input class="form-control" name="sku" placeholder="Ej. VES-A8B609" required aria-label="SKU existente">
-        <button class="btn btn-outline-primary" type="submit">Usar este producto</button>
-      </form>
-    </div>
-
-  <div class="prep-card" id="variantes">
-    <div class="prep-title">{{ variantes|length }} variantes preparadas</div>
-    {% for v in variantes %}
-      <div class="prep-variant" id="variante-{{ v.pk }}">
-        <strong>{{ v.producto.modelo.nombre }}</strong> · {{ v.producto.color.nombre }} · {{ v.producto.talla }}{% if v.producto.tela %} · {{ v.producto.tela.nombre }}{% endif %}
-        <div class="prep-code">{{ v.producto.sku }}</div>
-        <a href="?modelo={{ v.producto.modelo_id }}#nuevo">Añadir otra talla o color de este modelo</a>
-        <div class="prep-note">Estimadas: {{ v.cantidad_estimada }} · Etiquetas creadas: {{ v.emitidas }}{% if jornada or cerrada %} · Piezas escaneadas: {{ v.contadas }}{% endif %}</div>
-          <form class="d-flex gap-2 mt-2" action="{% url 'preparacion:emitir_etiquetas' v.pk %}" method="post" target="_blank">
-            {% csrf_token %}<input type="number" class="form-control" name="cantidad" min="1" max="20" value="{{ v.por_imprimir }}" aria-label="Número de etiquetas" style="max-width:90px">
-            <button class="btn btn-outline-primary" type="submit">Crear e imprimir etiquetas</button>
-          </form>
-        {% if v.ultimas %}<details class="mt-2"><summary>Reimprimir una etiqueta dañada</summary><p class="prep-note">Usa la reimpresión solo para reemplazar la etiqueta de ese mismo vestido. Para otro vestido, crea una etiqueta nueva.</p><div class="d-flex flex-wrap gap-2 mt-2">{% for p in v.ultimas %}<a target="_blank" rel="noopener" href="{% url 'preparacion:reimprimir' p.pk %}">{{ p.codigo }}</a>{% endfor %}</div></details>{% endif %}
-      </div>
-    {% empty %}<p class="prep-note mt-3">Todavía no hay variantes. Empieza por un modelo.</p>{% endfor %}
-  </div>
-  {% if variantes and not jornada and not cerrada %}
+  {% if hay_variantes and not jornada and not cerrada %}
     <div class="prep-card">
       <div class="prep-title">Cuando TODO esté etiquetado</div>
       <p class="prep-note">Hazlo después de cerrar la tienda, el día en que comenzarán a registrar las ventas en el POS. Recorre la tienda y escanea solo los vestidos presentes. Lo vendido antes de ese día no se contará.</p>

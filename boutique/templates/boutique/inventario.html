@@ -72,15 +72,6 @@
         <a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning rounded-pill">
             <i class="bi bi-exclamation-triangle me-2"></i>Pendientes
         </a>
-        <label class="d-flex align-items-center gap-1"><input type="checkbox" id="selectAll" class="form-check-input"> Seleccionar</label>
-        <button class="btn btn-outline-primary rounded-pill" id="btnPrintSelected">
-            <i class="bi bi-printer me-2"></i>Imprimir Etiquetas
-        </button>
-        {% if es_admin %}
-        <button class="btn btn-outline-secondary rounded-pill" onclick="regenerarBarcodes()" title="Genera códigos de barras para productos que no los tienen">
-            <i class="bi bi-upc-scan me-2"></i>Regenerar Barcodes
-        </button>
-        {% endif %}
     </div>
 </div>
 
@@ -111,11 +102,11 @@
         <span><strong>{{ familia.nombre }}</strong><br><small class="text-muted">{{ familia.categoria }} · {{ familia.productos|length }} variante{{ familia.productos|length|pluralize }}</small><br>
         <small>{{ familia.estimadas }} estimadas · {{ familia.confirmadas }} en inventario</small></span>
     </summary>
+    <div class="px-3 pb-3"><a class="btn btn-outline-primary" href="{% url 'preparacion:nueva_variante' familia.id %}"><i class="bi bi-plus-lg me-1"></i>Agregar variante de este modelo</a></div>
     <div class="inventory-table-scroll">
         <table class="table table-hover align-middle product-table mb-0">
             <thead class="bg-light">
                 <tr>
-                    <th style="width: 40px; padding-left: 20px;"></th>
                     <th style="width:56px;"></th>
                     <th>Producto</th>
                     <th>Rasgos</th>
@@ -128,7 +119,6 @@
             <tbody>
                 {% for p in familia.productos %}
                 <tr id="row-{{ p.id }}">
-                    <td style="padding-left: 20px;">{% if not p.en_preparacion %}<input type="checkbox" class="product-check form-check-input" value="{{ p.id }}">{% endif %}</td>
                     <td>
                         {% if p.familia_foto_url %}
                         <img src="{{ p.familia_foto_url }}"
@@ -176,14 +166,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if p.en_preparacion %}
-                        <a class="btn btn-sm btn-outline-primary" href="{% url 'preparacion:inicio' %}#variante-{{ p.preparacion_id }}">Imprimir etiquetas de esta variante</a>
-                        {% else %}
-                        <form action="{% url 'preparacion:agregar_existente' %}" method="post" class="d-inline">{% csrf_token %}
-                            <input type="hidden" name="sku" value="{{ p.sku }}">
-                            <button class="btn btn-sm btn-outline-primary" type="submit">Preparar y etiquetar</button>
+                        <form action="{% url 'preparacion:imprimir_producto' p.pk %}" method="post" target="_blank" class="d-flex flex-wrap gap-2 align-items-center">{% csrf_token %}
+                            <label class="small" for="qty-{{ p.pk }}">Etiquetas</label><input type="number" id="qty-{{ p.pk }}" name="cantidad" min="1" max="20" value="1" class="form-control form-control-sm" style="width:68px" required>
+                            <button class="btn btn-sm btn-outline-primary" type="submit">Imprimir para esta variante</button>
                         </form>
-                        {% endif %}
                         {% if es_admin and not p.pendiente_conteo %}
                         <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
                             <i class="bi bi-pencil"></i>
@@ -452,18 +438,6 @@
                 displayValue: false, margin: 2, background: 'transparent'
             });
         } catch(_) {}
-    });
-
-    document.getElementById('selectAll').addEventListener('change', function(e) {
-        document.querySelectorAll('.product-check').forEach(cb => cb.checked = e.target.checked);
-    });
-
-    document.getElementById('btnPrintSelected').addEventListener('click', function() {
-        const selected = Array.from(document.querySelectorAll('.product-check:checked')).map(cb => cb.value);
-        if (selected.length === 0) return alert('Selecciona al menos un producto');
-
-        const url = `{% url 'imprimir_etiquetas' %}?ids=${selected.join(',')}`;
-        window.open(url, '_blank');
     });
 
     function openEditModal(id, r1, r2, precio, stock, fotoUrl) {
