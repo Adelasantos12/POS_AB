@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from . import views
 from . import views_agenda
 from . import views_apartados
+from .services import label_pdf
 
 urlpatterns = [
     # ── Pública — sin login ──────────────────────────────────────
@@ -54,6 +55,7 @@ urlpatterns = [
     path('api/producto-eliminar/<int:pk>/', views.api_eliminar_producto, name='api_eliminar_producto'),
     path('api/producto-foto/<int:pk>/', views.api_foto_producto, name='api_foto_producto'),
     path('imprimir-etiquetas/', views.imprimir_etiquetas, name='imprimir_etiquetas'),
+    path('imprimir-etiquetas/pdf/', label_pdf.imprimir_etiquetas_pdf, name='imprimir_etiquetas_pdf'),
     
     # Impresión Brother QL-800
     path('api/imprimir-etiqueta/<int:pk>/', views.api_imprimir_etiqueta, name='api_imprimir_etiqueta'),
