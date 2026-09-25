@@ -237,7 +237,8 @@ def escanear(request):
 def recibir(request):
     codigo = request.POST.get('codigo', '').strip()
     with transaction.atomic():
-        if not JornadaConteo.objects.filter(abierta=False).exists():
+        cierre = JornadaConteo.objects.filter(abierta=False).first()
+        if not cierre:
             return JsonResponse({'ok': False, 'message': 'Primero termina el inventario inicial.'}, status=409)
         pieza = (PiezaEtiqueta.objects.select_for_update()
                  .select_related('variante__producto').filter(codigo=codigo).first())
@@ -245,6 +246,8 @@ def recibir(request):
             return JsonResponse({'ok': False, 'message': 'Etiqueta desconocida. Revisa el vestido.'}, status=404)
         if pieza.contada or pieza.vendida:
             return JsonResponse({'ok': False, 'message': 'Esta pieza ya se recibió o se vendió. No se sumó otra vez.'}, status=409)
+        if pieza.emitida <= cierre.cerrada:
+            return JsonResponse({'ok': False, 'message': 'Esta etiqueta sobró del conteo inicial y ya no sirve para recibir mercancía. Crea una nueva etiqueta para el vestido que acaba de llegar.'}, status=409)
         producto = Producto.objects.select_for_update().get(pk=pieza.variante.producto_id)
         pieza.contada = timezone.now()
         pieza.save(update_fields=['contada'])
