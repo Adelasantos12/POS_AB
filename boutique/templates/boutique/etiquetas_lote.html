@@ -138,14 +138,19 @@
                 page-break-before: always;
             }
 
-            /* Barcode PNG: render at native physical mm size, no scaling */
+            /* Flex centering must be re-stated for Safari print layout */
+            .col-barcode {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+            }
+
+            /* Barcode: native mm size from inline style; no scaling */
             .barcode-img {
-                width: var(--bw);
-                height: var(--bh);
                 max-width: none;
                 max-height: none;
                 image-rendering: pixelated;
-                -webkit-image-rendering: pixelated;
             }
         }
 
@@ -234,7 +239,7 @@
             {% if bd %}
                 <img src="{{ bd.data_uri }}"
                      class="barcode-img"
-                     style="--bw: {{ bd.width_mm }}mm; --bh: {{ bd.height_mm }}mm;"
+                     style="width: {{ bd.width_mm }}mm; height: {{ bd.height_mm }}mm;"
                      alt="{{ p.sku }}">
             {% elif p.barcode_image %}
                 <img src="{{ p.barcode_image.url }}" class="barcode-img" alt="{{ p.sku }}">
