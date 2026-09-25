@@ -120,12 +120,11 @@
                 width: 90mm;
                 height: 28mm;          /* Leave room for Safari's page rounding on 29 mm media */
                 box-sizing: border-box;
-                display: flex;
-                flex-direction: row;
-                align-items: stretch;
+                display: block;
+                position: relative;
                 overflow: hidden;
                 margin: 0;
-                padding: 1mm;
+                padding: 0;
                 border: none;
                 outline: none;
                 -webkit-print-color-adjust: exact;
@@ -139,18 +138,34 @@
                 page-break-before: always;
             }
 
-            /* Flex centering must be re-stated for Safari print layout */
+            .col-info {
+                position: absolute;
+                left: 1mm;
+                top: 1mm;
+                bottom: 1mm;
+                width: 17mm;
+                min-width: 0;
+                padding: 0 1mm 0 0;
+            }
+
+            /* Fixed physical columns keep Safari from expanding the PNG. */
             .col-barcode {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
+                position: absolute;
+                display: block;
+                left: 19mm;
+                right: 2mm;
+                top: 3mm;
+                bottom: 1mm;
+                padding: 0;
+                text-align: center;
+                overflow: visible;
             }
 
             /* Barcode: native mm size from inline style; no scaling */
             .barcode-img {
                 display: block;
                 flex: none;
+                margin: 0 auto;
                 max-width: none;
                 max-height: none;
                 image-rendering: pixelated;
