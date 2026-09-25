@@ -18,6 +18,7 @@
   <a href="{% url 'inventario_view' %}">← Inventario</a>
   <h1 class="mt-3">Preparar vestidos</h1>
   <p class="prep-note">1. Registrar una cantidad estimada · 2. Etiquetar · 3. Contar. La estimación no suma inventario: el número definitivo será el de etiquetas distintas escaneadas.</p>
+  <a class="btn btn-outline-primary mb-3" href="{% url 'preparacion:conteo' %}">Ir al conteo continuo con escáner</a>
   {% if error %}<div class="prep-error mb-3" role="alert">{{ error }}</div>{% endif %}
 
   <div class="prep-card">

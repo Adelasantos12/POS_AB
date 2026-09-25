@@ -6,6 +6,7 @@ app_name = 'preparacion'
 urlpatterns = [
     path('', views.inicio, name='inicio'),
     path('verificar/', views.verificar_etiqueta, name='verificar_etiqueta'),
+    path('conteo/', views.pagina_conteo, name='conteo'),
     path('variante/', views.guardar_variante, name='guardar_variante'),
     path('existente/', views.agregar_existente, name='agregar_existente'),
     path('etiquetas/<int:variante_id>/', views.emitir_etiquetas, name='emitir_etiquetas'),

@@ -6,6 +6,7 @@ from io import BytesIO
 import barcode
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
+from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -83,6 +84,31 @@ def verificar_etiqueta(request):
     return JsonResponse({'ok': True, 'codigo': pieza.codigo, 'sku': producto.sku,
                          'estado': estado,
                          'message': f'{pieza.codigo} → {producto.sku} · {detalles}. {estado}.'})
+
+
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
+def pagina_conteo(request):
+    jornada = JornadaConteo.objects.filter(abierta=True).first()
+    cerrada = JornadaConteo.objects.filter(abierta=False).first()
+    cantidades = {}
+    if jornada:
+        cantidades = dict(PiezaEtiqueta.objects.filter(jornada=jornada, contada__isnull=False)
+                          .values('variante_id').annotate(n=Count('pk'))
+                          .values_list('variante_id', 'n'))
+    variantes = list(VariantePreparada.objects.select_related(
+        'producto__modelo', 'producto__color', 'producto__tela').order_by(
+        'producto__modelo__nombre', 'producto__color__nombre', 'producto__talla'))
+    for variante in variantes:
+        variante.contadas = cantidades.get(variante.pk, 0)
+    recientes = (PiezaEtiqueta.objects.filter(jornada=jornada, contada__isnull=False)
+                .select_related('variante__producto__modelo', 'variante__producto__color')
+                .order_by('-contada')[:10]) if jornada else []
+    return render(request, 'preparacion/conteo.html', {
+        'jornada': jornada, 'cerrada': cerrada, 'variantes': variantes,
+        'recientes': recientes, 'total': sum(cantidades.values()),
+        'hay_etiquetas': PiezaEtiqueta.objects.exists(),
+    })
 
 
 @require_POST
@@ -238,7 +264,7 @@ def iniciar_conteo(request):
                                             defaults={'responsable': request.active_profile})
     except IntegrityError:
         pass
-    return redirect('preparacion:inicio')
+    return redirect('preparacion:conteo')
 
 
 @require_POST
@@ -251,7 +277,8 @@ def escanear(request):
         if not jornada:
             return JsonResponse({'ok': False, 'message': 'Inicia el conteo primero.'}, status=409)
         pieza = (PiezaEtiqueta.objects.select_for_update()
-                 .select_related('variante__producto').filter(codigo=codigo).first())
+                 .select_related('variante__producto__modelo', 'variante__producto__color',
+                                 'variante__producto__tela').filter(codigo=codigo).first())
         if not pieza:
             return JsonResponse({'ok': False, 'message': 'Etiqueta desconocida. Aparta el vestido para revisarlo.'}, status=404)
         if pieza.contada:
@@ -260,7 +287,13 @@ def escanear(request):
         pieza.jornada = jornada
         pieza.save(update_fields=['contada', 'jornada'])
         n = PiezaEtiqueta.objects.filter(variante=pieza.variante, jornada=jornada).count()
-    return JsonResponse({'ok': True, 'message': f'{pieza.variante.producto.sku}: {n} vestido(s) contado(s)',
+    producto = pieza.variante.producto
+    return JsonResponse({'ok': True, 'message': f'{producto.sku}: {n} vestido(s) contado(s)',
+                         'codigo': pieza.codigo, 'variante_id': pieza.variante_id,
+                         'sku': producto.sku,
+                         'modelo': producto.modelo.nombre if producto.modelo else producto.rasgo1,
+                         'color': producto.color.nombre if producto.color else '',
+                         'talla': producto.talla, 'cantidad_variante': n,
                          'total': PiezaEtiqueta.objects.filter(jornada=jornada).count()})
 
 
