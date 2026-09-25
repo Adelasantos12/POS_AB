@@ -57,6 +57,7 @@
 
         .col-barcode {
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -117,14 +118,14 @@
 
             .etiqueta {
                 width: 90mm;
-                height: 28mm;          /* 28 mm fits inside the QL-800 printable area */
+                height: 29mm;
                 box-sizing: border-box;
                 display: flex;
                 flex-direction: row;
                 align-items: stretch;
                 overflow: hidden;
                 margin: 0;
-                padding: 1.5mm 1mm;
+                padding: 1mm;
                 border: none;
                 outline: none;
                 -webkit-print-color-adjust: exact;
@@ -148,6 +149,8 @@
 
             /* Barcode: native mm size from inline style; no scaling */
             .barcode-img {
+                display: block;
+                flex: none;
                 max-width: none;
                 max-height: none;
                 image-rendering: pixelated;
@@ -241,8 +244,6 @@
                      class="barcode-img"
                      style="width: {{ bd.width_mm }}mm; height: {{ bd.height_mm }}mm;"
                      alt="{{ p.sku }}">
-            {% elif p.barcode_image %}
-                <img src="{{ p.barcode_image.url }}" class="barcode-img" alt="{{ p.sku }}">
             {% else %}
                 <div class="no-barcode">{{ p.sku }}</div>
             {% endif %}
