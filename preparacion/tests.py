@@ -104,11 +104,16 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(variants[1].sku, f'M{first.modelo_id:05d}-02')
         self._variant(modelo_id=first.modelo_id, modelo_nuevo='', color_id=other_color.pk)
         self.assertEqual(Producto.objects.count(), 2)
+        first.modelo.foto_principal = 'modelos/aurora.jpg'
+        first.modelo.save(update_fields=['foto_principal'])
         response = self.client.get(reverse('inventario_view'), {'q': first.sku})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, first.sku)
         self.assertContains(response, variants[1].sku)
         self.assertContains(response, 'Imprimir etiquetas de esta variante', count=2)
+        self.assertContains(response, 'modelos/aurora.jpg')
+        self.assertEqual(len(response.context['familias']), 1)
+        self.assertEqual(len(response.context['familias'][0]['productos']), 2)
         self.assertNotContains(response, 'Registro avanzado')
         self.assertContains(response, 'Pendiente de conteo', count=2)
 
