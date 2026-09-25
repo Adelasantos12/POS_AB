@@ -65,8 +65,8 @@
             overflow: hidden;
         }
 
-        /* Screen: allow SVG to scale down if label preview is small */
-        .col-barcode svg {
+        /* Screen: scale down barcode if label preview is narrow */
+        .barcode-img {
             display: block;
             max-width: 100%;
             height: auto;
@@ -138,12 +138,14 @@
                 page-break-before: always;
             }
 
-            /* Barcode: render at native mm size — no CSS scaling */
-            .col-barcode svg {
+            /* Barcode PNG: render at native physical mm size, no scaling */
+            .barcode-img {
+                width: var(--bw);
+                height: var(--bh);
                 max-width: none;
                 max-height: none;
-                width: auto;
-                height: auto;
+                image-rendering: pixelated;
+                -webkit-image-rendering: pixelated;
             }
         }
 
@@ -228,13 +230,18 @@
             </div>
         </div>
         <div class="col-barcode">
-            {% if p.barcode_svg %}
-                {{ p.barcode_svg|safe }}
+            {% with bd=p.barcode_png_data_uri %}
+            {% if bd %}
+                <img src="{{ bd.data_uri }}"
+                     class="barcode-img"
+                     style="--bw: {{ bd.width_mm }}mm; --bh: {{ bd.height_mm }}mm;"
+                     alt="{{ p.sku }}">
             {% elif p.barcode_image %}
-                <img src="{{ p.barcode_image.url }}" alt="{{ p.sku }}" style="max-width:100%;max-height:18mm;display:block;">
+                <img src="{{ p.barcode_image.url }}" class="barcode-img" alt="{{ p.sku }}">
             {% else %}
                 <div class="no-barcode">{{ p.sku }}</div>
             {% endif %}
+            {% endwith %}
             <div class="sku-text">{{ p.sku }}</div>
         </div>
     </div>

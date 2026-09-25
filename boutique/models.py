@@ -417,47 +417,44 @@ class Producto(models.Model):
         super().save(*args, **kwargs)
 
     @property
-    def barcode_svg(self):
-        """Return inline SVG barcode sized to its native mm dimensions.
+    def barcode_png_data_uri(self):
+        """Return barcode as a base64 PNG data URI at 300 dpi native physical size.
 
-        module_width=0.3 mm → correct physical bar width at 300 dpi (≈3.5 px/module).
-        write_text=False → SKU is shown as a separate text element in the template.
-        Native width/height are kept so @media print renders at exact physical size.
-        viewBox is added so CSS max-width:100% can scale it down on screen when needed.
-        shape-rendering=crispEdges prevents anti-aliasing on bar edges.
+        Returns a namedtuple(data_uri, width_mm, height_mm) so the template can
+        set CSS custom properties for exact print dimensions without JS.
+        Returns None on any error.
         """
         try:
-            import re
+            import base64
+            from collections import namedtuple
             import barcode
-            from barcode.writer import SVGWriter
+            from barcode.writer import ImageWriter
             from io import BytesIO
+            from PIL import Image
+
             CODE128 = barcode.get_barcode_class('code128')
             buf = BytesIO()
-            CODE128(self.sku, writer=SVGWriter()).write(buf, options={
+            CODE128(self.sku, writer=ImageWriter()).write(buf, options={
                 'write_text': False,
                 'module_width': 0.3,
                 'module_height': 15.0,
                 'quiet_zone': 3.0,
+                'dpi': 300,
             })
-            svg = buf.getvalue().decode('utf-8')
-            svg = re.sub(r'^<\?xml[^?]*\?>\s*', '', svg, flags=re.DOTALL)
-            # Extract native mm dimensions
-            wm = re.search(r'width="([\d.]+)mm"', svg)
-            hm = re.search(r'height="([\d.]+)mm"', svg)
-            if wm and hm:
-                w, h = wm.group(1), hm.group(1)
-                # Rebuild <svg> tag: keep native mm width/height, add viewBox + crispEdges
-                svg = re.sub(
-                    r'<svg\b[^>]*>',
-                    (f'<svg xmlns="http://www.w3.org/2000/svg"'
-                     f' viewBox="0 0 {w} {h}"'
-                     f' width="{w}mm" height="{h}mm"'
-                     f' shape-rendering="crispEdges">'),
-                    svg, count=1,
-                )
-            return svg
+            buf.seek(0)
+            img = Image.open(buf)
+            px_w, px_h = img.size
+            buf.seek(0)
+
+            data_uri = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+            BarcodeLabel = namedtuple('BarcodeLabel', ['data_uri', 'width_mm', 'height_mm'])
+            return BarcodeLabel(
+                data_uri=data_uri,
+                width_mm=round(px_w / 300 * 25.4, 2),
+                height_mm=round(px_h / 300 * 25.4, 2),
+            )
         except Exception:
-            return ''
+            return None
 
     def __str__(self):
         cat_nombre = self.categoria.nombre if self.categoria else "Sin Categoria"
