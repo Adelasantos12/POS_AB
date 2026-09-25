@@ -12,9 +12,10 @@ from boutique.models import Producto
 
 LABEL_WIDTH = 90 * mm
 LABEL_HEIGHT = 29 * mm
-MODULE_WIDTH = 0.4 * mm
-QUIET_ZONE = 4 * mm
+MODULE_WIDTH = 0.45 * mm
+QUIET_ZONE = 5 * mm
 BAR_HEIGHT = 15 * mm
+INK_REDUCTION = 0.06 * mm
 
 
 def _fit_text(pdf, text, x, y, width, font='Helvetica', size=7):
@@ -32,33 +33,33 @@ def render_labels(pdf_file, products):
         sku = product.sku or ''
         modules = barcode.get_barcode_class('code128')(sku).build()[0]
         symbol_width = len(modules) * MODULE_WIDTH + 2 * QUIET_ZONE
-        if symbol_width > 70 * mm:
-            raise ValueError(f'El SKU {sku} no cabe en la etiqueta a 0.4 mm por módulo')
+        if symbol_width > 86 * mm:
+            raise ValueError(f'El SKU {sku} no cabe en la etiqueta de 90 mm')
 
-        # The narrow information column leaves enough physical space for wide
-        # bars and untouched white quiet zones on both sides.
-        left_centre = 9 * mm
+        # Use the full label width, as on the known-good reference label.
+        # Put all human-readable information below the bars.
         pdf.setFillColorRGB(0, 0, 0)
-        _fit_text(pdf, f'${product.precio_venta:,.0f}', left_centre, 17 * mm,
-                  16 * mm, font='Helvetica-Bold', size=10)
+        _fit_text(pdf, f'${product.precio_venta:,.0f}', 12 * mm, 5 * mm,
+                  21 * mm, font='Helvetica-Bold', size=9)
         if product.talla:
-            _fit_text(pdf, f'T: {product.talla}', left_centre, 11.5 * mm, 16 * mm)
+            _fit_text(pdf, f'T: {product.talla}', 12 * mm, 2 * mm, 21 * mm, size=6)
         if product.color:
-            _fit_text(pdf, product.color.nombre.upper(), left_centre, 8 * mm,
-                      16 * mm, size=6.5)
+            _fit_text(pdf, product.color.nombre.upper(), 77 * mm, 3 * mm,
+                      21 * mm, size=6)
 
-        symbol_x = 19 * mm + (70 * mm - symbol_width) / 2
+        symbol_x = (LABEL_WIDTH - symbol_width) / 2
         bars_x = symbol_x + QUIET_ZONE
         run_start = None
         for index, bit in enumerate(modules + '0'):
             if bit == '1' and run_start is None:
                 run_start = index
             elif bit == '0' and run_start is not None:
-                pdf.rect(bars_x + run_start * MODULE_WIDTH, 8 * mm,
-                         (index - run_start) * MODULE_WIDTH, BAR_HEIGHT,
+                pdf.rect(bars_x + run_start * MODULE_WIDTH + INK_REDUCTION / 2,
+                         11 * mm,
+                         (index - run_start) * MODULE_WIDTH - INK_REDUCTION, BAR_HEIGHT,
                          fill=1, stroke=0)
                 run_start = None
-        _fit_text(pdf, sku, 54 * mm, 4.2 * mm, 68 * mm, size=7)
+        _fit_text(pdf, sku, 45 * mm, 4 * mm, 41 * mm, size=8)
         pdf.showPage()
     pdf.save()
 
