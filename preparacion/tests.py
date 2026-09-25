@@ -63,6 +63,35 @@ class PreparacionInicialTests(TestCase):
         self.assertTrue(product.activo)
         self.assertEqual(PiezaEtiqueta.objects.filter(contada__isnull=True).count(), 2)
 
+    def test_estimate_five_can_close_as_seven_or_three(self):
+        self.assertEqual(self._variant(cantidad_estimada='5').status_code, 302)
+        first = VariantePreparada.objects.get()
+        self.assertEqual(first.cantidad_estimada, 5)
+        self.client.post(reverse('preparacion:emitir_etiquetas', args=[first.pk]),
+                         {'cantidad': 5})
+        other, _ = Color.objects.get_or_create(nombre='Azul Rey')
+        self.assertEqual(self._variant(modelo_id=first.producto.modelo_id, modelo_nuevo='',
+                                      color_id=other.pk, cantidad_estimada='5').status_code, 302)
+        second = VariantePreparada.objects.exclude(pk=first.pk).get()
+        self.client.post(reverse('preparacion:emitir_etiquetas', args=[second.pk]),
+                         {'cantidad': 5})
+        self.client.post(reverse('preparacion:iniciar_conteo'))
+        extra = self.client.post(reverse('preparacion:emitir_etiquetas', args=[first.pk]),
+                                 {'cantidad': 2})
+        self.assertEqual(extra.status_code, 200)
+        first.producto.refresh_from_db()
+        self.assertEqual(first.producto.cantidad_actual, 0)
+        for piece in first.piezas.all():
+            self.assertEqual(self.client.post(reverse('preparacion:escanear'),
+                                              {'codigo': piece.codigo}).status_code, 200)
+        for piece in second.piezas.order_by('pk')[:3]:
+            self.client.post(reverse('preparacion:escanear'), {'codigo': piece.codigo})
+        self.client.post(reverse('preparacion:cerrar_conteo'), {'confirmar': 'SI'})
+        first.producto.refresh_from_db()
+        second.producto.refresh_from_db()
+        self.assertEqual(first.producto.cantidad_actual, 7)
+        self.assertEqual(second.producto.cantidad_actual, 3)
+
     def test_existing_model_gets_distinct_variant_without_duplicate(self):
         self._variant()
         first = Producto.objects.get()

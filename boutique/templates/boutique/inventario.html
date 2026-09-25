@@ -137,8 +137,8 @@
                     <td><strong>{{ p.color.nombre }}</strong> · Talla {{ p.talla }}{% if p.tela %}<br><small class="text-muted">{{ p.tela.nombre }}</small>{% endif %}</td>
                     <td class="precio-col fw-bold">${{ p.precio_venta }}</td>
                     <td class="stock-col">
-                        {% if p.en_preparacion and not p.activo %}
-                        <span class="badge bg-secondary">Pendiente de conteo</span>
+                        {% if p.pendiente_conteo %}
+                        <span class="badge bg-secondary">Estimadas: {{ p.cantidad_estimada }} · Pendiente de conteo</span>
                         {% elif p.cantidad_actual == 0 %}
                         <span class="status-badge status-inactive">
                             <i class="bi bi-exclamation-circle me-1"></i>Agotado

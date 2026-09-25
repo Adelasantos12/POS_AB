@@ -55,9 +55,10 @@ def inicio(request):
 @login_required
 @profile_permission_required(['Inventario', 'Vendedor'])
 def guardar_variante(request):
-    if JornadaConteo.objects.filter(abierta=True).exists():
-        return _pagina(request, 'Termina el conteo abierto antes de registrar variantes.')
     try:
+        estimada = int(request.POST.get('cantidad_estimada') or 0)
+        if not 0 <= estimada <= 10000:
+            raise ValueError('La cantidad estimada debe estar entre 0 y 10 000.')
         precio = Decimal(request.POST.get('precio', ''))
         if precio <= 0:
             raise ValueError('Indica un precio mayor que cero.')
@@ -109,7 +110,7 @@ def guardar_variante(request):
                 cantidad_actual=0, stock_teorico=0, activo=False,
                 foto=modelo.foto_principal.name if modelo.foto_principal else None,
             )
-            VariantePreparada.objects.create(producto=producto)
+            VariantePreparada.objects.create(producto=producto, cantidad_estimada=estimada)
         return redirect(f'{reverse("preparacion:inicio")}?modelo={modelo.pk}#nuevo')
     except (ValueError, InvalidOperation, IntegrityError) as exc:
         return _pagina(request, str(exc))
@@ -119,15 +120,14 @@ def guardar_variante(request):
 @login_required
 @profile_permission_required(['Inventario', 'Vendedor'])
 def agregar_existente(request):
-    if JornadaConteo.objects.filter(abierta=True).exists():
-        return _pagina(request, 'Termina el conteo antes de agregar otro vestido.')
     sku = request.POST.get('sku', '').strip().upper().replace("'", '-')
     producto = Producto.objects.filter(sku__iexact=sku).first()
     if not producto:
         return _pagina(request, 'No se encontró ese SKU. Revisa el código impreso.')
     if VariantePreparada.objects.filter(producto=producto).exists():
         return _pagina(request, 'Ese vestido ya está en preparación; usa su tarjeta para imprimir etiquetas.')
-    variante = VariantePreparada.objects.create(producto=producto)
+    variante = VariantePreparada.objects.create(
+        producto=producto, cantidad_estimada=producto.cantidad_actual)
     return redirect(f'{reverse("preparacion:inicio")}#variante-{variante.pk}')
 
 
@@ -171,8 +171,6 @@ def _etiquetas_pdf(piezas):
 @profile_permission_required(['Inventario', 'Vendedor'])
 def emitir_etiquetas(request, variante_id):
     variante = get_object_or_404(VariantePreparada, pk=variante_id)
-    if JornadaConteo.objects.filter(abierta=True).exists():
-        return HttpResponse('Termina el conteo abierto antes de imprimir más etiquetas.', status=409)
     try:
         cantidad = int(request.POST.get('cantidad', '1'))
     except ValueError:

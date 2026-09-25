@@ -34,12 +34,15 @@ def inventario_view(request):
     visibles = visibles.select_related('categoria', 'color', 'modelo', 'tela').order_by(
         'modelo__nombre', 'rasgo1', 'color__nombre', 'tela__nombre', 'talla', 'pk')
     productos = Paginator(visibles, 100).get_page(request.GET.get('page'))
-    preparados = dict(VariantePreparada.objects.filter(
+    preparados = {producto_id: (pk, confirmada, estimada)
+                  for producto_id, pk, confirmada, estimada in VariantePreparada.objects.filter(
         producto_id__in=[p.pk for p in productos]
-    ).values_list('producto_id', 'pk'))
+    ).values_list('producto_id', 'pk', 'confirmada', 'cantidad_estimada')}
     for p in productos:
         p.en_preparacion = p.pk in preparados
-        p.preparacion_id = preparados.get(p.pk)
+        p.preparacion_id = preparados[p.pk][0] if p.en_preparacion else None
+        p.pendiente_conteo = p.en_preparacion and preparados[p.pk][1] is None
+        p.cantidad_estimada = preparados[p.pk][2] if p.en_preparacion else None
     return render(request, 'boutique/inventario.html', {
         'productos': productos, 'q': q,
         'es_admin': es_admin(request.active_profile),

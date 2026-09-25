@@ -9,6 +9,7 @@ class VariantePreparada(models.Model):
                                     related_name='preparacion')
     creada = models.DateTimeField(auto_now_add=True)
     confirmada = models.DateTimeField(null=True, blank=True)
+    cantidad_estimada = models.PositiveIntegerField(default=0)
 
 
 class JornadaConteo(models.Model):
