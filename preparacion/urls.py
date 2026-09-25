@@ -9,6 +9,7 @@ urlpatterns = [
     path('conteo/', views.pagina_conteo, name='conteo'),
     path('variante/nueva/<int:producto_id>/', views.nueva_variante, name='nueva_variante'),
     path('imprimir/<int:producto_id>/', views.imprimir_producto, name='imprimir_producto'),
+    path('reimprimir/<int:producto_id>/', views.reimprimir_codigo, name='reimprimir_codigo'),
     path('variante/', views.guardar_variante, name='guardar_variante'),
     path('existente/', views.agregar_existente, name='agregar_existente'),
     path('etiquetas/<int:variante_id>/', views.emitir_etiquetas, name='emitir_etiquetas'),

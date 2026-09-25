@@ -194,13 +194,50 @@ class PreparacionInicialTests(TestCase):
         sobrante = PiezaEtiqueta.objects.first()
         endpoint = reverse('preparacion:recibir')
         self.assertEqual(self.client.post(endpoint, {'codigo': sobrante.codigo}).status_code, 409)
-        self.client.post(reverse('preparacion:emitir_etiquetas', args=[variant.pk]), {'cantidad': 1})
+        self.assertContains(self.client.get(reverse('preparacion:conteo')),
+                            'Recibir mercancía')
+        self.client.post(reverse('preparacion:imprimir_producto', args=[variant.producto_id]),
+                         {'cantidad': 1})
         piece = PiezaEtiqueta.objects.order_by('-pk').first()
-        self.assertEqual(self.client.post(endpoint, {'codigo': piece.codigo}).status_code, 200)
+        reprint = self.client.post(reverse('preparacion:reimprimir_codigo',
+                                           args=[variant.producto_id]), {'codigo': piece.codigo})
+        self.assertEqual(reprint['Content-Type'], 'application/pdf')
+        self.assertEqual(PiezaEtiqueta.objects.count(), 3)
+        result = self.client.post(endpoint, {'codigo': piece.codigo})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()['sku'], variant.producto.sku)
+        self.assertEqual(result.json()['cantidad_variante'], 1)
         self.assertEqual(self.client.post(endpoint, {'codigo': piece.codigo}).status_code, 409)
+        self.assertContains(self.client.get(reverse('preparacion:conteo')), piece.codigo)
         variant.producto.refresh_from_db()
         self.assertEqual(variant.producto.cantidad_actual, 1)
         self.assertEqual(variant.producto.stock_teorico, 1)
+
+    def test_daily_new_variant_is_available_only_after_receiving_scan(self):
+        self._variant()
+        first = VariantePreparada.objects.get()
+        self.client.post(reverse('preparacion:imprimir_producto', args=[first.producto_id]),
+                         {'cantidad': 1})
+        self.client.post(reverse('preparacion:iniciar_conteo'))
+        self.client.post(reverse('preparacion:cerrar_conteo'), {'confirmar': 'SI'})
+        azul, _ = Color.objects.get_or_create(nombre='Azul Rey')
+        self.client.post(reverse('preparacion:guardar_variante'), {
+            'base_producto_id': first.producto_id, 'color_id': azul.pk,
+            'talla': 'M', 'precio': '1590',
+        })
+        new = Producto.objects.exclude(pk=first.producto_id).get()
+        self.assertEqual(new.cantidad_actual, 0)
+        self.client.post(reverse('preparacion:imprimir_producto', args=[new.pk]),
+                         {'cantidad': 1})
+        piece = PiezaEtiqueta.objects.filter(variante__producto=new).get()
+        self.assertEqual(self.client.get('/api/search-global/', {'q': piece.codigo}).json()['results'], [])
+        self.assertEqual(self.client.post(reverse('preparacion:recibir'),
+                                          {'codigo': piece.codigo}).status_code, 200)
+        new.refresh_from_db()
+        self.assertEqual(new.cantidad_actual, 1)
+        self.assertTrue(new.activo)
+        self.assertEqual(self.client.get('/api/search-global/', {'q': piece.codigo}).json()
+                         ['results'][0]['sku'], new.sku)
 
     def test_serial_search_and_sale_reject_repeat(self):
         self._variant()

@@ -100,6 +100,10 @@ def pagina_conteo(request):
         cantidades = dict(PiezaEtiqueta.objects.filter(jornada=jornada, contada__isnull=False)
                           .values('variante_id').annotate(n=Count('pk'))
                           .values_list('variante_id', 'n'))
+    elif cerrada:
+        cantidades = dict(PiezaEtiqueta.objects.filter(contada__gte=cerrada.cerrada)
+                          .values('variante_id').annotate(n=Count('pk'))
+                          .values_list('variante_id', 'n'))
     variantes = list(VariantePreparada.objects.select_related(
         'producto__modelo', 'producto__color', 'producto__tela').order_by(
         'producto__modelo__nombre', 'producto__color__nombre', 'producto__talla'))
@@ -107,7 +111,10 @@ def pagina_conteo(request):
         variante.contadas = cantidades.get(variante.pk, 0)
     recientes = (PiezaEtiqueta.objects.filter(jornada=jornada, contada__isnull=False)
                 .select_related('variante__producto__modelo', 'variante__producto__color')
-                .order_by('-contada')[:10]) if jornada else []
+                .order_by('-contada')[:10]) if jornada else (
+                PiezaEtiqueta.objects.filter(contada__gte=cerrada.cerrada)
+                .select_related('variante__producto__modelo', 'variante__producto__color')
+                .order_by('-contada')[:10] if cerrada else [])
     return render(request, 'preparacion/conteo.html', {
         'jornada': jornada, 'cerrada': cerrada, 'variantes': variantes,
         'recientes': recientes, 'total': sum(cantidades.values()),
@@ -297,6 +304,16 @@ def reimprimir(request, pieza_id):
 @require_POST
 @login_required
 @profile_permission_required(['Inventario', 'Vendedor'])
+def reimprimir_codigo(request, producto_id):
+    codigo = request.POST.get('codigo', '').strip()
+    pieza = get_object_or_404(PiezaEtiqueta.objects.select_related('variante__producto__color'),
+                              codigo=codigo, variante__producto_id=producto_id)
+    return _etiquetas_pdf([pieza])
+
+
+@require_POST
+@login_required
+@profile_permission_required(['Inventario', 'Vendedor'])
 def iniciar_conteo(request):
     if JornadaConteo.objects.filter(abierta=False).exists():
         return HttpResponse('El inventario inicial ya se cerró.', status=409)
@@ -350,7 +367,8 @@ def recibir(request):
         if not cierre:
             return JsonResponse({'ok': False, 'message': 'Primero termina el inventario inicial.'}, status=409)
         pieza = (PiezaEtiqueta.objects.select_for_update()
-                 .select_related('variante__producto').filter(codigo=codigo).first())
+                 .select_related('variante__producto__modelo', 'variante__producto__color')
+                 .filter(codigo=codigo).first())
         if not pieza:
             return JsonResponse({'ok': False, 'message': 'Etiqueta desconocida. Revisa el vestido.'}, status=404)
         if pieza.contada or pieza.vendida:
@@ -370,7 +388,13 @@ def recibir(request):
             stock_resultante=0)
         if not producto.activo:
             Producto.objects.filter(pk=producto.pk).update(activo=True)
-    return JsonResponse({'ok': True, 'message': 'Una pieza recibida y agregada al inventario.'})
+    producto.refresh_from_db()
+    return JsonResponse({'ok': True, 'message': 'Una pieza recibida y agregada al inventario.',
+                         'codigo': pieza.codigo, 'sku': producto.sku,
+                         'modelo': producto.modelo.nombre if producto.modelo else producto.rasgo1,
+                         'color': producto.color.nombre if producto.color else '',
+                         'talla': producto.talla, 'variante_id': pieza.variante_id,
+                         'cantidad_variante': producto.cantidad_actual})
 
 
 @require_POST

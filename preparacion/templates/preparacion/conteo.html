@@ -1,5 +1,5 @@
 {% extends 'boutique/base.html' %}
-{% block title %}Conteo con escáner{% endblock %}
+{% block title %}{% if cerrada %}Recibir mercancía{% else %}Conteo con escáner{% endif %}{% endblock %}
 {% block extra_css %}
 .count-wrap { max-width: 950px; margin: auto; }
 .count-card { background: white; border: 1px solid #e4e7eb; border-radius: 16px; padding: 1.5rem; margin: 1rem 0; }
@@ -14,10 +14,8 @@
 {% block content %}
 <div class="count-wrap">
   <a href="{% url 'inventario_view' %}">← Inventario</a>
-  <h1 class="mt-3">Conteo con escáner</h1>
-  {% if cerrada %}
-    <div class="count-card"><h2>Inventario inicial cerrado</h2><p>El conteo terminó. Para mercancía nueva, usa «Recibir mercancía» en Preparar vestidos.</p><a href="{% url 'preparacion:inicio' %}" class="btn btn-primary">Ir a Preparar vestidos</a></div>
-  {% elif not jornada %}
+  <h1 class="mt-3">{% if cerrada %}Recibir mercancía{% else %}Conteo con escáner{% endif %}</h1>
+  {% if not jornada and not cerrada %}
     <div class="count-card">
       <h2>Iniciar el conteo final</h2>
       <p>Cuando todos los vestidos que van a inventariar tengan etiqueta, inicia el conteo. Las cantidades estimadas no se suman; solo cuentan las etiquetas escaneadas. Pueden pausar y continuar otro día.</p>
@@ -26,25 +24,26 @@
     </div>
   {% else %}
     <div class="count-card">
-      <h2>Escanea un vestido tras otro</h2>
-      <p>El lector envía cada código al pulsar Enter. La pantalla confirma la variante y vuelve a dejar el cursor listo. Si se repite una etiqueta, no vuelve a sumar.</p>
-      <div class="fs-3 fw-bold mb-3">Total contado: <span id="count-total">{{ total }}</span></div>
-      <form id="count-form" action="{% url 'preparacion:escanear' %}" method="post">{% csrf_token %}
+      <h2>{% if cerrada %}Escanea los vestidos que llegaron{% else %}Escanea un vestido tras otro{% endif %}</h2>
+      <p>{% if cerrada %}Crea o abre el modelo en Inventario, imprime una etiqueta nueva por vestido, pégala y escanéala aquí. Solo entonces se suma una pieza. Una etiqueta vieja o repetida no suma.{% else %}El lector envía cada código al pulsar Enter. La pantalla confirma la variante y vuelve a dejar el cursor listo. Si se repite una etiqueta, no vuelve a sumar.{% endif %}</p>
+      <a class="btn btn-outline-primary mb-3" href="{% url 'inventario_view' %}">Ir a modelos y etiquetas</a>
+      <div class="fs-3 fw-bold mb-3">{% if cerrada %}Recibidos desde el cierre: {% else %}Total contado: {% endif %}<span id="count-total">{{ total }}</span></div>
+      <form id="count-form" action="{% if cerrada %}{% url 'preparacion:recibir' %}{% else %}{% url 'preparacion:escanear' %}{% endif %}" method="post">{% csrf_token %}
         <label class="form-label" for="count-code">Escanea aquí</label>
-        <div class="d-flex gap-2"><input id="count-code" name="codigo" class="form-control count-field" inputmode="numeric" autocomplete="off" autofocus required placeholder="Código de 12 números"><button class="btn btn-primary" type="submit">Contar</button></div>
+        <div class="d-flex gap-2"><input id="count-code" name="codigo" class="form-control count-field" inputmode="numeric" autocomplete="off" autofocus required placeholder="Código de 12 números"><button class="btn btn-primary" type="submit">{% if cerrada %}Recibir{% else %}Contar{% endif %}</button></div>
       </form>
       <div id="count-status" class="mt-3" role="status" aria-live="assertive">Listo para escanear.</div>
     </div>
     <div class="count-card">
-      <h2>Contado por variante</h2>
+      <h2>{% if cerrada %}Recibido por variante desde el cierre{% else %}Contado por variante{% endif %}</h2>
       <ul class="count-list" id="variant-list">
       {% for v in variantes %}
         <li data-variante="{{ v.pk }}"><strong>{{ v.producto.modelo.nombre|default:v.producto.rasgo1 }}</strong> · {{ v.producto.color.nombre }} · {{ v.producto.talla }}{% if v.producto.tela %} · {{ v.producto.tela.nombre }}{% endif %} · {{ v.producto.sku }} <strong class="float-end" data-quantity>{{ v.contadas }}</strong></li>
       {% endfor %}
       </ul>
     </div>
-    <div class="count-card"><h2>Últimos escaneos</h2><ul class="count-list" id="recent-list">{% for p in recientes %}<li>{{ p.codigo }} · {{ p.variante.producto.modelo.nombre }} · {{ p.variante.producto.color.nombre }} · {{ p.variante.producto.talla }}</li>{% empty %}<li id="recent-empty">Aún no hay vestidos contados.</li>{% endfor %}</ul></div>
-    <div class="count-card"><h2>Al terminar toda la tienda</h2><p>Revisa los totales antes de activar el inventario. El cierre se confirma por separado y las etiquetas que no fueron escaneadas quedan fuera.</p><a href="{% url 'preparacion:inicio' %}" class="btn btn-outline-primary">Revisar y cerrar conteo</a></div>
+    <div class="count-card"><h2>Últimos escaneos</h2><ul class="count-list" id="recent-list">{% for p in recientes %}<li>{{ p.codigo }} · {{ p.variante.producto.modelo.nombre|default:p.variante.producto.rasgo1 }} · {{ p.variante.producto.color.nombre }} · {{ p.variante.producto.talla }}</li>{% empty %}<li id="recent-empty">Aún no hay vestidos escaneados.</li>{% endfor %}</ul></div>
+    {% if jornada %}<div class="count-card"><h2>Al terminar toda la tienda</h2><p>Revisa los totales antes de activar el inventario. El cierre se confirma por separado y las etiquetas que no fueron escaneadas quedan fuera.</p><a href="{% url 'preparacion:inicio' %}" class="btn btn-outline-primary">Revisar y cerrar conteo</a></div>{% endif %}
     <script>
     (function() {
       var form = document.getElementById('count-form'), input = document.getElementById('count-code');
@@ -64,9 +63,9 @@
           status.className = 'count-status mt-3 ' + (result.ok ? 'count-success' : 'count-error');
           status.textContent = result.ok ? '✓ ' + result.modelo + ' · ' + result.color + ' · ' + result.talla + ' (' + result.sku + '). Total de esta variante: ' + result.cantidad_variante : 'Atención: ' + result.message;
           if (result.ok) {
-            document.getElementById('count-total').textContent = result.total;
+            document.getElementById('count-total').textContent = {% if cerrada %}Number(document.getElementById('count-total').textContent) + 1{% else %}result.total{% endif %};
             var row = document.querySelector('[data-variante="' + result.variante_id + '"] [data-quantity]');
-            if (row) row.textContent = result.cantidad_variante;
+            if (row) row.textContent = {% if cerrada %}Number(row.textContent) + 1{% else %}result.cantidad_variante{% endif %};
             var list = document.getElementById('recent-list'), empty = document.getElementById('recent-empty');
             if (empty) empty.remove();
             var li = document.createElement('li');

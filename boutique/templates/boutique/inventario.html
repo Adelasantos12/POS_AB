@@ -57,7 +57,7 @@
     <h2 class="fw-bold mb-0">Inventario</h2>
     <div class="d-flex flex-wrap gap-2">
         <a href="{% url 'preparacion:inicio' %}" class="btn btn-primary rounded-pill">Preparar vestidos</a>
-        {% if not conteo_inicial_cerrado %}<a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-primary rounded-pill">Contar con escáner</a>{% endif %}
+        <a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-primary rounded-pill">{% if conteo_inicial_cerrado %}Recibir mercancía con escáner{% else %}Contar con escáner{% endif %}</a>
         {% if es_admin and conteo_inicial_cerrado %}
         <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
             <i class="bi bi-plus-lg me-2"></i>Registro avanzado
@@ -170,6 +170,7 @@
                             <label class="small" for="qty-{{ p.pk }}">Etiquetas</label><input type="number" id="qty-{{ p.pk }}" name="cantidad" min="1" max="20" value="1" class="form-control form-control-sm" style="width:68px" required>
                             <button class="btn btn-sm btn-outline-primary" type="submit">Imprimir para esta variante</button>
                         </form>
+                        {% if p.en_preparacion %}<details class="mt-2"><summary>Reimprimir una etiqueta dañada</summary><p class="small mb-1">Usa el número de la misma etiqueta; no crea otra pieza.</p><form action="{% url 'preparacion:reimprimir_codigo' p.pk %}" method="post" target="_blank" class="d-flex flex-wrap gap-2">{% csrf_token %}<input class="form-control form-control-sm" style="max-width:155px" name="codigo" inputmode="numeric" placeholder="Código 800…" required><button class="btn btn-sm btn-outline-secondary" type="submit">Reimprimir</button></form></details>{% endif %}
                         {% if es_admin and not p.pendiente_conteo %}
                         <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
                             <i class="bi bi-pencil"></i>
