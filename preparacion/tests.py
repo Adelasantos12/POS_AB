@@ -67,6 +67,8 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(self._variant(cantidad_estimada='5').status_code, 302)
         first = VariantePreparada.objects.get()
         self.assertEqual(first.cantidad_estimada, 5)
+        self.assertContains(self.client.get(reverse('preparacion:inicio')),
+                            'value="5" aria-label="Número de etiquetas"')
         self.client.post(reverse('preparacion:emitir_etiquetas', args=[first.pk]),
                          {'cantidad': 5})
         other, _ = Color.objects.get_or_create(nombre='Azul Rey')

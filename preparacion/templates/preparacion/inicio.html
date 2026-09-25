@@ -91,7 +91,7 @@
         <a href="?modelo={{ v.producto.modelo_id }}#nuevo">Añadir otra talla o color de este modelo</a>
         <div class="prep-note">Estimadas: {{ v.cantidad_estimada }} · Etiquetas creadas: {{ v.emitidas }}{% if jornada or cerrada %} · Piezas escaneadas: {{ v.contadas }}{% endif %}</div>
           <form class="d-flex gap-2 mt-2" action="{% url 'preparacion:emitir_etiquetas' v.pk %}" method="post" target="_blank">
-            {% csrf_token %}<input type="number" class="form-control" name="cantidad" min="1" max="20" value="1" aria-label="Número de etiquetas" style="max-width:90px">
+            {% csrf_token %}<input type="number" class="form-control" name="cantidad" min="1" max="20" value="{{ v.por_imprimir }}" aria-label="Número de etiquetas" style="max-width:90px">
             <button class="btn btn-outline-primary" type="submit">Crear e imprimir etiquetas</button>
           </form>
         {% if v.ultimas %}<details class="mt-2"><summary>Reimprimir una etiqueta dañada</summary><p class="prep-note">Usa la reimpresión solo para reemplazar la etiqueta de ese mismo vestido. Para otro vestido, crea una etiqueta nueva.</p><div class="d-flex flex-wrap gap-2 mt-2">{% for p in v.ultimas %}<a target="_blank" rel="noopener" href="{% url 'preparacion:reimprimir' p.pk %}">{{ p.codigo }}</a>{% endfor %}</div></details>{% endif %}

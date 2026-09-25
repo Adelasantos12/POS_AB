@@ -28,6 +28,7 @@ def _pagina(request, error=None):
     for variante in variantes:
         variante.emitidas = variante.piezas.count()
         variante.contadas = variante.piezas.filter(contada__isnull=False).count()
+        variante.por_imprimir = max(1, min(20, variante.cantidad_estimada - variante.emitidas))
         variante.ultimas = list(variante.piezas.order_by('-pk')[:200])
     jornada = JornadaConteo.objects.filter(abierta=True).first()
     cerrada = JornadaConteo.objects.filter(abierta=False).first()
