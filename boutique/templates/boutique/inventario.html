@@ -108,7 +108,8 @@
         <span><strong>{{ familia.nombre }}</strong><br><small class="text-muted">{{ familia.categoria }} · {{ familia.productos|length }} variante{{ familia.productos|length|pluralize }}</small><br>
         <small>{% if familia.contadas or familia.estimadas %}{{ familia.contadas }} contadas · {{ familia.estimadas }} estimadas · {% endif %}{{ familia.confirmadas }} disponibles en inventario</small></span>
     </summary>
-    <div class="px-3 pb-3"><a class="btn btn-outline-primary" href="{% url 'preparacion:nueva_variante' familia.id %}"><i class="bi bi-plus-lg me-1"></i>Agregar variante de este modelo</a></div>
+    <div class="px-3 pb-3"><a class="btn btn-outline-primary" href="{% url 'preparacion:nueva_variante' familia.id %}"><i class="bi bi-plus-lg me-1"></i>Agregar variante de este modelo</a>
+    {% if es_admin %}<button type="button" class="btn btn-outline-danger ms-2" data-url="{% url 'preparacion:eliminar_modelo' familia.id %}" data-nombre="{{ familia.nombre }}" onclick="eliminarModeloCompleto(this)">Eliminar modelo completo</button>{% endif %}</div>
     <div class="inventory-table-scroll">
         <table class="table table-hover align-middle product-table mb-0">
             <thead class="bg-light">
@@ -426,6 +427,20 @@
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script>
     const csrfToken = '{{ csrf_token }}';
+    async function eliminarModeloCompleto(button) {
+        if (!confirm(`¿Eliminar el modelo «${button.dataset.nombre}» y TODAS sus variantes? Sus etiquetas dejarán de funcionar y sus piezas se quitarán del conteo. Esta acción no se puede deshacer.`)) return;
+        button.disabled = true;
+        try {
+            const response = await fetch(button.dataset.url, {method: 'POST', headers: {'X-CSRFToken': csrfToken}});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'No se pudo eliminar el modelo.');
+            location.reload();
+        } catch (error) {
+            alert(error.message);
+            button.disabled = false;
+        }
+    }
+
 
     // Set --inv-thead-top dynamically to match the actual toolbar height
     (function() {

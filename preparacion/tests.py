@@ -182,6 +182,35 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(len(self.client.get(reverse('inventario_view'),
                                              {'q': new.sku}).context['familias'][0]['productos']), 2)
 
+    def test_delete_entire_trial_model_is_atomic_and_admin_only(self):
+        from boutique.models import Modelo
+        self._variant()
+        first = Producto.objects.get()
+        self._variant(modelo_nuevo='', modelo_id=first.modelo_id, talla='L')
+        self.assertEqual(Producto.objects.count(), 2)
+        endpoint = reverse('preparacion:eliminar_modelo', args=[first.pk])
+        self.assertEqual(self.client.get(endpoint).status_code, 405)
+        other = Producto.objects.exclude(pk=first.pk).get()
+        Producto.objects.filter(pk=other.pk).update(cantidad_actual=1)
+        self.assertEqual(self.client.post(endpoint).status_code, 409)
+        self.assertEqual(Producto.objects.count(), 2)
+        Producto.objects.filter(pk=other.pk).update(cantidad_actual=0)
+        vendor = User.objects.create_user('delete_vendor', password='testpass')
+        vendor.groups.add(Group.objects.get(name='Vendedor'))
+        self.client.force_login(vendor)
+        session = self.client.session
+        session['active_profile_id'] = vendor.pk
+        session.save()
+        self.assertEqual(self.client.post(endpoint).status_code, 403)
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['active_profile_id'] = self.user.pk
+        session.save()
+        self.assertEqual(self.client.post(endpoint).status_code, 200)
+        self.assertFalse(Producto.objects.exists())
+        self.assertFalse(VariantePreparada.objects.exists())
+        self.assertFalse(Modelo.objects.filter(pk=first.modelo_id).exists())
+
     def test_live_family_total_and_admin_discard_trial_labels(self):
         self._variant(cantidad_estimada='1')
         product = Producto.objects.get()

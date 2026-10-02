@@ -1,9 +1,11 @@
 from django.urls import path
 from . import views
+from .deletion import eliminar_modelo
 
 app_name = 'preparacion'
 
 urlpatterns = [
+    path('modelo/eliminar/<int:producto_id>/', eliminar_modelo, name='eliminar_modelo'),
     path('', views.inicio, name='inicio'),
     path('verificar/', views.verificar_etiqueta, name='verificar_etiqueta'),
     path('conteo/', views.pagina_conteo, name='conteo'),
