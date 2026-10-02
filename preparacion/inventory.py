@@ -90,6 +90,8 @@ def inventario_view(request):
     }
     return render(request, 'boutique/inventario.html', {
         'familias': familias, 'q': q, 'resumen': resumen,
+        'entrada_pendiente': bool(request.session.get(f'prendas_borrador_{request.active_profile.pk}_ENTRADA', {}).get('piezas')),
+        'salida_pendiente': bool(request.session.get(f'prendas_borrador_{request.active_profile.pk}_SALIDA', {}).get('piezas')),
         'es_admin': es_admin(request.active_profile),
         'conteo_inicial_cerrado': JornadaConteo.objects.filter(abierta=False).exists(),
         'categorias': Categoria.objects.all().order_by('nombre'),

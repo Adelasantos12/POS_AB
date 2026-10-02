@@ -20,7 +20,7 @@
       <h2>Iniciar el conteo final</h2>
       <p>Cuando todos los vestidos que van a inventariar tengan etiqueta, inicia el conteo. Las cantidades estimadas no se suman; solo cuentan las etiquetas escaneadas. Pueden pausar y continuar otro día.</p>
       {% if hay_etiquetas %}<form action="{% url 'preparacion:iniciar_conteo' %}" method="post">{% csrf_token %}<button type="submit" class="btn btn-primary btn-lg">Iniciar conteo</button></form>
-      {% else %}<p>Primero crea e imprime etiquetas desde <a href="{% url 'preparacion:inicio' %}">Preparar vestidos</a>.</p>{% endif %}
+      {% else %}<p>Primero crea e imprime etiquetas desde <a href="{% url 'preparacion:inicio' %}">Etiquetas y conteo</a>.</p>{% endif %}
     </div>
   {% else %}
     <div class="count-card">

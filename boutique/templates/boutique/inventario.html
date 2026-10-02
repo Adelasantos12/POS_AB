@@ -53,29 +53,27 @@
 {% endblock %}
 
 {% block content %}
-<div class="inv-toolbar d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4" id="invToolbar">
-    <h2 class="fw-bold mb-0">Inventario</h2>
-    {% if es_admin %}<a class="btn btn-outline-primary" href="{% url 'preparacion:inversion' %}">Inversión y costos</a>{% endif %}
-    <a class="btn btn-outline-primary rounded-pill" href="{% url 'preparacion:movimientos' %}">Ubicaciones y movimientos</a>
-    <div class="d-flex flex-wrap gap-2">
-        <a href="{% url 'preparacion:agregar_modelo' %}" class="btn btn-primary rounded-pill">Agregar modelo (subir foto)</a>
-        <a class="btn btn-outline-primary rounded-pill" href="{% url 'preparacion:agregar_modelos_bloque' %}">Subir varias fotos</a>
-        <a href="{% url 'preparacion:inicio' %}" class="btn btn-outline-primary rounded-pill">Preparar vestidos</a>
-        <a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-primary rounded-pill">{% if conteo_inicial_cerrado %}Recibir mercancía con escáner{% else %}Contar con escáner{% endif %}</a>
-        {% if es_admin %}<a href="{% url 'subida_bloque' %}" class="btn btn-outline-secondary rounded-pill">Subida en bloque (archivo)</a>{% endif %}
-        {% if es_admin and conteo_inicial_cerrado %}
-        <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
-            <i class="bi bi-plus-lg me-2"></i>Registro avanzado
-        </button>
-
-        <a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-success rounded-pill">
-            <i class="bi bi-file-earmark-spreadsheet me-2"></i>Exportar CSV
-        </a>
-        {% endif %}
-        <a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning rounded-pill">
-            <i class="bi bi-exclamation-triangle me-2"></i>Pendientes
-        </a>
-    </div>
+<div class="inv-toolbar mb-4" id="invToolbar">
+<h2 class="fw-bold mb-3">Inventario</h2>
+<div class="d-flex flex-wrap gap-2 mb-3">
+<a class="btn btn-primary btn-lg" href="{% url 'preparacion:entradas' %}">Entradas</a>
+<a class="btn btn-outline-primary btn-lg" href="{% url 'preparacion:salidas' %}">Salidas</a>
+<a class="btn btn-outline-primary btn-lg" href="{% url 'preparacion:buscar_prendas' %}">Buscar prendas</a>
+<a class="btn btn-outline-primary btn-lg" href="#modelos">Etiquetas</a>
+</div>
+<div class="d-flex flex-wrap gap-2 align-items-center">
+<a class="btn btn-outline-secondary" href="{% url 'preparacion:agregar_modelo' %}">Agregar modelo (subir foto)</a>
+<a class="btn btn-outline-secondary" href="{% url 'preparacion:agregar_modelos_bloque' %}">Subir varias fotos</a>
+<details><summary class="btn btn-outline-secondary">Más opciones</summary><div class="p-3 bg-white border rounded d-flex flex-wrap gap-2">
+<a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-secondary">{% if conteo_inicial_cerrado %}Entrada individual con escáner{% else %}Conteo inicial{% endif %}</a>
+<a href="{% url 'preparacion:inicio' %}" class="btn btn-outline-secondary">Comprobar etiquetas y revisar conteo</a>
+<a href="{% url 'preparacion:movimientos' %}" class="btn btn-outline-secondary">Movimientos detallados y devoluciones</a>
+<a href="{% url 'pendientes_regularizacion' %}" class="btn btn-outline-warning">Pendientes de regularizar</a>
+{% if es_admin %}<a href="{% url 'preparacion:inversion' %}" class="btn btn-outline-primary">Inversión y costos</a><a href="{% url 'subida_bloque' %}" class="btn btn-outline-secondary">Importar archivo</a>{% if conteo_inicial_cerrado %}<button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">Registro avanzado</button><a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-secondary">Exportar CSV</a>{% endif %}{% endif %}
+</div></details>
+</div>
+{% if entrada_pendiente %}<a href="{% url 'preparacion:entradas' %}" class="btn btn-warning mt-2">Continuar entrada</a>{% endif %}
+{% if salida_pendiente %}<a href="{% url 'preparacion:salidas' %}" class="btn btn-warning mt-2">Continuar salida</a>{% endif %}
 </div>
 
 <div class="card border-0 shadow-sm mb-3" style="border-radius:15px"><div class="card-body d-flex flex-wrap gap-3 align-items-center">
@@ -101,6 +99,7 @@
     </div>
 </div>
 
+<div id="modelos" style="scroll-margin-top:180px"><h3 class="h5">Modelos y etiquetas</h3><p>Abre un modelo para agregar variantes o imprimir sus etiquetas.</p></div>
 {% for familia in familias %}
 <details class="family-card inventory-table-card" {% if q %}open{% endif %}>
     <summary>

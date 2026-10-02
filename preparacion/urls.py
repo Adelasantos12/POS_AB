@@ -1,11 +1,16 @@
 from django.urls import path
-from . import views, movements, inversion
+from . import views, movements, inversion, operaciones
 from .deletion import eliminar_modelo
 from .modelos import agregar_modelo, agregar_modelos_bloque
 
 app_name = 'preparacion'
 
 urlpatterns = [
+    path('buscar/', operaciones.buscar, name='buscar_prendas'),
+    path('entradas/', operaciones.operacion, {'tipo': 'ENTRADA'}, name='entradas'),
+    path('salidas/', operaciones.operacion, {'tipo': 'SALIDA'}, name='salidas'),
+    path('entradas/borrador/', operaciones.borrador, {'tipo': 'ENTRADA'}, name='borrador_entrada'),
+    path('salidas/borrador/', operaciones.borrador, {'tipo': 'SALIDA'}, name='borrador_salida'),
     path('inversion/referencia/', inversion.costo_referencia, name='costo_referencia'),
     path('inversion/', inversion.dashboard, name='inversion'),
     path('inversion/costo/', inversion.guardar_costo, name='guardar_costo'),

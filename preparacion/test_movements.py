@@ -96,7 +96,7 @@ class CustodyTests(TestCase):
 
     def test_pages_and_individual_receiving(self):
         self.assertContains(self.client.get(reverse('preparacion:movimientos')), '¿Dónde están mis prendas?')
-        self.assertContains(self.client.get(reverse('inventario_view')), 'Ubicaciones y movimientos')
+        self.assertContains(self.client.get(reverse('inventario_view')), 'Entradas')
         self.client.post(reverse('preparacion:emitir_etiquetas', args=[self.variant.pk]), {'cantidad': 2})
         for place, state, person, piece in zip(['BODEGA','TALLER'], ['DISPONIBLE','MUESTRA'], ['', 'Taller Ana'], PiezaEtiqueta.objects.filter(contada__isnull=True)):
             res = self.client.post(reverse('preparacion:recibir'), {'codigo':piece.codigo,'ubicacion':place,'estado':state,'encargado':person})
@@ -104,3 +104,49 @@ class CustodyTests(TestCase):
             piece.refresh_from_db()
             self.assertEqual(piece.ubicacion, place)
         self.assertEqual(Producto.objects.get().cantidad_actual, 4)
+
+    def test_entries_mix_new_and_returned_garments_without_double_stock(self):
+        existing = self.pieces[0]
+        PiezaEtiqueta.objects.filter(pk=existing.pk).update(ubicacion='TALLER', estado='ARREGLO', encargado='Ana')
+        self.client.post(reverse('preparacion:emitir_etiquetas', args=[self.variant.pk]), {'cantidad':1})
+        new = PiezaEtiqueta.objects.filter(contada__isnull=True).get()
+        lookup = self.client.get(reverse('preparacion:consultar_pieza'), {'codigo':new.codigo,'modo':'ENTRADA'})
+        self.assertEqual(lookup.status_code, 200)
+        self.assertFalse(lookup.json()['registrada'])
+        data = self.payload([existing,new], accion='ENTRADA', destino='BOUTIQUE')
+        result = self.post(data)
+        self.assertEqual(result.status_code, 200, result.content)
+        self.assertTrue(result.json()['folio'].startswith('MOV-'))
+        self.assertEqual(Producto.objects.get().cantidad_actual, 3)
+        self.assertEqual(self.post(data).status_code, 200)
+        self.assertEqual(Producto.objects.get().cantidad_actual, 3)
+        self.assertEqual(PiezaEtiqueta.objects.filter(ubicacion='BOUTIQUE', contada__isnull=False).count(), 3)
+
+    def test_entry_error_rolls_back_new_receipt(self):
+        self.client.post(reverse('preparacion:emitir_etiquetas', args=[self.variant.pk]), {'cantidad':2})
+        new = list(PiezaEtiqueta.objects.filter(contada__isnull=True).order_by('pk'))
+        from datetime import timedelta
+        from .models import JornadaConteo
+        close = JornadaConteo.objects.get(abierta=False)
+        PiezaEtiqueta.objects.filter(pk=new[1].pk).update(emitida=close.cerrada-timedelta(days=1))
+        result = self.post(self.payload(new, accion='ENTRADA', destino='BOUTIQUE'))
+        self.assertEqual(result.status_code, 409)
+        self.assertEqual(Producto.objects.get().cantidad_actual, 2)
+        self.assertEqual(PiezaEtiqueta.objects.filter(contada__isnull=True).count(), 2)
+        self.assertFalse(OperacionPrendas.objects.exists())
+
+    def test_task_pages_drafts_and_read_only_search(self):
+        for name,label in [('entradas','Entradas'), ('salidas','Salidas'), ('buscar_prendas','Buscar prendas')]:
+            self.assertContains(self.client.get(reverse('preparacion:'+name)), label)
+        endpoint = reverse('preparacion:borrador_entrada')
+        data = {'piezas':[{'codigo':self.pieces[0].codigo}], 'fields':{'destination':'BODEGA'}}
+        self.assertEqual(self.client.post(endpoint,json.dumps(data),content_type='application/json').status_code,200)
+        self.assertEqual(self.client.get(endpoint).json()['borrador'],data)
+        self.assertContains(self.client.get(reverse('inventario_view')), 'Continuar entrada')
+        self.assertNotContains(self.client.get(reverse('preparacion:buscar_prendas')), 'Ver / seleccionar')
+        self.assertFalse(MovimientoPieza.objects.exists())
+        self.assertEqual(Producto.objects.get().cantidad_actual,2)
+        vendor=User.objects.create_user('draft_vendor',password='pass')
+        vendor.groups.add(Group.objects.get(name='Vendedor'))
+        self.login(vendor)
+        self.assertIsNone(self.client.get(endpoint).json()['borrador'])

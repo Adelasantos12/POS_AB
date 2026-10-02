@@ -18,7 +18,8 @@ from .models import PiezaEtiqueta, MovimientoPieza, OperacionPrendas, JornadaCon
 def describir(p):
     product = p.variante.producto
     photo = product.foto or (product.modelo.foto_principal if product.modelo else None)
-    return {'codigo': p.codigo, 'revision': p.revision,
+    return {'codigo': p.codigo, 'revision': p.revision, 'registrada': bool(p.contada),
+            'ubicacion_codigo': p.ubicacion, 'estado_codigo': p.estado,
             'modelo': product.modelo.nombre if product.modelo else product.rasgo1 or product.sku,
             'variante': f'{product.color or ""} · {product.talla} · {product.tela or ""}',
             'ubicacion': p.get_ubicacion_display(), 'estado': 'Vendida' if p.vendida else p.get_estado_display(),
@@ -65,7 +66,7 @@ def consultar(request):
     p = piezas_detalle().filter(codigo=request.GET.get('codigo', '').strip()).first()
     if not p:
         return JsonResponse({'message': 'No encontré esa etiqueta. Revisa el código.'}, status=404)
-    if not p.contada:
+    if not p.contada and request.GET.get('modo') != 'ENTRADA':
         return JsonResponse({'message': 'Esta prenda todavía no está registrada. Escanéala primero en Conteo o Recibir mercancía.'}, status=409)
     data = describir(p)
     data['historial'] = [{'fecha': m.fecha.isoformat(), 'accion': m.accion,
@@ -96,7 +97,7 @@ def confirmar(request):
         revisions = {p['codigo']: int(p['revision']) for p in seleccion}
         if not 1 <= len(codes) <= 100 or len(set(codes)) != len(codes):
             raise ValueError('Escanea entre 1 y 100 prendas distintas.')
-        if accion not in ['MOVER', 'REGRESO', 'DEVOLUCION']:
+        if accion not in ['MOVER', 'REGRESO', 'DEVOLUCION', 'ENTRADA']:
             raise ValueError('Selecciona un movimiento válido.')
         if accion == 'DEVOLUCION' and not es_admin(request.active_profile):
             return JsonResponse({'message': 'Una devolución requiere un perfil Admin.'}, status=403)
@@ -129,13 +130,13 @@ def confirmar(request):
             if not created:
                 if op.huella != huella or op.responsable_id != request.active_profile.pk:
                     raise ValueError('La confirmación cambió. Recarga y revisa la selección.')
-                return JsonResponse({'ok': True, 'cantidad': op.cantidad, 'message': 'Este movimiento ya estaba registrado. No se duplicó.'})
+                return JsonResponse({'ok': True, 'cantidad': op.cantidad, 'folio': f'MOV-{op.pk:06d}', 'message': 'Este movimiento ya estaba registrado. No se duplicó.'})
             piezas = list(piezas_detalle().select_for_update(of=('self',)).filter(codigo__in=codes).order_by('pk'))
             if len(piezas) != len(codes):
                 raise ValueError('Una etiqueta ya no existe. No se registró ningún movimiento.')
             for p in piezas:
                 destino, estado, encarg, regreso = destinos[p.codigo]
-                if not p.contada or p.revision != revisions[p.codigo]:
+                if (not p.contada and accion != 'ENTRADA') or p.revision != revisions[p.codigo]:
                     raise ValueError(f'{p.codigo} cambió desde el escaneo. Vuelve a escanear; no se modificó ninguna prenda.')
                 if accion == 'DEVOLUCION':
                     if not p.vendida or not p.ultima_venta_id:
@@ -144,16 +145,29 @@ def confirmar(request):
                     raise ValueError(f'{p.codigo} ya se vendió o está apartada. No se puede trasladar por este flujo.')
                 elif accion == 'REGRESO' and p.ubicacion == destino and p.estado == estado:
                     raise ValueError(f'{p.codigo} ya está en ese destino y estado. No se volvió a recibir.')
-                elif p.ubicacion == destino and p.estado == estado and p.encargado == encarg and p.regreso_previsto == regreso:
+                elif p.contada and p.ubicacion == destino and p.estado == estado and p.encargado == encarg and p.regreso_previsto == regreso:
                     raise ValueError(f'{p.codigo} ya está registrada así.')
             productos = {p.pk: p for p in Producto.objects.select_for_update().filter(
                 pk__in=[p.variante.producto_id for p in piezas]).order_by('pk')}
             for p in piezas:
                 destino, estado, encarg, regreso = destinos[p.codigo]
+                origen, estado_anterior = p.ubicacion, p.estado
+                if accion == 'ENTRADA' and not p.contada:
+                    from copy import copy
+                    from django.http import QueryDict
+                    from .views import recibir, escanear
+                    llegada = copy(request)
+                    llegada.POST = QueryDict('', mutable=True)
+                    llegada.POST.update({'codigo': p.codigo, 'ubicacion': destino, 'estado': estado, 'encargado': encarg})
+                    respuesta = (recibir(llegada) if JornadaConteo.objects.filter(abierta=False).exists() else escanear(llegada))
+                    if respuesta.status_code != 200:
+                        raise ValueError(json.loads(respuesta.content).get('message', 'No se pudo registrar la entrada.'))
+                    p.refresh_from_db()
+                    origen = 'NUEVA'
                 previous_sale = p.historial.filter(accion='VENDIDA', venta=p.ultima_venta).first() if accion == 'DEVOLUCION' else None
                 MovimientoPieza.objects.create(costo_unitario=previous_sale.costo_unitario if previous_sale else p.costo_unitario,
                     precio_unitario=previous_sale.precio_unitario if previous_sale else None, pieza=p, responsable=request.active_profile, accion=accion,
-                    origen=p.ubicacion, destino=destino, estado_anterior=p.estado, estado_nuevo=estado,
+                    origen=origen, destino=destino, estado_anterior=estado_anterior, estado_nuevo=estado,
                     encargado=encarg, regreso_previsto=regreso, notas=notas, operacion=op,
                     venta=p.ultima_venta if accion == 'DEVOLUCION' else None)
                 if accion == 'DEVOLUCION':
@@ -168,7 +182,7 @@ def confirmar(request):
                 p.save(update_fields=['ubicacion', 'estado', 'encargado', 'regreso_previsto', 'revision', 'vendida'])
             op.cantidad = len(piezas)
             op.save(update_fields=['cantidad'])
-        return JsonResponse({'ok': True, 'cantidad': len(piezas), 'message': 'Movimiento registrado.' +
+        return JsonResponse({'ok': True, 'cantidad': len(piezas), 'folio': f'MOV-{op.pk:06d}', 'message': 'Movimiento registrado.' +
             (' La devolución física actualizó el inventario. No se realizó un reembolso.' if accion == 'DEVOLUCION' else '')})
     except (ValueError, KeyError, TypeError) as exc:
         return JsonResponse({'message': str(exc) or 'Revisa los datos.'}, status=409)

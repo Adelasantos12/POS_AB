@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex gap-2 mb-2"><a class="btn btn-outline-secondary" href="{% url 'preparacion:movimientos' %}">Mover o recibir prendas</a><a class="btn btn-outline-secondary" href="{% url 'preparacion:movimientos' %}?accion=DEVOLUCION">Devolución de prendas</a></div>
+<div class="d-flex gap-2 mb-2"><a class="btn btn-outline-secondary" href="{% url 'preparacion:entradas' %}">Entradas</a><a class="btn btn-outline-secondary" href="{% url 'preparacion:salidas' %}">Salidas</a><a class="btn btn-outline-secondary" href="{% url 'preparacion:buscar_prendas' %}">Buscar prendas</a><a class="btn btn-outline-secondary" href="{% url 'preparacion:movimientos' %}?accion=DEVOLUCION">Devolución de prendas</a></div>
 <div class="row">
     <!-- Left: Search and Catalog -->
     <div class="col-lg-7">
