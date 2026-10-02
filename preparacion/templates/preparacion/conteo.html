@@ -34,6 +34,7 @@
         <p class="small">Este destino se aplica a los próximos escaneos. Puedes cambiarlo para una sola prenda y luego volver al anterior.</p>
         <label for="count-state" class="form-label">Estado</label><select id="count-state" name="estado" class="form-select mb-2"><option value="DISPONIBLE">Lista para vender</option><option value="ARREGLO">En arreglo</option><option value="MUESTRA">Muestra para réplica</option><option value="REVISION">Requiere revisión</option></select>
         <label for="count-custodian" class="form-label">Persona o local (obligatorio para taller u otro local)</label><input id="count-custodian" name="encargado" maxlength="150" class="form-control mb-3">
+        {% if es_admin %}<label class="form-label" for="count-cost">Costo por prenda de esta entrada (MXN, opcional)</label><input id="count-cost" name="costo_unitario" type="number" min="0" step="0.01" class="form-control mb-2" placeholder="Vacío: usar costo de la variante"><p class="small">Se aplica a los próximos escaneos. Cambia o vacía este campo cuando cambie el costo.</p>{% endif %}
         <label class="form-label" for="count-code">Escanea aquí</label>
         <div class="d-flex gap-2"><input id="count-code" name="codigo" class="form-control count-field" inputmode="numeric" autocomplete="off" autofocus required placeholder="Código de 12 números"><button class="btn btn-primary" type="submit">{% if cerrada %}Recibir{% else %}Contar{% endif %}</button></div>
       </form>

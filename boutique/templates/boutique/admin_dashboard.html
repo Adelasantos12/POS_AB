@@ -3,6 +3,8 @@
 {% block title %}Dashboard - ByEasy POS{% endblock %}
 
 {% block content %}
+{% load inversion_tags %}
+{% resumen_inversion %}
 <div class="page-header d-flex justify-content-between align-items-start" data-testid="dashboard-header">
     <div>
         <h1 class="page-title">Dashboard</h1>

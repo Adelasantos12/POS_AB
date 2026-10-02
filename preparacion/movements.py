@@ -150,7 +150,9 @@ def confirmar(request):
                 pk__in=[p.variante.producto_id for p in piezas]).order_by('pk')}
             for p in piezas:
                 destino, estado, encarg, regreso = destinos[p.codigo]
-                MovimientoPieza.objects.create(pieza=p, responsable=request.active_profile, accion=accion,
+                previous_sale = p.historial.filter(accion='VENDIDA', venta=p.ultima_venta).first() if accion == 'DEVOLUCION' else None
+                MovimientoPieza.objects.create(costo_unitario=previous_sale.costo_unitario if previous_sale else p.costo_unitario,
+                    precio_unitario=previous_sale.precio_unitario if previous_sale else None, pieza=p, responsable=request.active_profile, accion=accion,
                     origen=p.ubicacion, destino=destino, estado_anterior=p.estado, estado_nuevo=estado,
                     encargado=encarg, regreso_previsto=regreso, notas=notas, operacion=op,
                     venta=p.ultima_venta if accion == 'DEVOLUCION' else None)

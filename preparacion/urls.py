@@ -1,11 +1,15 @@
 from django.urls import path
-from . import views, movements
+from . import views, movements, inversion
 from .deletion import eliminar_modelo
 from .modelos import agregar_modelo, agregar_modelos_bloque
 
 app_name = 'preparacion'
 
 urlpatterns = [
+    path('inversion/referencia/', inversion.costo_referencia, name='costo_referencia'),
+    path('inversion/', inversion.dashboard, name='inversion'),
+    path('inversion/costo/', inversion.guardar_costo, name='guardar_costo'),
+    path('inversion/analizar/', inversion.analizar, name='analizar_inversion'),
     path('modelos/fotos/', agregar_modelos_bloque, name='agregar_modelos_bloque'),
     path('modelo/nuevo/', agregar_modelo, name='agregar_modelo'),
     path('movimientos/', movements.panel, name='movimientos'),

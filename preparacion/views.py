@@ -20,12 +20,15 @@ from boutique.models import (Categoria, Color, Modelo, MovimientoInventario,
                              Producto, Talla, Tela)
 from boutique.utils import normalizar_nombre
 from .models import JornadaConteo, PiezaEtiqueta, VariantePreparada
+from .costing import importe, costo_entrada
+from boutique.views import es_admin
 
 
 def _pagina(request, error=None):
     jornada = JornadaConteo.objects.filter(abierta=True).first()
     cerrada = JornadaConteo.objects.filter(abierta=False).first()
     return render(request, 'preparacion/inicio.html', {
+        'es_admin': es_admin(request.active_profile),
         'hay_variantes': VariantePreparada.objects.exists(),
         'jornada': jornada, 'cerrada': cerrada,
         'error': error, 'modelos': Modelo.objects.order_by('nombre'),
@@ -52,6 +55,7 @@ def inicio(request):
 def nueva_variante(request, producto_id):
     base = get_object_or_404(Producto.objects.select_related('modelo', 'categoria'), pk=producto_id)
     return render(request, 'preparacion/nueva_variante.html', {
+        'es_admin': es_admin(request.active_profile),
         'base': base, 'colores': Color.objects.filter(activo=True).order_by('nombre'),
         'telas': Tela.objects.filter(activa=True).order_by('nombre'),
         'tallas': Talla.objects.filter(activa=True),
@@ -118,6 +122,7 @@ def pagina_conteo(request):
                 .order_by('-contada')[:10] if cerrada else [])
     return render(request, 'preparacion/conteo.html', {
         'jornada': jornada, 'cerrada': cerrada, 'variantes': variantes,
+        'es_admin': es_admin(request.active_profile),
         'recientes': recientes, 'total': sum(cantidades.values()),
         'hay_etiquetas': PiezaEtiqueta.objects.exists(),
         'ubicaciones': PiezaEtiqueta.UBICACIONES,
@@ -183,7 +188,11 @@ def guardar_variante(request):
                 while Producto.objects.filter(sku=f'M{modelo.pk:05d}-{secuencia:02d}').exists():
                     secuencia += 1
                 sku = f'M{modelo.pk:05d}-{secuencia:02d}'
+            costo = base.costo_referencia if base else modelo.costo_referencia
+            if es_admin(request.active_profile):
+                costo = importe(request.POST.get('costo_referencia'), costo)
             producto = Producto.objects.create(
+                costo_referencia=costo,
                 sku=sku, modelo=modelo,
                 categoria=categoria, color=color, tela=tela, talla=talla,
                 talla_obj=talla_obj, rasgo1=base.rasgo1 if base else modelo.nombre,
@@ -357,10 +366,14 @@ def escanear(request):
             return JsonResponse({'ok': False, 'message': 'Etiqueta desconocida. Aparta el vestido para revisarlo.'}, status=404)
         if pieza.contada:
             return JsonResponse({'ok': False, 'message': f'Ya contaste {codigo}. No se sumó otra vez.'}, status=409)
+        try:
+            pieza.costo_unitario = costo_entrada(request, pieza.variante.producto)
+        except ValueError as exc:
+            return JsonResponse({'ok': False, 'message': str(exc)}, status=400)
         pieza.contada = timezone.now()
         pieza.jornada = jornada
         pieza.ubicacion, pieza.estado, pieza.encargado = ubicacion, estado, encargado
-        pieza.save(update_fields=['contada', 'jornada', 'ubicacion', 'estado', 'encargado'])
+        pieza.save(update_fields=['contada', 'jornada', 'ubicacion', 'estado', 'encargado', 'costo_unitario'])
         n = PiezaEtiqueta.objects.filter(variante=pieza.variante, jornada=jornada).count()
     producto = pieza.variante.producto
     return JsonResponse({'ok': True, 'message': f'{producto.sku}: {n} vestido(s) contado(s)',
@@ -401,9 +414,13 @@ def recibir(request):
         if pieza.emitida <= cierre.cerrada:
             return JsonResponse({'ok': False, 'message': 'Esta etiqueta sobró del conteo inicial y ya no sirve para recibir mercancía. Crea una nueva etiqueta para el vestido que acaba de llegar.'}, status=409)
         producto = Producto.objects.select_for_update().get(pk=pieza.variante.producto_id)
+        try:
+            pieza.costo_unitario = costo_entrada(request, pieza.variante.producto)
+        except ValueError as exc:
+            return JsonResponse({'ok': False, 'message': str(exc)}, status=400)
         pieza.contada = timezone.now()
         pieza.ubicacion, pieza.estado, pieza.encargado = ubicacion, estado, encargado
-        pieza.save(update_fields=['contada', 'ubicacion', 'estado', 'encargado'])
+        pieza.save(update_fields=['contada', 'ubicacion', 'estado', 'encargado', 'costo_unitario'])
         variante = pieza.variante
         if not variante.confirmada:
             variante.confirmada = timezone.now()

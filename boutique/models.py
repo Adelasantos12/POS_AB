@@ -194,6 +194,9 @@ class Talla(models.Model):
 
 
 class Modelo(models.Model):
+    costo_referencia = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    precio_sugerido = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    proveedor = models.CharField(max_length=150, blank=True)
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True)
     # Catalog normalization fields
@@ -323,6 +326,7 @@ class Producto(models.Model):
     talla_obj = models.ForeignKey('Talla', on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Talla (catálogo)', related_name='productos')
     talla_especial = models.CharField(max_length=50, blank=True, help_text="Para casos no estándar")
     precio_venta = models.DecimalField(max_digits=10, decimal_places=2)
+    costo_referencia = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cantidad_actual = models.PositiveIntegerField(default=0)
     stock_teorico = models.IntegerField(default=0)
     vendible_sin_stock = models.BooleanField(default=False)

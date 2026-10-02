@@ -34,6 +34,8 @@ class PiezaEtiqueta(models.Model):
     contada = models.DateTimeField(null=True, blank=True)
     vendida = models.DateTimeField(null=True, blank=True)
 
+    costo_unitario = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
     UBICACIONES = [('BOUTIQUE', 'Boutique'), ('BODEGA', 'Bodega'), ('OTRO_LOCAL', 'Otro local'), ('TALLER', 'Taller / costura')]
     ESTADOS = [('DISPONIBLE', 'Disponible'), ('ARREGLO', 'En arreglo'), ('MUESTRA', 'Muestra para réplica'), ('REVISION', 'En revisión'), ('APARTADA', 'Apartada'), ('VENDIDA', 'Vendida')]
     ubicacion = models.CharField(max_length=30, choices=UBICACIONES, default='BOUTIQUE')
@@ -60,6 +62,8 @@ class PiezaEtiqueta(models.Model):
 
 
 class MovimientoPieza(models.Model):
+    costo_unitario = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    precio_unitario = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     """Append-only history; moving a garment never creates another garment."""
     pieza = models.ForeignKey(PiezaEtiqueta, on_delete=models.PROTECT, related_name='historial')
     fecha = models.DateTimeField(auto_now_add=True)
@@ -85,3 +89,20 @@ class OperacionPrendas(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     huella = models.CharField(max_length=64)
     cantidad = models.PositiveIntegerField(default=0)
+
+
+class CambioCosto(models.Model):
+    pieza = models.ForeignKey(PiezaEtiqueta, on_delete=models.PROTECT)
+    anterior = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    nuevo = models.DecimalField(max_digits=10, decimal_places=2)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateTimeField(auto_now_add=True)
+    motivo = models.CharField(max_length=300)
+
+
+class AnalisisInversion(models.Model):
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateTimeField(auto_now_add=True)
+    datos = models.JSONField()
+    respuesta = models.TextField()
+    modelo_ia = models.CharField(max_length=100)

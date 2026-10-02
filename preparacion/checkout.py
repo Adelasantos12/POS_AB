@@ -126,7 +126,17 @@ def vender(request):
                     piece.ultima_venta_id = result.get('venta_id')
                     piece.revision += 1
                     piece.save(update_fields=['vendida', 'estado', 'ultima_venta', 'revision'])
-                    MovimientoPieza.objects.create(pieza=piece, responsable=request.active_profile,
+                    sale_price = None
+                    if piece.ultima_venta_id:
+                        from boutique.models import Venta, ItemVenta
+                        sale_record = Venta.objects.get(pk=piece.ultima_venta_id)
+                        lines = list(ItemVenta.objects.filter(venta=sale_record))
+                        # Mixed services/discounts need allocation; do not invent a margin.
+                        if sum(line.precio_unitario * line.cantidad for line in lines) == sale_record.total:
+                            matches = [line for line in lines if line.producto_id == piece.variante.producto_id]
+                            if matches:
+                                sale_price = matches[0].precio_unitario
+                    MovimientoPieza.objects.create(costo_unitario=piece.costo_unitario, precio_unitario=sale_price, pieza=piece, responsable=request.active_profile,
                         accion=piece.estado, origen=piece.ubicacion, destino=piece.ubicacion,
                         estado_anterior=anterior, estado_nuevo=piece.estado, venta_id=piece.ultima_venta_id)
 

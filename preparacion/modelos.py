@@ -7,27 +7,43 @@ from django.urls import reverse
 from boutique.middleware import profile_permission_required
 from boutique.models import Modelo, Categoria
 from boutique.utils import normalizar_nombre
+from boutique.views import es_admin
 
 
 class ModeloForm(forms.ModelForm):
     class Meta:
         model = Modelo
-        fields = ['foto_principal', 'nombre', 'categoria', 'combinacion_telas', 'descripcion', 'referencia', 'notas_confeccion']
+        fields = ['foto_principal', 'nombre', 'categoria', 'combinacion_telas', 'descripcion', 'referencia', 'notas_confeccion', 'costo_referencia', 'precio_sugerido', 'proveedor']
         labels = {'foto_principal': 'Foto del modelo', 'nombre': 'Nombre del modelo',
                   'categoria': 'Categoría', 'combinacion_telas': 'Tela o combinación de telas',
                   'descripcion': 'Características', 'referencia': 'Referencia (opcional)',
-                  'notas_confeccion': 'Notas de confección (opcional)'}
+                  'notas_confeccion': 'Notas de confección (opcional)', 'costo_referencia': 'Costo por prenda (MXN, opcional)', 'precio_sugerido': 'Precio de venta sugerido (MXN)', 'proveedor': 'Proveedor (opcional)'}
         widgets = {'descripcion': forms.Textarea(attrs={'rows': 3}),
                    'combinacion_telas': forms.TextInput(),
                    'notas_confeccion': forms.Textarea(attrs={'rows': 2})}
 
     def __init__(self, *args, **kwargs):
+        allow_cost = kwargs.pop('allow_cost', False)
         super().__init__(*args, **kwargs)
+        if not allow_cost:
+            self.fields.pop('costo_referencia')
+            self.fields.pop('proveedor')
+        for name in ['costo_referencia', 'precio_sugerido']:
+            if name in self.fields:
+                self.fields[name].min_value = 0
+                self.fields[name].widget.attrs['min'] = 0
         self.fields['categoria'].required = True
         self.fields['categoria'].queryset = Categoria.objects.order_by('nombre')
         for name, field in self.fields.items():
             field.widget.attrs['class'] = 'form-select' if name == 'categoria' else 'form-control'
         self.fields['foto_principal'].widget.attrs['accept'] = 'image/*'
+
+    def clean(self):
+        data = super().clean()
+        for field in ['costo_referencia', 'precio_sugerido']:
+            if data.get(field) is not None and data[field] < 0:
+                self.add_error(field, 'El importe no puede ser negativo.')
+        return data
 
     def clean_nombre(self):
         nombre = normalizar_nombre(self.cleaned_data['nombre'])
@@ -39,7 +55,7 @@ class ModeloForm(forms.ModelForm):
 @login_required
 @profile_permission_required(['Inventario', 'Vendedor'])
 def agregar_modelo(request):
-    form = ModeloForm(request.POST or None, request.FILES or None)
+    form = ModeloForm(request.POST or None, request.FILES or None, allow_cost=es_admin(request.active_profile))
     if request.method == 'POST' and form.is_valid():
         try:
             with transaction.atomic():
@@ -71,7 +87,7 @@ class GrupoModelos(forms.BaseFormSet):
 def agregar_modelos_bloque(request):
     Factory = forms.formset_factory(ModeloForm, formset=GrupoModelos, extra=0,
         min_num=0, max_num=20, validate_max=True, absolute_max=20)
-    grupo = Factory(request.POST or None, request.FILES or None, prefix='modelos')
+    grupo = Factory(request.POST or None, request.FILES or None, prefix='modelos', form_kwargs={'allow_cost': es_admin(request.active_profile)})
     guardados = []
     error = None
     if request.method == 'POST' and grupo.is_valid():
