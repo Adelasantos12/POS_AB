@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 from boutique import views as original
 from boutique.middleware import profile_permission_required
 from boutique.models import Producto
-from .models import PiezaEtiqueta, VariantePreparada
+from .models import PiezaEtiqueta, VariantePreparada, MovimientoPieza
 
 
 @login_required
@@ -22,7 +22,7 @@ def buscar(request):
     code = raw.upper()
     piece = (PiezaEtiqueta.objects.select_related('variante__producto')
              .filter(codigo=code).first()) if code.isdigit() else None
-    if piece and piece.contada and not piece.vendida and piece.variante.confirmada:
+    if piece and piece.disponible_caja:
         product = piece.variante.producto
         return JsonResponse({'results': [{
             'type': 'PRODUCTO', 'id': product.pk, 'sku': product.sku,
@@ -35,6 +35,8 @@ def buscar(request):
         sku = piece.variante.producto.sku
         if piece.vendida:
             message = f'La etiqueta {piece.codigo} corresponde a {sku}, pero ya se vendió. Revisa el vestido antes de cobrar.'
+        elif piece.contada and piece.variante.confirmada:
+            message = f'Esta prenda está en {piece.get_ubicacion_display()} · {piece.get_estado_display()}. Registra su regreso a Boutique y disponibilidad antes de venderla.'
         elif piece.contada:
             message = f'La etiqueta {piece.codigo} corresponde a {sku}. Ya se contó, pero el inventario inicial sigue abierto. Cierra el conteo cuando terminen toda la tienda.'
         else:
@@ -106,8 +108,8 @@ def vender(request):
             if any(stocks.get(pk, 0) < quantity for pk, quantity in requested.items()):
                 return JsonResponse({'status': 'error', 'message': 'No hay suficientes vestidos disponibles.'}, status=409)
             if any(code not in by_code or by_code[code].vendida or
-                   not by_code[code].contada for code in codes):
-                return JsonResponse({'status': 'error', 'message': 'Una etiqueta ya se vendió o no fue contada.'}, status=409)
+                   not by_code[code].disponible_caja for code in codes):
+                return JsonResponse({'status': 'error', 'message': 'Una prenda no está disponible en Boutique, ya se vendió o no fue contada.'}, status=409)
             for item in items:
                 if item['id'] in prepared_ids and any(
                     by_code[code].variante.producto_id != item['id']
@@ -116,7 +118,18 @@ def vender(request):
                     return JsonResponse({'status': 'error', 'message': 'La etiqueta no corresponde a este vestido.'}, status=400)
             response = original.api_registrar_venta(request)
             if response.status_code == 200 and json.loads(response.content).get('status') == 'ok':
-                PiezaEtiqueta.objects.filter(pk__in=[piece.pk for piece in pieces]).update(vendida=timezone.now())
+                result = json.loads(response.content)
+                for piece in pieces:
+                    anterior = piece.estado
+                    piece.vendida = timezone.now()
+                    piece.estado = 'APARTADA' if result.get('tipo') == 'apartado' else 'VENDIDA'
+                    piece.ultima_venta_id = result.get('venta_id')
+                    piece.revision += 1
+                    piece.save(update_fields=['vendida', 'estado', 'ultima_venta', 'revision'])
+                    MovimientoPieza.objects.create(pieza=piece, responsable=request.active_profile,
+                        accion=piece.estado, origen=piece.ubicacion, destino=piece.ubicacion,
+                        estado_anterior=anterior, estado_nuevo=piece.estado, venta_id=piece.ultima_venta_id)
+
             return response
     except (ValueError, KeyError, TypeError):
         return JsonResponse({'status': 'error', 'message': 'Datos de venta inválidos.'}, status=400)

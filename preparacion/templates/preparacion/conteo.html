@@ -29,6 +29,11 @@
       <a class="btn btn-outline-primary mb-3" href="{% url 'inventario_view' %}">Ir a modelos y etiquetas</a>
       <div class="fs-3 fw-bold mb-3">{% if cerrada %}Recibidos desde el cierre: {% else %}Total contado: {% endif %}<span id="count-total">{{ total }}</span></div>
       <form id="count-form" action="{% if cerrada %}{% url 'preparacion:recibir' %}{% else %}{% url 'preparacion:escanear' %}{% endif %}" method="post">{% csrf_token %}
+        <label class="form-label" for="count-location">¿Dónde quedan estas prendas?</label>
+        <select id="count-location" name="ubicacion" class="form-select form-select-lg mb-3"><option value="BOUTIQUE">Boutique</option><option value="BODEGA">Bodega</option><option value="OTRO_LOCAL">Otro local</option><option value="TALLER">Taller / costura</option></select>
+        <p class="small">Este destino se aplica a los próximos escaneos. Puedes cambiarlo para una sola prenda y luego volver al anterior.</p>
+        <label for="count-state" class="form-label">Estado</label><select id="count-state" name="estado" class="form-select mb-2"><option value="DISPONIBLE">Lista para vender</option><option value="ARREGLO">En arreglo</option><option value="MUESTRA">Muestra para réplica</option><option value="REVISION">Requiere revisión</option></select>
+        <label for="count-custodian" class="form-label">Persona o local (obligatorio para taller u otro local)</label><input id="count-custodian" name="encargado" maxlength="150" class="form-control mb-3">
         <label class="form-label" for="count-code">Escanea aquí</label>
         <div class="d-flex gap-2"><input id="count-code" name="codigo" class="form-control count-field" inputmode="numeric" autocomplete="off" autofocus required placeholder="Código de 12 números"><button class="btn btn-primary" type="submit">{% if cerrada %}Recibir{% else %}Contar{% endif %}</button></div>
       </form>
@@ -62,7 +67,7 @@
           if (response.status >= 500) throw new Error('server');
           var result = await response.json();
           status.className = 'count-status mt-3 ' + (result.ok ? 'count-success' : 'count-error');
-          status.textContent = result.ok ? '✓ ' + result.modelo + ' · ' + result.color + ' · ' + result.talla + ' (' + result.sku + '). Total de esta variante: ' + result.cantidad_variante : 'Atención: ' + result.message;
+          status.textContent = result.ok ? '✓ ' + result.modelo + ' · ' + result.color + ' · ' + result.talla + ' (' + result.sku + ') · ' + result.ubicacion + '. Total de esta variante: ' + result.cantidad_variante : 'Atención: ' + result.message;
           if (result.ok) {
             document.getElementById('count-total').textContent = {% if cerrada %}Number(document.getElementById('count-total').textContent) + 1{% else %}result.total{% endif %};
             var row = document.querySelector('[data-variante="' + result.variante_id + '"] [data-quantity]');
@@ -70,7 +75,7 @@
             var list = document.getElementById('recent-list'), empty = document.getElementById('recent-empty');
             if (empty) empty.remove();
             var li = document.createElement('li');
-            li.textContent = result.codigo + ' · ' + result.modelo + ' · ' + result.color + ' · ' + result.talla;
+            li.textContent = result.codigo + ' · ' + result.modelo + ' · ' + result.color + ' · ' + result.talla + ' · ' + result.ubicacion;
             list.prepend(li);
             while (list.children.length > 10) list.lastElementChild.remove();
           }

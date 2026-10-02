@@ -34,6 +34,20 @@ class PiezaEtiqueta(models.Model):
     contada = models.DateTimeField(null=True, blank=True)
     vendida = models.DateTimeField(null=True, blank=True)
 
+    UBICACIONES = [('BOUTIQUE', 'Boutique'), ('BODEGA', 'Bodega'), ('OTRO_LOCAL', 'Otro local'), ('TALLER', 'Taller / costura')]
+    ESTADOS = [('DISPONIBLE', 'Disponible'), ('ARREGLO', 'En arreglo'), ('MUESTRA', 'Muestra para réplica'), ('REVISION', 'En revisión'), ('APARTADA', 'Apartada'), ('VENDIDA', 'Vendida')]
+    ubicacion = models.CharField(max_length=30, choices=UBICACIONES, default='BOUTIQUE')
+    estado = models.CharField(max_length=30, choices=ESTADOS, default='DISPONIBLE')
+    encargado = models.CharField(max_length=150, blank=True)
+    regreso_previsto = models.DateField(null=True, blank=True)
+    revision = models.PositiveIntegerField(default=0)
+    ultima_venta = models.ForeignKey('boutique.Venta', null=True, blank=True, on_delete=models.PROTECT)
+
+    @property
+    def disponible_caja(self):
+        return bool(self.contada and not self.vendida and self.variante.confirmada
+                    and self.estado == 'DISPONIBLE' and self.ubicacion == 'BOUTIQUE')
+
     def save(self, *args, **kwargs):
         # Numeric-only Code 128 avoids HID keyboard-layout substitutions of
         # punctuation (such as '-' becoming an apostrophe on a Spanish Mac).
@@ -43,3 +57,31 @@ class PiezaEtiqueta(models.Model):
             super().save(update_fields=['codigo'])
         else:
             super().save(*args, **kwargs)
+
+
+class MovimientoPieza(models.Model):
+    """Append-only history; moving a garment never creates another garment."""
+    pieza = models.ForeignKey(PiezaEtiqueta, on_delete=models.PROTECT, related_name='historial')
+    fecha = models.DateTimeField(auto_now_add=True)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    accion = models.CharField(max_length=30)
+    origen = models.CharField(max_length=30)
+    destino = models.CharField(max_length=30)
+    estado_anterior = models.CharField(max_length=30)
+    estado_nuevo = models.CharField(max_length=30)
+    encargado = models.CharField(max_length=150, blank=True)
+    regreso_previsto = models.DateField(null=True, blank=True)
+    notas = models.CharField(max_length=500, blank=True)
+    venta = models.ForeignKey('boutique.Venta', null=True, blank=True, on_delete=models.PROTECT)
+    operacion = models.ForeignKey('OperacionPrendas', null=True, blank=True, on_delete=models.PROTECT)
+
+    class Meta:
+        ordering = ['-fecha', '-pk']
+
+
+class OperacionPrendas(models.Model):
+    clave = models.UUIDField(unique=True)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateTimeField(auto_now_add=True)
+    huella = models.CharField(max_length=64)
+    cantidad = models.PositiveIntegerField(default=0)

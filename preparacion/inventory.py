@@ -43,8 +43,17 @@ def inventario_view(request):
         variante__producto_id__in=[p.pk for p in todos]
     ).values('variante__producto_id').annotate(n=Count('pk'))
         .values_list('variante__producto_id', 'n'))
+    por_ubicacion = {}
+    for row in PiezaEtiqueta.objects.filter(contada__isnull=False, vendida__isnull=True,
+            variante__producto_id__in=[p.pk for p in todos]).values('variante__producto_id', 'ubicacion').annotate(n=Count('pk')):
+        por_ubicacion.setdefault(row['variante__producto_id'], []).append(
+            f"{dict(PiezaEtiqueta.UBICACIONES)[row['ubicacion']]}: {row['n']}")
+    disponibles = dict(PiezaEtiqueta.objects.filter(contada__isnull=False, vendida__isnull=True,
+        variante__confirmada__isnull=False, ubicacion='BOUTIQUE', estado='DISPONIBLE',
+        variante__producto_id__in=[p.pk for p in todos]).values('variante__producto_id').annotate(n=Count('pk')).values_list('variante__producto_id', 'n'))
     agrupadas = {}
     for p in todos:
+        p.ubicaciones_resumen = ' · '.join(por_ubicacion.get(p.pk, []))
         p.en_preparacion = p.pk in preparados
         p.preparacion_id = preparados[p.pk][0] if p.en_preparacion else None
         p.pendiente_conteo = p.en_preparacion and preparados[p.pk][1] is None
@@ -56,11 +65,12 @@ def inventario_view(request):
             agrupadas[clave] = {
                 'id': p.pk, 'nombre': (p.modelo.nombre if p.modelo else p.rasgo1 or p.categoria.nombre),
                 'categoria': p.categoria.nombre, 'foto_url': None, 'productos': [],
-                'estimadas': 0, 'confirmadas': 0, 'contadas': 0,
+                'estimadas': 0, 'confirmadas': 0, 'contadas': 0, 'disponibles': 0,
             }
         familia = agrupadas[clave]
         familia['productos'].append(p)
         familia['estimadas'] += p.cantidad_estimada if p.pendiente_conteo else 0
+        familia['disponibles'] += disponibles.get(p.pk, 0) if p.en_preparacion else p.cantidad_actual
         familia['contadas'] += p.contadas_conteo
         familia['confirmadas'] += p.cantidad_actual if not p.pendiente_conteo else 0
         if not familia['foto_url']:
@@ -76,6 +86,7 @@ def inventario_view(request):
         'modelos': len(lista_familias), 'variantes': len(todos),
         'contadas': sum(f['contadas'] for f in lista_familias),
         'activas': sum(f['confirmadas'] for f in lista_familias),
+        'disponibles': sum(f['disponibles'] for f in lista_familias),
     }
     return render(request, 'boutique/inventario.html', {
         'familias': familias, 'q': q, 'resumen': resumen,

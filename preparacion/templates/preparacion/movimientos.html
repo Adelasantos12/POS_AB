@@ -1,0 +1,67 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Ubicaciones y movimientos{% endblock %}
+{% block extra_css %}
+.move-wrap{max-width:1100px;margin:auto}.move-card{background:white;border:1px solid #e3e5e8;border-radius:16px;padding:1.4rem;margin:1rem 0}.move-wrap .form-control,.move-wrap .form-select{min-height:48px}.move-photo{width:54px;height:64px;object-fit:cover;border-radius:8px}.move-row{display:flex;gap:1rem;align-items:center;padding:.8rem 0;border-bottom:1px solid #eee}.move-row>div{flex:1}.move-status{padding:1rem;border-radius:10px;background:#f0f3f6;font-size:1.1rem}.move-summary{display:flex;flex-wrap:wrap;gap:1.5rem}.move-summary strong{font-size:1.6rem;display:block}
+{% endblock %}
+{% block content %}
+<div class="move-wrap">
+<a href="{% url 'inventario_view' %}">← Inventario y etiquetas</a>
+<h1 class="mt-3">¿Dónde están mis prendas?</h1>
+<div class="move-card move-summary"><div><strong>{{ total }}</strong>Prendas propias registradas</div><div><strong>{{ disponibles }}</strong>Disponibles en Boutique</div><div><strong>{{ fuera }}</strong>Fuera de Boutique</div><div><strong>{{ pendientes }}</strong>Con regreso previsto</div></div>
+{% if conteo_abierto %}<p class="alert alert-info">El conteo inicial sigue abierto. Estas son las prendas ya escaneadas; aún no están habilitadas para vender.</p>{% endif %}
+<div class="move-card">
+<h2>Registrar un movimiento</h2><p>Elige qué vas a hacer, escanea las prendas y confirma al terminar.</p>
+<form id="movement-form">{% csrf_token %}
+<div class="row g-3">
+<div class="col-md-6"><label for="action" class="form-label">1. ¿Qué vas a hacer?</label><select id="action" class="form-select"><option value="MOVER">Mover prendas</option><option value="REGRESO">Recibir un regreso</option>{% if es_admin %}<option value="DEVOLUCION" {% if devolucion %}selected{% endif %}>Recibir devolución de clienta</option>{% endif %}</select></div>
+<div class="col-md-6"><label for="destination" class="form-label">¿Dónde quedarán?</label><select id="destination" class="form-select">{% for key,label in ubicaciones %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+<div class="col-md-6"><label for="state" class="form-label">¿En qué estado quedan?</label><select id="state" class="form-select"><option value="DISPONIBLE">Listas para vender</option><option value="ARREGLO">En arreglo</option><option value="MUESTRA">Muestra para réplica</option><option value="REVISION">Requieren revisión</option></select></div>
+<div class="col-md-6"><label for="custodian" class="form-label">Persona o nombre del local / taller</label><input id="custodian" class="form-control" maxlength="150" placeholder="¿Con quién quedan?"></div>
+<div class="col-md-6"><label for="return-date" class="form-label">Regreso previsto (opcional)</label><input type="date" id="return-date" class="form-control"></div>
+<div class="col-md-6"><label for="notes" class="form-label">Motivo o notas</label><input id="notes" class="form-control" maxlength="500" placeholder="Qué debemos recordar"></div>
+</div>
+<p id="action-help" class="mt-3 text-muted"></p>
+<label for="scan-code" class="form-label fw-bold">2. Escanea las prendas</label>
+<div class="d-flex gap-2"><input id="scan-code" class="form-control form-control-lg" inputmode="numeric" autocomplete="off" placeholder="Código de la etiqueta"><button class="btn btn-primary" type="submit">Agregar</button></div>
+</form>
+<div id="move-status" class="move-status mt-3" role="status" aria-live="polite">Listo para escanear.</div>
+<div id="selection"></div>
+<button id="confirm-movement" type="button" class="btn btn-primary btn-lg mt-3" disabled>3. Confirmar movimiento</button>
+<button id="clear-selection" type="button" class="btn btn-outline-secondary mt-3">Vaciar selección</button>
+<details class="mt-3"><summary>Últimos movimientos de la etiqueta consultada</summary><div id="piece-history" class="mt-2">Escanea una prenda para ver su historial.</div></details>
+{% if not es_admin %}<p class="small mt-3">Las devoluciones de clientas requieren un perfil Admin.</p>{% endif %}
+</div>
+<div class="move-card">
+<h2>Prendas por ubicación</h2>
+<div class="d-flex gap-2 flex-wrap mb-3">{% for t in totales %}<span class="badge bg-light text-dark fs-6">{% for key,label in ubicaciones %}{% if key == t.ubicacion %}{{ label }}{% endif %}{% endfor %}: {{ t.n }}</span>{% endfor %}</div>
+<form method="get" class="d-flex gap-2 flex-wrap mb-3"><select name="ubicacion" class="form-select" style="max-width:210px"><option value="">Todos los lugares</option>{% for key,label in ubicaciones %}<option value="{{ key }}" {% if filtro == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><input name="q" value="{{ q }}" class="form-control" style="max-width:280px" placeholder="Modelo o código"><button class="btn btn-outline-primary">Buscar</button></form>
+{% for p in piezas %}<div class="move-row"><div><strong>{{ p.variante.producto.modelo.nombre|default:p.variante.producto.rasgo1 }}</strong> · {{ p.variante.producto.color }} · {{ p.variante.producto.talla }}<br><small>{{ p.codigo }} · {{ p.get_ubicacion_display }} · {{ p.get_estado_display }}</small>{% if p.encargado %}<br>Con: {{ p.encargado }}{% endif %}{% if p.regreso_previsto %}<br>Regreso previsto: {{ p.regreso_previsto|date:'d/m/Y' }}{% endif %}</div><button type="button" class="btn btn-outline-primary inspect-piece" data-code="{{ p.codigo }}">Ver / seleccionar</button></div>{% empty %}<p>No hay prendas registradas para este filtro.</p>{% endfor %}
+<div class="mt-3">{% if piezas.has_previous %}<a href="?page={{ piezas.previous_page_number }}&ubicacion={{ filtro|urlencode }}&q={{ q|urlencode }}">Anterior</a>{% endif %} · Página {{ piezas.number }} de {{ piezas.paginator.num_pages }} · {% if piezas.has_next %}<a href="?page={{ piezas.next_page_number }}&ubicacion={{ filtro|urlencode }}&q={{ q|urlencode }}">Siguiente</a>{% endif %}</div>
+</div>
+</div>
+<script>
+(function(){
+const form=document.getElementById('movement-form'), scan=document.getElementById('scan-code'), status=document.getElementById('move-status'), list=document.getElementById('selection'), confirmButton=document.getElementById('confirm-movement');
+const fields={accion:'action',destino:'destination',estado:'state',encargado:'custodian',regreso:'return-date',notas:'notes'};
+let selected=new Map(), pending=Promise.resolve(), busy=false, querying=0, lastBody='', lastKey='';
+const storageKey='prendas-movimiento-{{ request.active_profile.pk }}';
+function save(){try{sessionStorage.setItem(storageKey,JSON.stringify({piezas:[...selected.values()],campos:Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,document.getElementById(id).value])),lastBody,lastKey}));}catch(e){}}
+function say(message,error=false){status.textContent=message;status.style.background=error?'#fce8e8':'#e6f6e9';}
+function render(){list.replaceChildren();selected.forEach(p=>{const row=document.createElement('div');row.className='move-row';if(p.foto){const img=document.createElement('img');img.src=p.foto;img.alt='';img.className='move-photo';row.append(img);}const text=document.createElement('div');text.textContent=p.modelo+' · '+p.variante+' · '+p.codigo+' — '+p.ubicacion+' / '+p.estado+(p.venta?' · Venta #'+p.venta+(p.ticket?' · '+p.ticket:''):'');row.append(text);
+const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=p.individual?'Destino individual':'Cambiar solo esta prenda';details.append(summary);
+const choices={destino:[['BOUTIQUE','Boutique'],['BODEGA','Bodega'],['OTRO_LOCAL','Otro local'],['TALLER','Taller / costura']],estado:[['DISPONIBLE','Lista para vender'],['ARREGLO','En arreglo'],['MUESTRA','Muestra para réplica'],['REVISION','En revisión']]};
+['destino','estado','encargado','regreso'].forEach(k=>{const label=document.createElement('label');label.className='d-block mt-2';label.textContent={destino:'Destino',estado:'Estado',encargado:'Persona o local',regreso:'Regreso previsto'}[k];const control=document.createElement(choices[k]?'select':'input');control.className=choices[k]?'form-select':'form-control';if(choices[k])choices[k].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;control.append(o);});else control.type=k==='regreso'?'date':'text';control.value=p.individual?p.individual[k]:document.getElementById(fields[k]).value;control.disabled=busy;control.onchange=()=>{if(!p.individual)p.individual=Object.fromEntries(['destino','estado','encargado','regreso'].map(f=>[f,document.getElementById(fields[f]).value]));p.individual[k]=control.value;summary.textContent='Destino individual';save();};label.append(control);details.append(label);});
+const reset=document.createElement('button');reset.type='button';reset.className='btn btn-link';reset.textContent='Usar destino del grupo';reset.disabled=busy;reset.onclick=()=>{delete p.individual;render();save();};details.append(reset);text.append(details);
+const remove=document.createElement('button');remove.type='button';remove.className='btn btn-outline-secondary';remove.textContent='Quitar';remove.disabled=busy;remove.onclick=()=>{selected.delete(p.codigo);render();save();};row.append(remove);list.append(row);});confirmButton.textContent='3. Confirmar '+selected.size+' prenda'+(selected.size===1?'':'s');confirmButton.disabled=busy||querying>0||!selected.size;}
+function help(){const action=document.getElementById('action').value;document.getElementById('action-help').textContent=action==='DEVOLUCION'?'Devuelve la prenda al inventario y conserva su venta original. Esta acción no entrega dinero ni registra un reembolso. Indica el motivo.':action==='REGRESO'?'Usa la misma etiqueta de la prenda que salió. Su regreso no crea otra pieza.':'Las prendas siguen siendo tuyas. Caja solo permite vender las disponibles en Boutique.';}
+try{const saved=JSON.parse(sessionStorage.getItem(storageKey));if(saved){selected=new Map(saved.piezas.map(p=>[p.codigo,p]));Object.entries(fields).forEach(([k,id])=>{if(saved.campos[k]!==undefined)document.getElementById(id).value=saved.campos[k];});lastBody=saved.lastBody||'';lastKey=saved.lastKey||'';}}catch(e){}
+Object.values(fields).forEach(id=>document.getElementById(id).addEventListener('change',()=>{help();render();save();}));
+async function lookup(code){if(busy)return;querying++;render();try{const res=await fetch('{% url "preparacion:consultar_pieza" %}?codigo='+encodeURIComponent(code));const p=await res.json();if(!res.ok)throw Error(p.message||'No se pudo consultar la prenda.');const h=document.getElementById('piece-history');h.replaceChildren();if(!p.historial.length)h.textContent='Sin traslados registrados todavía.';p.historial.forEach(m=>{const line=document.createElement('p');line.textContent=new Date(m.fecha).toLocaleString()+' · '+m.accion+' · '+m.origen+' → '+m.destino+' · '+m.estado+' · '+m.responsable+(m.encargado?' · '+m.encargado:'')+(m.notas?' · '+m.notas:'');h.append(line);});if(selected.has(p.codigo)){say('Esta etiqueta ya está en la lista. No se agregó dos veces.',true);return;}if(selected.size>=100)throw Error('Confirma este grupo antes de agregar más prendas.');selected.set(p.codigo,p);say('Agregada: '+p.modelo+' · '+p.variante);save();}catch(e){say(e.message||'No se pudo consultar. Vuelve a escanear.',true);}finally{querying--;render();scan.focus();}}
+form.addEventListener('submit',e=>{e.preventDefault();const code=scan.value.trim();scan.value='';if(code&&!busy){querying++;render();pending=pending.then(async()=>{querying--;await lookup(code);});}scan.focus();});
+document.querySelectorAll('.inspect-piece').forEach(b=>b.onclick=()=>{if(!busy){querying++;render();pending=pending.then(async()=>{querying--;await lookup(b.dataset.code);});}});
+document.getElementById('clear-selection').onclick=()=>{if(!busy&&confirm('¿Vaciar la selección? No se ha movido ninguna prenda.')){selected.clear();lastKey='';lastBody='';render();save();}};
+confirmButton.onclick=async()=>{if(busy||querying||!selected.size)return;const data=Object.fromEntries(Object.entries(fields).map(([k,id])=>[k,document.getElementById(id).value]));data.piezas=[...selected.values()].map(p=>({codigo:p.codigo,revision:p.revision,individual:p.individual||null}));const body=JSON.stringify(data);if(!confirm('¿Confirmar '+selected.size+' prendas hacia '+document.getElementById('destination').selectedOptions[0].text+' (las excepciones individuales conservarán su destino)?'+(data.accion==='DEVOLUCION'?' Se actualiza inventario; no se realiza reembolso.':'')))return;if(body!==lastBody||!lastKey){lastKey=crypto.randomUUID();lastBody=body;}data.clave=lastKey;save();busy=true;form.querySelectorAll('input,select,button').forEach(e=>e.disabled=true);render();try{const res=await fetch('{% url "preparacion:confirmar_movimiento" %}',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value},body:JSON.stringify(data)});const result=await res.json();if(!res.ok)throw Error(result.message||'No se pudo confirmar.');selected.clear();sessionStorage.removeItem(storageKey);alert(result.message+' ('+result.cantidad+' prendas)');location.reload();}catch(e){say((e.message||'Conexión interrumpida.')+' Si la conexión falló, puedes confirmar otra vez: no se duplicará.',true);busy=false;form.querySelectorAll('input,select,button').forEach(e=>e.disabled=false);render();}};
+help();render();scan.focus();
+})();
+</script>
+{% endblock %}

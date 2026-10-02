@@ -327,7 +327,9 @@ class PreparacionInicialTests(TestCase):
             MovimientoInventario.objects.create(
                 producto=variant.producto, tipo='VENTA', cantidad=-1, motivo='VENTA',
                 perfil_activo=self.user, stock_resultante=0)
-            return JsonResponse({'status': 'ok', 'venta_id': 1})
+            from boutique.models import Venta
+            venta = Venta.objects.create(vendedor=self.user)
+            return JsonResponse({'status': 'ok', 'venta_id': venta.pk})
 
         with patch('preparacion.checkout.original.api_registrar_venta', side_effect=record_sale) as sale:
             self.assertEqual(self.client.post('/api/registrar-venta/',

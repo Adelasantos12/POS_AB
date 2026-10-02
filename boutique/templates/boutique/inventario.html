@@ -55,6 +55,7 @@
 {% block content %}
 <div class="inv-toolbar d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4" id="invToolbar">
     <h2 class="fw-bold mb-0">Inventario</h2>
+    <a class="btn btn-outline-primary rounded-pill" href="{% url 'preparacion:movimientos' %}">Ubicaciones y movimientos</a>
     <div class="d-flex flex-wrap gap-2">
         <a href="{% url 'preparacion:inicio' %}" class="btn btn-primary rounded-pill">Preparar vestidos</a>
         <a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-primary rounded-pill">{% if conteo_inicial_cerrado %}Recibir mercancía con escáner{% else %}Contar con escáner{% endif %}</a>
@@ -78,7 +79,8 @@
 <div class="card border-0 shadow-sm mb-3" style="border-radius:15px"><div class="card-body d-flex flex-wrap gap-3 align-items-center">
   <strong>{{ resumen.modelos }} modelos · {{ resumen.variantes }} variantes</strong>
   {% if resumen.contadas %}<span class="badge bg-primary fs-6">{{ resumen.contadas }} contados · pendientes de activar</span>{% endif %}
-  <span class="badge bg-success fs-6">{{ resumen.activas }} piezas disponibles en inventario</span>
+  <span class="badge bg-success fs-6">{{ resumen.activas }} piezas en inventario</span>
+  <span class="badge bg-primary fs-6">{{ resumen.disponibles }} disponibles en Boutique</span>
 </div></div>
 
 <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
@@ -106,7 +108,7 @@
         <span class="family-photo d-flex align-items-center justify-content-center bg-light text-muted"><i class="bi bi-camera fs-4"></i></span>
         {% endif %}
         <span><strong>{{ familia.nombre }}</strong><br><small class="text-muted">{{ familia.categoria }} · {{ familia.productos|length }} variante{{ familia.productos|length|pluralize }}</small><br>
-        <small>{% if familia.contadas or familia.estimadas %}{{ familia.contadas }} contadas · {{ familia.estimadas }} estimadas · {% endif %}{{ familia.confirmadas }} disponibles en inventario</small></span>
+        <small>{% if familia.contadas or familia.estimadas %}{{ familia.contadas }} contadas · {{ familia.estimadas }} estimadas · {% endif %}{{ familia.confirmadas }} en inventario · {{ familia.disponibles }} disponibles en Boutique</small></span>
     </summary>
     <div class="px-3 pb-3"><a class="btn btn-outline-primary" href="{% url 'preparacion:nueva_variante' familia.id %}"><i class="bi bi-plus-lg me-1"></i>Agregar variante de este modelo</a>
     {% if es_admin %}<button type="button" class="btn btn-outline-danger ms-2" data-url="{% url 'preparacion:eliminar_modelo' familia.id %}" data-nombre="{{ familia.nombre }}" onclick="eliminarModeloCompleto(this)">Eliminar modelo completo</button>{% endif %}</div>
@@ -119,7 +121,7 @@
                     <th>Rasgos</th>
                     <th>Talla/Color</th>
                     <th>Precio</th>
-                    <th>Stock</th>
+                    <th>Stock / ubicación</th>
                     <th>Etiquetas y acciones</th>
                 </tr>
             </thead>
@@ -152,6 +154,7 @@
                     <td><strong>{{ p.color.nombre }}</strong> · Talla {{ p.talla }}{% if p.tela %}<br><small class="text-muted">{{ p.tela.nombre }}</small>{% endif %}</td>
                     <td class="precio-col fw-bold">${{ p.precio_venta }}</td>
                     <td class="stock-col">
+                        {% if p.ubicaciones_resumen %}<small class="d-block mb-1">{{ p.ubicaciones_resumen }}</small>{% endif %}
                         {% if p.pendiente_conteo %}
                         <span class="badge bg-secondary">{{ p.contadas_conteo }} contadas · {{ p.cantidad_estimada }} estimadas · Pendiente de cierre</span>
                         {% elif p.cantidad_actual == 0 %}

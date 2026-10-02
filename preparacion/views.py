@@ -85,7 +85,7 @@ def verificar_etiqueta(request):
                                       producto.color.nombre if producto.color else '',
                                       producto.talla,
                                       producto.tela.nombre if producto.tela else '']))
-    return JsonResponse({'ok': True, 'codigo': pieza.codigo, 'sku': producto.sku,
+    return JsonResponse({'ok': True, 'ubicacion': pieza.get_ubicacion_display(), 'codigo': pieza.codigo, 'sku': producto.sku,
                          'estado': estado,
                          'message': f'{pieza.codigo} → {producto.sku} · {detalles}. {estado}.'})
 
@@ -119,6 +119,7 @@ def pagina_conteo(request):
         'jornada': jornada, 'cerrada': cerrada, 'variantes': variantes,
         'recientes': recientes, 'total': sum(cantidades.values()),
         'hay_etiquetas': PiezaEtiqueta.objects.exists(),
+        'ubicaciones': PiezaEtiqueta.UBICACIONES,
     })
 
 
@@ -332,6 +333,16 @@ def iniciar_conteo(request):
 @profile_permission_required(['Inventario', 'Vendedor'])
 def escanear(request):
     codigo = request.POST.get('codigo', '').strip().upper()
+    ubicacion = request.POST.get('ubicacion', 'BOUTIQUE')
+    estado = request.POST.get('estado', 'DISPONIBLE')
+    encargado = request.POST.get('encargado', '').strip()
+    if (ubicacion not in dict(PiezaEtiqueta.UBICACIONES) or
+            estado not in ['DISPONIBLE', 'ARREGLO', 'MUESTRA', 'REVISION'] or len(encargado) > 150):
+        return JsonResponse({'ok': False, 'message': 'Revisa ubicación, estado y persona responsable.'}, status=400)
+    if ubicacion in ['TALLER', 'OTRO_LOCAL'] and not encargado:
+        return JsonResponse({'ok': False, 'message': 'Indica con quién o en qué local queda la prenda.'}, status=400)
+    if ubicacion == 'TALLER' and estado == 'DISPONIBLE':
+        return JsonResponse({'ok': False, 'message': 'En taller, indica arreglo, réplica o revisión.'}, status=400)
     with transaction.atomic():
         jornada = JornadaConteo.objects.select_for_update().filter(abierta=True).first()
         if not jornada:
@@ -347,11 +358,12 @@ def escanear(request):
             return JsonResponse({'ok': False, 'message': f'Ya contaste {codigo}. No se sumó otra vez.'}, status=409)
         pieza.contada = timezone.now()
         pieza.jornada = jornada
-        pieza.save(update_fields=['contada', 'jornada'])
+        pieza.ubicacion, pieza.estado, pieza.encargado = ubicacion, estado, encargado
+        pieza.save(update_fields=['contada', 'jornada', 'ubicacion', 'estado', 'encargado'])
         n = PiezaEtiqueta.objects.filter(variante=pieza.variante, jornada=jornada).count()
     producto = pieza.variante.producto
     return JsonResponse({'ok': True, 'message': f'{producto.sku}: {n} vestido(s) contado(s)',
-                         'codigo': pieza.codigo, 'variante_id': pieza.variante_id,
+                         'ubicacion': pieza.get_ubicacion_display(), 'codigo': pieza.codigo, 'variante_id': pieza.variante_id,
                          'sku': producto.sku,
                          'modelo': producto.modelo.nombre if producto.modelo else producto.rasgo1,
                          'color': producto.color.nombre if producto.color else '',
@@ -364,6 +376,16 @@ def escanear(request):
 @profile_permission_required(['Inventario', 'Vendedor'])
 def recibir(request):
     codigo = request.POST.get('codigo', '').strip()
+    ubicacion = request.POST.get('ubicacion', 'BOUTIQUE')
+    estado = request.POST.get('estado', 'DISPONIBLE')
+    encargado = request.POST.get('encargado', '').strip()
+    if (ubicacion not in dict(PiezaEtiqueta.UBICACIONES) or
+            estado not in ['DISPONIBLE', 'ARREGLO', 'MUESTRA', 'REVISION'] or len(encargado) > 150):
+        return JsonResponse({'ok': False, 'message': 'Revisa ubicación, estado y persona responsable.'}, status=400)
+    if ubicacion in ['TALLER', 'OTRO_LOCAL'] and not encargado:
+        return JsonResponse({'ok': False, 'message': 'Indica con quién o en qué local queda la prenda.'}, status=400)
+    if ubicacion == 'TALLER' and estado == 'DISPONIBLE':
+        return JsonResponse({'ok': False, 'message': 'En taller, indica arreglo, réplica o revisión.'}, status=400)
     with transaction.atomic():
         cierre = JornadaConteo.objects.filter(abierta=False).first()
         if not cierre:
@@ -379,7 +401,8 @@ def recibir(request):
             return JsonResponse({'ok': False, 'message': 'Esta etiqueta sobró del conteo inicial y ya no sirve para recibir mercancía. Crea una nueva etiqueta para el vestido que acaba de llegar.'}, status=409)
         producto = Producto.objects.select_for_update().get(pk=pieza.variante.producto_id)
         pieza.contada = timezone.now()
-        pieza.save(update_fields=['contada'])
+        pieza.ubicacion, pieza.estado, pieza.encargado = ubicacion, estado, encargado
+        pieza.save(update_fields=['contada', 'ubicacion', 'estado', 'encargado'])
         variante = pieza.variante
         if not variante.confirmada:
             variante.confirmada = timezone.now()
@@ -392,7 +415,7 @@ def recibir(request):
             Producto.objects.filter(pk=producto.pk).update(activo=True)
     producto.refresh_from_db()
     return JsonResponse({'ok': True, 'message': 'Una pieza recibida y agregada al inventario.',
-                         'codigo': pieza.codigo, 'sku': producto.sku,
+                         'ubicacion': pieza.get_ubicacion_display(), 'codigo': pieza.codigo, 'sku': producto.sku,
                          'modelo': producto.modelo.nombre if producto.modelo else producto.rasgo1,
                          'color': producto.color.nombre if producto.color else '',
                          'talla': producto.talla, 'variante_id': pieza.variante_id,
