@@ -57,15 +57,16 @@
     <h2 class="fw-bold mb-0">Inventario</h2>
     <a class="btn btn-outline-primary rounded-pill" href="{% url 'preparacion:movimientos' %}">Ubicaciones y movimientos</a>
     <div class="d-flex flex-wrap gap-2">
-        <a href="{% url 'preparacion:inicio' %}" class="btn btn-primary rounded-pill">Preparar vestidos</a>
+        <a href="{% url 'preparacion:agregar_modelo' %}" class="btn btn-primary rounded-pill">Agregar modelo (subir foto)</a>
+        <a class="btn btn-outline-primary rounded-pill" href="{% url 'preparacion:agregar_modelos_bloque' %}">Subir varias fotos</a>
+        <a href="{% url 'preparacion:inicio' %}" class="btn btn-outline-primary rounded-pill">Preparar vestidos</a>
         <a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-primary rounded-pill">{% if conteo_inicial_cerrado %}Recibir mercancía con escáner{% else %}Contar con escáner{% endif %}</a>
+        {% if es_admin %}<a href="{% url 'subida_bloque' %}" class="btn btn-outline-secondary rounded-pill">Subida en bloque (archivo)</a>{% endif %}
         {% if es_admin and conteo_inicial_cerrado %}
         <button class="btn btn-primary rounded-pill" data-bs-toggle="modal" data-bs-target="#modalNuevoProducto">
             <i class="bi bi-plus-lg me-2"></i>Registro avanzado
         </button>
-        <a href="{% url 'subida_bloque' %}" class="btn btn-outline-primary rounded-pill">
-            <i class="bi bi-table me-2"></i>Subida en Bloque
-        </a>
+
         <a href="{% url 'exportar_inventario_csv' %}" class="btn btn-outline-success rounded-pill">
             <i class="bi bi-file-earmark-spreadsheet me-2"></i>Exportar CSV
         </a>

@@ -1,10 +1,13 @@
 from django.urls import path
 from . import views, movements
 from .deletion import eliminar_modelo
+from .modelos import agregar_modelo, agregar_modelos_bloque
 
 app_name = 'preparacion'
 
 urlpatterns = [
+    path('modelos/fotos/', agregar_modelos_bloque, name='agregar_modelos_bloque'),
+    path('modelo/nuevo/', agregar_modelo, name='agregar_modelo'),
     path('movimientos/', movements.panel, name='movimientos'),
     path('movimientos/consultar/', movements.consultar, name='consultar_pieza'),
     path('movimientos/confirmar/', movements.confirmar, name='confirmar_movimiento'),

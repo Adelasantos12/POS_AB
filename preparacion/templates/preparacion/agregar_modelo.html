@@ -1,0 +1,25 @@
+{% extends 'boutique/base.html' %}
+{% block title %}Agregar modelo{% endblock %}
+{% block content %}
+<div style="max-width:850px;margin:auto">
+<a href="{% url 'inventario_view' %}">← Volver a Inventario</a>
+<h1 class="mt-3">Agregar modelo</h1><a href="{% url 'preparacion:agregar_modelos_bloque' %}" class="btn btn-outline-primary mb-3">Subir varias fotos</a>
+<p>1. Foto y datos del modelo · 2. Colores, telas y tallas · 3. Etiquetas</p>
+<div class="card p-4 rounded-4">
+<p>Primero guarda el modelo. Después podrás agregar sus variantes sin volver a subir la foto. Este paso no suma inventario.</p>
+<form method="post" enctype="multipart/form-data" id="model-form">{% csrf_token %}
+{{ form.non_field_errors }}
+{% for field in form %}<div class="mb-3"><label class="form-label fw-bold" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}{% if field.name == 'foto_principal' %}<img id="model-preview" alt="Vista previa del modelo" style="display:none;max-width:220px;max-height:280px;margin-top:12px;border-radius:12px"><div class="mt-2"><button type="button" class="btn btn-outline-primary" id="model-ai">Sugerir datos con la foto</button></div><p id="model-message" class="mt-2" role="status"></p>{% endif %}</div>{% endfor %}
+{% if form.errors %}<p class="text-danger">Revisa los campos señalados. Si habías elegido una foto, vuelve a seleccionarla.</p>{% endif %}
+<button class="btn btn-primary btn-lg" type="submit">Guardar modelo y agregar variantes</button>
+</form>
+</div>
+{% if pendientes %}<div class="card p-4 mt-3 rounded-4"><h2 class="h5">Modelos guardados sin variantes</h2><p>Puedes continuar donde te quedaste.</p>{% for m in pendientes %}<a class="d-block mb-2" href="{% url 'preparacion:inicio' %}?modelo={{ m.pk }}#nuevo">{{ m.nombre }} — Agregar primera variante</a>{% endfor %}</div>{% endif %}
+</div>
+<script>
+(function(){const photo=document.getElementById('id_foto_principal'),preview=document.getElementById('model-preview'),message=document.getElementById('model-message'),button=document.getElementById('model-ai');let previewUrl;
+photo.addEventListener('change',()=>{if(previewUrl)URL.revokeObjectURL(previewUrl);if(photo.files[0]){previewUrl=URL.createObjectURL(photo.files[0]);preview.src=previewUrl;preview.style.display='block';}else preview.style.display='none';});
+button.addEventListener('click',async()=>{if(!photo.files[0]){message.textContent='Elige primero una foto.';return;}button.disabled=true;message.textContent='Revisando la foto…';const data=new FormData();data.append('image',photo.files[0]);data.append('csrfmiddlewaretoken',document.querySelector('[name=csrfmiddlewaretoken]').value);try{const response=await fetch('/api/ai-analyze-image/',{method:'POST',body:data});const result=await response.json();if(!response.ok||result.status!=='ok')throw Error();const a=result.atributos||{};const fill=(id,value)=>{const el=document.getElementById(id);if(!el.value&&typeof value==='string')el.value=value;};fill('id_nombre',a.modelo||a.nombre||a.rasgo1);fill('id_combinacion_telas',a.tela||a.rasgo2);fill('id_descripcion',a.caracteristicas||a.descripcion||a.rasgo1);const cat=document.getElementById('id_categoria');if(!cat.value&&a.categoria){const option=Array.from(cat.options).find(o=>o.text.toLowerCase()===String(a.categoria).toLowerCase());if(option)cat.value=option.value;}message.textContent='Revisa las sugerencias y completa los datos antes de guardar.';}catch(e){message.textContent='No se pudieron obtener sugerencias. Puedes completar los datos manualmente.';}finally{button.disabled=false;}});
+})();
+</script>
+{% endblock %}

@@ -64,7 +64,8 @@
     </div>
   {% endif %}
     <div class="prep-card" id="nuevo">
-      <div class="prep-title">Registrar un modelo nuevo</div>
+      <div class="prep-title">{% if selected_model %}Agregar variantes de {{ selected_model.nombre }}{% else %}Registrar un modelo nuevo{% endif %}</div>
+      {% if selected_model %}<p>El modelo ya está guardado. Ahora agrega su primer color, tela y talla.</p>{% if selected_model.foto_principal %}<img src="{{ selected_model.foto_principal.url }}" alt="{{ selected_model.nombre }}" style="max-height:180px;max-width:200px;border-radius:10px" class="mb-3">{% endif %}<p>{{ selected_model.descripcion }}</p>{% else %}<a class="btn btn-primary mb-3" href="{% url 'preparacion:agregar_modelo' %}">Agregar modelo (subir foto)</a>{% endif %}
       <p class="prep-note">Para añadir color, tela o talla a un modelo que ya existe, usa «Agregar variante» en Inventario.</p>
       <form action="{% url 'preparacion:guardar_variante' %}" method="post" enctype="multipart/form-data">
         {% csrf_token %}
@@ -75,7 +76,7 @@
           <div class="col-md-6"><label for="foto">Foto del modelo (opcional)</label><input type="file" accept="image/*" class="form-control" id="foto" name="foto"></div>
           <div class="col-12"><button type="button" id="ai-suggest" class="btn btn-outline-secondary">Sugerir datos de la foto con IA</button><span id="ai-message" class="ms-2 prep-note"></span></div>
           <div class="col-md-6"><label for="color_id">Color</label><select class="form-select" id="color_id" name="color_id"><option value="">Escribir un color nuevo</option>{% for c in colores %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" id="color_nuevo" name="color_nuevo" placeholder="Color nuevo"></div>
-          <div class="col-md-6"><label for="tela_id">Tela</label><select class="form-select" id="tela_id" name="tela_id"><option value="">Escribir tela nueva (opcional)</option>{% for t in telas %}<option value="{{ t.pk }}">{{ t.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" id="tela_nueva" name="tela_nueva" placeholder="Tela nueva"></div>
+          <div class="col-md-6"><label for="tela_id">Tela</label><select class="form-select" id="tela_id" name="tela_id"><option value="">Escribir tela nueva (opcional)</option>{% for t in telas %}<option value="{{ t.pk }}">{{ t.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" id="tela_nueva" name="tela_nueva" value="{{ selected_model.combinacion_telas }}" placeholder="Tela nueva"></div>
           <div class="col-md-6"><label for="talla">Talla</label><select class="form-select" id="talla" name="talla" required><option value="">Elige una talla</option>{% for t in tallas %}<option value="{{ t.nombre }}">{{ t.nombre }}</option>{% endfor %}</select></div>
           <div class="col-md-6"><label for="precio">Precio</label><input class="form-control" type="number" min="1" step="0.01" id="precio" name="precio" required></div>
           <div class="col-md-6"><label for="cantidad_estimada">¿Cuántos crees que hay? (estimado)</label><input class="form-control" type="number" min="0" max="10000" id="cantidad_estimada" name="cantidad_estimada" value="0"><small class="prep-note">No se sumarán al inventario hasta escanear cada vestido.</small></div>

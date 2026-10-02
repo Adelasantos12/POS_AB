@@ -28,7 +28,7 @@ def _pagina(request, error=None):
     return render(request, 'preparacion/inicio.html', {
         'hay_variantes': VariantePreparada.objects.exists(),
         'jornada': jornada, 'cerrada': cerrada,
-        'error': error, 'modelos': Modelo.objects.order_by('nombre')[:200],
+        'error': error, 'modelos': Modelo.objects.order_by('nombre'),
         'categorias': Categoria.objects.order_by('nombre'),
         'colores': Color.objects.filter(activo=True).order_by('nombre'),
         'telas': Tela.objects.filter(activa=True).order_by('nombre'),
@@ -37,6 +37,7 @@ def _pagina(request, error=None):
         'total_contadas': PiezaEtiqueta.objects.filter(jornada__isnull=False,
                                                        contada__isnull=False).count(),
         'selected_model_id': request.GET.get('modelo', ''),
+        'selected_model': Modelo.objects.filter(pk=request.GET.get('modelo')).first() if request.GET.get('modelo', '').isdigit() else None,
     })
 
 
