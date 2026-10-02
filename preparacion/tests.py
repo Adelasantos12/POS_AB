@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.urls import reverse
 from django.http import JsonResponse
@@ -131,7 +131,7 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(len(response.context['familias']), 1)
         self.assertEqual(len(response.context['familias'][0]['productos']), 2)
         self.assertNotContains(response, 'Registro avanzado')
-        self.assertContains(response, 'Pendiente de conteo', count=2)
+        self.assertContains(response, 'Pendiente de cierre', count=2)
 
     def test_existing_sku_is_prepared_without_duplicate_product(self):
         self._variant()
@@ -181,6 +181,49 @@ class PreparacionInicialTests(TestCase):
         self.assertEqual(new.modelo_id, base.modelo_id)
         self.assertEqual(len(self.client.get(reverse('inventario_view'),
                                              {'q': new.sku}).context['familias'][0]['productos']), 2)
+
+    def test_live_family_total_and_admin_discard_trial_labels(self):
+        self._variant(cantidad_estimada='1')
+        product = Producto.objects.get()
+        self.client.post(reverse('preparacion:imprimir_producto', args=[product.pk]),
+                         {'cantidad': 2})
+        self.client.post(reverse('preparacion:iniciar_conteo'))
+        for piece in PiezaEtiqueta.objects.all():
+            self.assertEqual(self.client.post(reverse('preparacion:escanear'),
+                                              {'codigo': piece.codigo}).status_code, 200)
+        response = self.client.get(reverse('inventario_view'))
+        self.assertEqual(response.context['resumen']['contadas'], 2)
+        self.assertEqual(response.context['resumen']['activas'], 0)
+        self.assertEqual(response.context['familias'][0]['contadas'], 2)
+        self.assertContains(response, '2 contadas · 1 estimadas')
+        edited = self.client.post(reverse('api_editar_producto', args=[product.pk]),
+                                  json.dumps({'precio': '1750', 'stock': 0}),
+                                  content_type='application/json')
+        self.assertEqual(edited.json()['status'], 'ok')
+        self.assertEqual(self.client.post(reverse('api_editar_producto', args=[product.pk]),
+                                          json.dumps({'stock': 5}),
+                                          content_type='application/json').status_code, 409)
+
+        vendor = User.objects.create_user('vendedora', password='testpass')
+        vendor.groups.add(Group.objects.get(name='Vendedor'))
+        self.client.force_login(vendor)
+        session = self.client.session
+        session['active_profile_id'] = vendor.pk
+        session.save()
+        self.assertNotContains(self.client.get(reverse('inventario_view')),
+                               'title="Eliminar variante de prueba"')
+        self.assertEqual(self.client.post(reverse('api_eliminar_producto', args=[product.pk]))
+                         .status_code, 403)
+
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['active_profile_id'] = self.user.pk
+        session.save()
+        self.assertEqual(self.client.post(reverse('api_eliminar_producto', args=[product.pk]))
+                         .json()['status'], 'ok')
+        self.assertFalse(PiezaEtiqueta.objects.exists())
+        self.assertFalse(Producto.objects.filter(pk=product.pk).exists())
+        self.assertEqual(self.client.get(reverse('preparacion:conteo')).context['total'], 0)
 
     def test_after_initial_count_receiving_adds_exactly_once(self):
         self._variant()

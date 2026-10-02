@@ -2,13 +2,13 @@
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.shortcuts import render
 
 from boutique.middleware import profile_permission_required
 from boutique.models import Categoria, Color, Modelo, Producto, Talla, Tela
 from boutique.views import es_admin
-from .models import JornadaConteo, VariantePreparada
+from .models import JornadaConteo, PiezaEtiqueta, VariantePreparada
 
 
 @login_required
@@ -38,23 +38,30 @@ def inventario_view(request):
                   for producto_id, pk, confirmada, estimada in VariantePreparada.objects.filter(
         producto_id__in=[p.pk for p in todos]
     ).values_list('producto_id', 'pk', 'confirmada', 'cantidad_estimada')}
+    contadas = dict(PiezaEtiqueta.objects.filter(
+        jornada__abierta=True, contada__isnull=False,
+        variante__producto_id__in=[p.pk for p in todos]
+    ).values('variante__producto_id').annotate(n=Count('pk'))
+        .values_list('variante__producto_id', 'n'))
     agrupadas = {}
     for p in todos:
         p.en_preparacion = p.pk in preparados
         p.preparacion_id = preparados[p.pk][0] if p.en_preparacion else None
         p.pendiente_conteo = p.en_preparacion and preparados[p.pk][1] is None
         p.cantidad_estimada = preparados[p.pk][2] if p.en_preparacion else None
+        p.contadas_conteo = contadas.get(p.pk, 0) if p.pendiente_conteo else 0
         clave = (('modelo', p.modelo_id) if p.modelo_id else
                  ('legacy', p.categoria_id, p.rasgo1) if p.rasgo1 else ('solo', p.pk))
         if clave not in agrupadas:
             agrupadas[clave] = {
                 'id': p.pk, 'nombre': (p.modelo.nombre if p.modelo else p.rasgo1 or p.categoria.nombre),
                 'categoria': p.categoria.nombre, 'foto_url': None, 'productos': [],
-                'estimadas': 0, 'confirmadas': 0,
+                'estimadas': 0, 'confirmadas': 0, 'contadas': 0,
             }
         familia = agrupadas[clave]
         familia['productos'].append(p)
         familia['estimadas'] += p.cantidad_estimada if p.pendiente_conteo else 0
+        familia['contadas'] += p.contadas_conteo
         familia['confirmadas'] += p.cantidad_actual if not p.pendiente_conteo else 0
         if not familia['foto_url']:
             foto = (p.modelo.foto_principal if p.modelo and p.modelo.foto_principal else p.foto)
@@ -63,9 +70,15 @@ def inventario_view(request):
     for familia in agrupadas.values():
         for p in familia['productos']:
             p.familia_foto_url = p.foto.url if p.foto else familia['foto_url']
-    familias = Paginator(list(agrupadas.values()), 30).get_page(request.GET.get('page'))
+    lista_familias = list(agrupadas.values())
+    familias = Paginator(lista_familias, 30).get_page(request.GET.get('page'))
+    resumen = {
+        'modelos': len(lista_familias), 'variantes': len(todos),
+        'contadas': sum(f['contadas'] for f in lista_familias),
+        'activas': sum(f['confirmadas'] for f in lista_familias),
+    }
     return render(request, 'boutique/inventario.html', {
-        'familias': familias, 'q': q,
+        'familias': familias, 'q': q, 'resumen': resumen,
         'es_admin': es_admin(request.active_profile),
         'conteo_inicial_cerrado': JornadaConteo.objects.filter(abierta=False).exists(),
         'categorias': Categoria.objects.all().order_by('nombre'),

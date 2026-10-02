@@ -75,6 +75,12 @@
     </div>
 </div>
 
+<div class="card border-0 shadow-sm mb-3" style="border-radius:15px"><div class="card-body d-flex flex-wrap gap-3 align-items-center">
+  <strong>{{ resumen.modelos }} modelos · {{ resumen.variantes }} variantes</strong>
+  {% if resumen.contadas %}<span class="badge bg-primary fs-6">{{ resumen.contadas }} contados · pendientes de activar</span>{% endif %}
+  <span class="badge bg-success fs-6">{{ resumen.activas }} piezas disponibles en inventario</span>
+</div></div>
+
 <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
     <div class="card-body p-4">
         <form method="get" class="row g-3">
@@ -100,7 +106,7 @@
         <span class="family-photo d-flex align-items-center justify-content-center bg-light text-muted"><i class="bi bi-camera fs-4"></i></span>
         {% endif %}
         <span><strong>{{ familia.nombre }}</strong><br><small class="text-muted">{{ familia.categoria }} · {{ familia.productos|length }} variante{{ familia.productos|length|pluralize }}</small><br>
-        <small>{{ familia.estimadas }} estimadas · {{ familia.confirmadas }} en inventario</small></span>
+        <small>{% if familia.contadas or familia.estimadas %}{{ familia.contadas }} contadas · {{ familia.estimadas }} estimadas · {% endif %}{{ familia.confirmadas }} disponibles en inventario</small></span>
     </summary>
     <div class="px-3 pb-3"><a class="btn btn-outline-primary" href="{% url 'preparacion:nueva_variante' familia.id %}"><i class="bi bi-plus-lg me-1"></i>Agregar variante de este modelo</a></div>
     <div class="inventory-table-scroll">
@@ -146,7 +152,7 @@
                     <td class="precio-col fw-bold">${{ p.precio_venta }}</td>
                     <td class="stock-col">
                         {% if p.pendiente_conteo %}
-                        <span class="badge bg-secondary">Estimadas: {{ p.cantidad_estimada }} · Pendiente de conteo</span>
+                        <span class="badge bg-secondary">{{ p.contadas_conteo }} contadas · {{ p.cantidad_estimada }} estimadas · Pendiente de cierre</span>
                         {% elif p.cantidad_actual == 0 %}
                         <span class="status-badge status-inactive">
                             <i class="bi bi-exclamation-circle me-1"></i>Agotado
@@ -171,14 +177,14 @@
                             <button class="btn btn-sm btn-outline-primary" type="submit">Imprimir para esta variante</button>
                         </form>
                         {% if p.en_preparacion %}<details class="mt-2"><summary>Reimprimir una etiqueta dañada</summary><p class="small mb-1">Usa el número de la misma etiqueta; no crea otra pieza.</p><form action="{% url 'preparacion:reimprimir_codigo' p.pk %}" method="post" target="_blank" class="d-flex flex-wrap gap-2">{% csrf_token %}<input class="form-control form-control-sm" style="max-width:155px" name="codigo" inputmode="numeric" placeholder="Código 800…" required><button class="btn btn-sm btn-outline-secondary" type="submit">Reimprimir</button></form></details>{% endif %}
-                        {% if es_admin and not p.pendiente_conteo %}
-                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1 }}', '{{ p.rasgo2 }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url }}{% endif %}')">
+                        {% if es_admin %}
+                        <button class="btn btn-sm btn-outline-secondary border-0" onclick="openEditModal({{ p.id }}, '{{ p.rasgo1|escapejs }}', '{{ p.rasgo2|escapejs }}', {{ p.precio_venta|stringformat:'.2f' }}, {{ p.cantidad_actual }}, '{% if p.foto %}{{ p.foto.url|escapejs }}{% endif %}', {{ p.pendiente_conteo|yesno:'true,false' }}, {{ p.en_preparacion|yesno:'true,false' }})" title="Editar precio y datos">
                             <i class="bi bi-pencil"></i>
                         </button>
-                        <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteProduct({{ p.id }})">
-                            <i class="bi bi-trash"></i>
-                        </button>
                         {% endif %}
+                        {% if es_admin %}<button class="btn btn-sm btn-outline-danger border-0" onclick="deleteProduct({{ p.id }})" title="Eliminar variante de prueba">
+                            <i class="bi bi-trash"></i>
+                        </button>{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -367,13 +373,14 @@
                         <div class="col-6 mb-3">
                             <label class="form-label small fw-bold">Stock Actual (Físico)</label>
                             <input type="number" id="edit_stock" class="form-control" style="border-radius: 10px;">
+                            <small id="edit-stock-note" class="text-muted d-none">La cantidad se determina escaneando etiquetas.</small>
                         </div>
                     </div>
 
                     <hr>
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold mb-0">Variantes del mismo modelo</h6>
-                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="showAddVariantForm()">
+                        <button type="button" id="legacy-add-variant" class="btn btn-sm btn-outline-primary rounded-pill" onclick="showAddVariantForm()">
                             <i class="bi bi-plus-lg me-1"></i>Agregar Variante
                         </button>
                     </div>
@@ -441,12 +448,15 @@
         } catch(_) {}
     });
 
-    function openEditModal(id, r1, r2, precio, stock, fotoUrl) {
+    function openEditModal(id, r1, r2, precio, stock, fotoUrl, pending, prepared) {
         document.getElementById('edit_id').value = id;
         document.getElementById('edit_rasgo1').value = r1;
         document.getElementById('edit_rasgo2').value = r2;
         document.getElementById('edit_precio').value = precio;
         document.getElementById('edit_stock').value = stock;
+        document.getElementById('edit_stock').disabled = !!prepared;
+        document.getElementById('edit-stock-note').classList.toggle('d-none', !prepared);
+        document.getElementById('legacy-add-variant').classList.toggle('d-none', !!prepared);
 
         // Show photo preview
         const preview = document.getElementById('editFotoPreview');
@@ -717,7 +727,7 @@
     }
 
     function deleteProduct(id) {
-        if (!confirm('¿Seguro que deseas eliminar este producto?')) return;
+        if (!confirm('¿Eliminar esta variante? Si está en preparación, sus etiquetas dejarán de funcionar y se quitará del conteo. Esta acción no se puede deshacer.')) return;
 
         fetch(`/api/producto-eliminar/${id}/`, {
             method: 'POST',
@@ -734,7 +744,7 @@
         })
         .then(res => {
             if (res.status === 'ok') {
-                document.getElementById(`row-${id}`).remove();
+                location.reload();
                 if (res.archived) {
                     // Tenía historial, se archivó en lugar de borrarse
                     const toast = document.createElement('div');

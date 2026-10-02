@@ -2010,6 +2010,10 @@ def api_clonar_variante(request, pk):
     """Clona un producto base para crear una variante (mismo modelo/tela, diferente color/talla)."""
     try:
         producto_base = get_object_or_404(Producto, pk=pk)
+        from preparacion.models import VariantePreparada
+        if VariantePreparada.objects.filter(producto=producto_base).exists():
+            return JsonResponse({'status': 'error', 'message':
+                'Agrega la variante desde la tarjeta del modelo en Inventario.'}, status=409)
         data = json.loads(request.body)
         stock_inicial = int(data.get('stock', 0))
 
@@ -2120,10 +2124,32 @@ def api_eliminar_producto(request, pk):
     """Elimina un producto (solo Admin)"""
     from django.db.models.deletion import ProtectedError
     from django.db import IntegrityError
+    from preparacion.models import JornadaConteo, PiezaEtiqueta, VariantePreparada
     producto = get_object_or_404(Producto, pk=pk)
     sku = producto.sku  # capturar antes de borrar
 
     try:
+        preparada = VariantePreparada.objects.filter(producto=producto).first()
+        if preparada:
+            with transaction.atomic():
+                # Same lock order as counting: jornada, then piece. A concurrent
+                # scan cannot succeed after the variant has been discarded.
+                list(JornadaConteo.objects.select_for_update().filter(abierta=True))
+                producto = Producto.objects.select_for_update().get(pk=pk)
+                preparada = VariantePreparada.objects.select_for_update().get(producto=producto)
+                list(PiezaEtiqueta.objects.select_for_update().filter(variante=preparada))
+                if (preparada.confirmada or producto.cantidad_actual or
+                        producto.movimientos.exists() or ItemVenta.objects.filter(producto=producto).exists()):
+                    return JsonResponse({'status': 'error', 'message':
+                        'Esta variante ya tiene inventario o historial. No se puede eliminar como prueba; requiere una corrección registrada.'}, status=409)
+                # The printed serials become unknown and no longer contribute to the open count.
+                PiezaEtiqueta.objects.filter(variante=preparada).delete()
+                preparada.delete()
+                producto.delete()
+            registrar_auditoria(
+                usuario=request.active_profile, accion='ELIMINACION_PRODUCTO',
+                detalles=f'Variante de prueba {sku} y sus etiquetas invalidadas', request=request)
+            return JsonResponse({'status': 'ok'})
         producto.delete()
         registrar_auditoria(
             usuario=request.active_profile,
@@ -2133,6 +2159,9 @@ def api_eliminar_producto(request, pk):
         )
         return JsonResponse({'status': 'ok'})
     except ProtectedError:
+        if preparada:
+            return JsonResponse({'status': 'error', 'message':
+                'La variante conserva un vínculo con otra operación; no se eliminó.'}, status=409)
         # Tiene historial — archivar en lugar de borrar
         producto.activo = False
         producto.save(update_fields=['activo'])
@@ -2158,12 +2187,17 @@ def api_editar_producto(request, pk):
     producto = get_object_or_404(Producto, pk=pk)
 
     try:
+        from preparacion.models import VariantePreparada
+        nuevo_stock = int(data.get('stock', producto.cantidad_actual))
+        if (VariantePreparada.objects.filter(producto=producto).exists() and
+                nuevo_stock != producto.cantidad_actual):
+            return JsonResponse({'status': 'error', 'message':
+                'El stock de un vestido etiquetado se actualiza escaneando cada pieza.'}, status=409)
         producto.rasgo1 = data.get('rasgo1', producto.rasgo1)
         producto.rasgo2 = data.get('rasgo2', producto.rasgo2)
         producto.precio_venta = safe_decimal(data.get('precio', producto.precio_venta))
         
         # Si cambia el stock, registrar movimiento
-        nuevo_stock = int(data.get('stock', producto.cantidad_actual))
         if nuevo_stock != producto.cantidad_actual:
             diferencia = nuevo_stock - producto.cantidad_actual
             MovimientoInventario.objects.create(
