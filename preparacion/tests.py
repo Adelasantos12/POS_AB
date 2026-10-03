@@ -16,7 +16,7 @@ class PreparacionInicialTests(TestCase):
         session = self.client.session
         session['active_profile_id'] = self.user.pk
         session.save()
-        self.categoria = Categoria.objects.create(nombre='Vestidos')
+        self.categoria = Categoria.objects.get_or_create(nombre='Vestidos')[0]
         self.color = Color.objects.create(nombre='Magenta')
         Talla.objects.get_or_create(nombre='M')
 

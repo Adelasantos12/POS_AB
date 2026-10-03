@@ -12,7 +12,8 @@ from django.views.decorators.http import require_POST
 from boutique import views as original
 from boutique.middleware import profile_permission_required
 from boutique.models import Producto
-from .models import PiezaEtiqueta, VariantePreparada, MovimientoPieza
+from .models import PiezaEtiqueta, VariantePreparada, MovimientoPieza, CodigoFabricante
+from .fabricante import disponibles
 
 
 @login_required
@@ -20,6 +21,17 @@ from .models import PiezaEtiqueta, VariantePreparada, MovimientoPieza
 def buscar(request):
     raw = request.GET.get('q', '').strip()
     code = raw.upper()
+    mapping = CodigoFabricante.objects.filter(codigo=raw).first()
+    if mapping:
+        results = []
+        for product in mapping.productos.select_related('modelo', 'color').order_by('color__nombre', 'talla'):
+            stock = disponibles(product.pk).count()
+            results.append({'type':'PRODUCTO', 'id':product.pk, 'sku':product.sku,
+                'text':f'{product.modelo or product.rasgo1} · {product.color} · {product.talla}',
+                'precio':float(product.precio_venta), 'stock':stock, 'manufacturer_code':raw,
+                'foto_url':product.foto.url if product.foto else None})
+        return JsonResponse({'results':results, 'choose_variant':True,
+            'message':'Selecciona el color y la talla que vendes.'})
     piece = (PiezaEtiqueta.objects.select_related('variante__producto')
              .filter(codigo=code).first()) if code.isdigit() else None
     if piece and piece.disponible_caja:
@@ -73,10 +85,33 @@ def buscar(request):
 @require_POST
 @login_required
 @profile_permission_required('Vendedor')
+@transaction.atomic
 def vender(request):
     try:
         data = json.loads(request.body)
         items = data.get('items', [])
+        external = [item for item in items if item.get('manufacturer_code')]
+        if external:
+            # Serialize allocation with receiving/checkout and lock in stable order.
+            list(Producto.objects.select_for_update().filter(pk__in=[i['id'] for i in external]).order_by('pk'))
+            if data.get('idempotency_key'):
+                from boutique.models import IdempotencyLog
+                previous = IdempotencyLog.objects.select_for_update().filter(key=data['idempotency_key'], status='DONE').first()
+                if previous:
+                    return JsonResponse(previous.response_json)
+            allocated = {code for i in items for code in i.get('unit_codes', [])}
+            for item in external:
+                quantity = int(item['cantidad'])
+                if quantity < 1 or quantity > 500 or item.get('unit_codes'):
+                    raise ValueError()
+                if not CodigoFabricante.objects.filter(codigo=item['manufacturer_code'], productos__pk=item['id']).exists():
+                    raise ValueError()
+                pieces = list(disponibles(item['id']).select_for_update().exclude(codigo__in=allocated).order_by('contada', 'pk')[:quantity])
+                if len(pieces) != quantity:
+                    return JsonResponse({'status':'error', 'message':'No hay suficientes piezas de ese color y talla disponibles en Boutique.'}, status=409)
+                item['unit_codes'] = [p.codigo for p in pieces]
+                allocated.update(item['unit_codes'])
+            request._body = json.dumps(data).encode()
         prepared_ids = set(VariantePreparada.objects.filter(
             producto_id__in=[item['id'] for item in items]
         ).values_list('producto_id', flat=True))

@@ -106,3 +106,28 @@ class AnalisisInversion(models.Model):
     datos = models.JSONField()
     respuesta = models.TextField()
     modelo_ia = models.CharField(max_length=100)
+
+
+class CodigoFabricante(models.Model):
+    codigo = models.CharField(max_length=80, unique=True)
+    productos = models.ManyToManyField('boutique.Producto', related_name='codigos_fabricante')
+
+
+class EntradaFabricante(models.Model):
+    clave = models.UUIDField(unique=True)
+    producto = models.ForeignKey('boutique.Producto', on_delete=models.PROTECT)
+    cantidad = models.PositiveIntegerField()
+    ubicacion = models.CharField(max_length=30)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+
+class CorreccionFabricante(models.Model):
+    clave = models.UUIDField(unique=True)
+    origen = models.ForeignKey('boutique.Producto', on_delete=models.PROTECT, related_name='+')
+    destino = models.ForeignKey('boutique.Producto', on_delete=models.PROTECT, related_name='+')
+    cantidad = models.PositiveIntegerField()
+    ubicacion = models.CharField(max_length=30)
+    motivo = models.CharField(max_length=300)
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateTimeField(auto_now_add=True)

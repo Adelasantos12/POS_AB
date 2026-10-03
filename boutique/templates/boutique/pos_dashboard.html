@@ -722,10 +722,12 @@
     // Wait for the search request matching the complete scanner input.
     let searchPromise = Promise.resolve();
     let searchSerial = 0;
+    let chooseManufacturerVariant = false;
     document.getElementById('productSearch').addEventListener('keydown', function(e) {
         if (e.key !== 'Enter') return;
         e.preventDefault();
         searchPromise.then(function() {
+            if (chooseManufacturerVariant) return;
             var first = document.querySelector('#searchResults .list-group-item');
             if (first) first.click();
         });
@@ -745,6 +747,32 @@
             .then(r => r.json())
             .then(data => {
                 if (serial !== searchSerial) return;
+                chooseManufacturerVariant = !!data.choose_variant;
+                if (data.choose_variant) {
+                    const box = document.getElementById('searchResults');
+                    box.replaceChildren();
+                    const message = document.createElement('p');
+                    message.className = 'p-3 mb-0 fw-bold';
+                    message.textContent = data.message;
+                    box.append(message);
+                    data.results.forEach(item => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'list-group-item list-group-item-action p-3';
+                        button.textContent = item.text + ' — $' + item.precio + ' · ' + item.stock + ' disponibles';
+                        button.disabled = item.stock < 1;
+                        button.addEventListener('click', () => {
+                            const existing = cart.find(i => i.id === item.id);
+                            if (existing && (existing.unitCodes.length || existing.qty >= item.stock)) {
+                                alert('Revisa la cantidad o las etiquetas individuales de esta variante en el carrito.'); return;
+                            }
+                            addToCart(item.id, item.text, item.precio, '');
+                            cart.find(i => i.id === item.id).manufacturerCode = item.manufacturer_code;
+                        });
+                        box.append(button);
+                    });
+                    return;
+                }
                 let html = '';
                 data.results.forEach(item => {
                     if (item.type === 'PRODUCTO') {
@@ -808,6 +836,7 @@
 
     function addToCart(id, name, price, unitCode) {
         const existing = cart.find(i => i.id === id);
+        if (existing && existing.manufacturerCode && unitCode) { alert('Esta variante ya está capturada por cantidad. Retírala antes de escanear una etiqueta individual.'); return; }
         if (existing && unitCode && existing.unitCodes.includes(unitCode)) {
             alert('Este mismo vestido ya está en el carrito.');
             return;
@@ -1152,13 +1181,14 @@
         posClienteNombre.classList.remove('is-invalid');
     }
 
+    let manufacturerSaleAttempt = null;
     // ── Checkout ──────────────────────────────────────────────────────────────
     document.getElementById('btnCheckout').addEventListener('click', function() {
         if (cart.length === 0 && cartServices.length === 0) {
             alert('El carrito está vacío');
             return;
         }
-        const items = cart.map(i => ({id: i.id, cantidad: i.qty, unit_codes: i.unitCodes}));
+        const items = cart.map(i => ({id: i.id, cantidad: i.qty, unit_codes: i.unitCodes, manufacturer_code: i.manufacturerCode || null}));
         const prodTotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
         const srvTotal  = cartServices.reduce((s, srv) => s + srv.cantidad * srv.precio, 0);
         const total = prodTotal + srvTotal;
@@ -1197,8 +1227,15 @@
             servicios_extra: cartServices.length ? cartServices : undefined,
         };
 
+        if (cart.some(i => i.manufacturerCode)) {
+            const fingerprint = JSON.stringify({...payload, fecha:null});
+            if (!manufacturerSaleAttempt || manufacturerSaleAttempt.fingerprint !== fingerprint) {
+                manufacturerSaleAttempt = {fingerprint, key:generateUUID()};
+            }
+            payload.idempotency_key = manufacturerSaleAttempt.key;
+        }
         if (!isOnline()) {
-            if (cart.some(i => i.unitCodes.length)) {
+            if (cart.some(i => i.unitCodes.length || i.manufacturerCode)) {
                 alert('Estos vestidos requieren conexión para comprobar que cada etiqueta no se haya vendido. Conserva el carrito e inténtalo cuando vuelva la conexión.');
                 return;
             }
@@ -1229,6 +1266,7 @@
                 }
                 new bootstrap.Modal(document.getElementById('saleSuccessModal')).show();
                 cart = [];
+                manufacturerSaleAttempt = null;
                 cartServices = [];
                 renderCart();
                 document.getElementById('initialPayment').value = '';

@@ -15,8 +15,8 @@ class ModeloForm(forms.ModelForm):
         model = Modelo
         fields = ['foto_principal', 'nombre', 'categoria', 'combinacion_telas', 'descripcion', 'referencia', 'notas_confeccion', 'costo_referencia', 'precio_sugerido', 'proveedor']
         labels = {'foto_principal': 'Foto del modelo', 'nombre': 'Nombre del modelo',
-                  'categoria': 'Categoría', 'combinacion_telas': 'Tela o combinación de telas',
-                  'descripcion': 'Características', 'referencia': 'Referencia (opcional)',
+                  'categoria': 'Categoría (tipo de producto)', 'combinacion_telas': 'Tela o combinación de telas',
+                  'descripcion': 'Características adicionales (opcional)', 'referencia': 'Referencia (opcional)',
                   'notas_confeccion': 'Notas de confección (opcional)', 'costo_referencia': 'Costo por prenda (MXN, opcional)', 'precio_sugerido': 'Precio de venta sugerido (MXN)', 'proveedor': 'Proveedor (opcional)'}
         widgets = {'descripcion': forms.Textarea(attrs={'rows': 3}),
                    'combinacion_telas': forms.TextInput(),
@@ -32,6 +32,8 @@ class ModeloForm(forms.ModelForm):
             if name in self.fields:
                 self.fields[name].min_value = 0
                 self.fields[name].widget.attrs['min'] = 0
+        self.fields['nombre'].widget.attrs['placeholder'] = 'Ej. 1 hombro manga caída'
+        self.fields['categoria'].help_text = 'Vestidos, Infantiles, Velos, Capas… El nombre del diseño va en Nombre del modelo.'
         self.fields['categoria'].required = True
         self.fields['categoria'].queryset = Categoria.objects.order_by('nombre')
         for name, field in self.fields.items():

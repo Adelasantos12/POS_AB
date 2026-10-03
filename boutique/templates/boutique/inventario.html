@@ -64,6 +64,7 @@
 <div class="d-flex flex-wrap gap-2 align-items-center">
 <a class="btn btn-outline-secondary" href="{% url 'preparacion:agregar_modelo' %}">Agregar modelo (subir foto)</a>
 <a class="btn btn-outline-secondary" href="{% url 'preparacion:agregar_modelos_bloque' %}">Subir varias fotos</a>
+<a class="btn btn-outline-secondary" href="{% url 'preparacion:fabricante' %}">Códigos del fabricante</a>
 <details><summary class="btn btn-outline-secondary">Más opciones</summary><div class="p-3 bg-white border rounded d-flex flex-wrap gap-2">
 <a href="{% url 'preparacion:conteo' %}" class="btn btn-outline-secondary">{% if conteo_inicial_cerrado %}Entrada individual con escáner{% else %}Conteo inicial{% endif %}</a>
 <a href="{% url 'preparacion:inicio' %}" class="btn btn-outline-secondary">Comprobar etiquetas y revisar conteo</a>
@@ -89,9 +90,10 @@
             <div class="col-md-6">
                 <div class="input-group">
                     <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                    <input type="text" name="q" class="form-control border-start-0 ps-0" placeholder="Buscar por rasgo o SKU..." value="{{ q }}">
+                    <input type="text" name="q" class="form-control border-start-0 ps-0" placeholder="Buscar nombre del modelo, características o código..." value="{{ q }}">
                 </div>
             </div>
+            <div class="col-md-4"><label class="visually-hidden" for="filtro-categoria">Categoría</label><select id="filtro-categoria" name="categoria" class="form-select" onchange="this.form.submit()"><option value="">Todas las categorías</option>{% for c in categorias %}<option value="{{ c.pk }}" {% if categoria_seleccionada == c.pk|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}</select></div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-primary px-4 rounded-pill">Buscar</button>
             </div>
@@ -99,7 +101,7 @@
     </div>
 </div>
 
-<div id="modelos" style="scroll-margin-top:180px"><h3 class="h5">Modelos y etiquetas</h3><p>Abre un modelo para agregar variantes o imprimir sus etiquetas.</p></div>
+<div id="modelos" style="scroll-margin-top:180px"><h3 class="h5">Modelos y etiquetas</h3><p>Orden alfabético por nombre del modelo. Abre uno para agregar variantes o imprimir sus etiquetas.</p></div>
 {% for familia in familias %}
 <details class="family-card inventory-table-card" {% if q %}open{% endif %}>
     <summary>
@@ -112,7 +114,7 @@
         <small>{% if familia.contadas or familia.estimadas %}{{ familia.contadas }} contadas · {{ familia.estimadas }} estimadas · {% endif %}{{ familia.confirmadas }} en inventario · {{ familia.disponibles }} disponibles en Boutique</small></span>
     </summary>
     <div class="px-3 pb-3"><a class="btn btn-outline-primary" href="{% url 'preparacion:nueva_variante' familia.id %}"><i class="bi bi-plus-lg me-1"></i>Agregar variante de este modelo</a>
-    {% if es_admin %}<button type="button" class="btn btn-outline-danger ms-2" data-url="{% url 'preparacion:eliminar_modelo' familia.id %}" data-nombre="{{ familia.nombre }}" onclick="eliminarModeloCompleto(this)">Eliminar modelo completo</button>{% endif %}</div>
+    {% if es_admin %}<a class="btn btn-outline-secondary ms-2" href="{% url 'preparacion:editar_catalogo' familia.id %}">Editar nombre y categoría</a><button type="button" class="btn btn-outline-danger ms-2" data-url="{% url 'preparacion:eliminar_modelo' familia.id %}" data-nombre="{{ familia.nombre }}" onclick="eliminarModeloCompleto(this)">Eliminar modelo completo</button>{% endif %}</div>
     <div class="inventory-table-scroll">
         <table class="table table-hover align-middle product-table mb-0">
             <thead class="bg-light">
@@ -202,9 +204,9 @@
 {% endfor %}
 {% if familias.paginator.num_pages > 1 %}
 <nav aria-label="Páginas del inventario" class="d-flex justify-content-center align-items-center gap-3 mt-3">
-    {% if familias.has_previous %}<a href="?q={{ q|urlencode }}&page={{ familias.previous_page_number }}">← Anteriores</a>{% endif %}
+    {% if familias.has_previous %}<a href="?q={{ q|urlencode }}&categoria={{ categoria_seleccionada|urlencode }}&page={{ familias.previous_page_number }}">← Anteriores</a>{% endif %}
     <span>Página {{ familias.number }} de {{ familias.paginator.num_pages }}</span>
-    {% if familias.has_next %}<a href="?q={{ q|urlencode }}&page={{ familias.next_page_number }}">Siguientes →</a>{% endif %}
+    {% if familias.has_next %}<a href="?q={{ q|urlencode }}&categoria={{ categoria_seleccionada|urlencode }}&page={{ familias.next_page_number }}">Siguientes →</a>{% endif %}
 </nav>
 {% endif %}
 

@@ -1,0 +1,4 @@
+{% extends 'boutique/base.html' %}
+{% block content %}<div class="container" style="max-width:650px"><a href="{% url 'inventario_view' %}">← Inventario</a><h1>Editar nombre y categoría</h1>
+<p>El nombre identifica el diseño; la categoría indica el tipo de producto. El cambio se aplica a todas las variantes de esta ficha y conserva fotos, códigos, costos y cantidades.</p>
+<form method="post" class="card p-4">{% csrf_token %}{{ form.as_p }}<button class="btn btn-primary">Guardar nombre y categoría</button></form></div>{% endblock %}

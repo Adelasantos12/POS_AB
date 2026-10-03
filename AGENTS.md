@@ -13,3 +13,11 @@ Leer `docs/VERSION_ESTABLE_2026-10-02.md`, `docs/COSTOS_GUIA_ADMIN.md` y `docs/C
 ## Simplificación UX posterior
 
 La misma rama de desarrollo incorpora Entradas, Salidas, Buscar prendas y Etiquetas. Leer `docs/UX_ENTRADAS_SALIDAS.md`. Mantener esos nombres elegidos por la usuaria. No volver a usar «Preparar vestidos». La versión de Railway continúa congelada. No confundir borradores de sesión con órdenes de entrega compartidas o sincronizadas entre dispositivos.
+
+## Códigos de fabricante (continuidad)
+
+La usuaria informó haber desplegado la rama de costos. Esta ampliación se desarrolla en `feature/codigos-fabricante-costos-bloque`, sin avanzar ramas congeladas. Leer `docs/CODIGOS_FABRICANTE.md`. No confundir códigos compartidos de fabricante con identidad física individual. Conservar la elección explícita de color/talla y los reintentos idempotentes. La carga legacy registra costo de referencia, no costo histórico de unidades individualizadas.
+
+## Organización del catálogo
+
+Leer `docs/CATALOGO_NOMBRES_CATEGORIAS.md`. Categoría = tipo general; Modelo.nombre = nombre habitual del diseño; características opcionales. Mantener el filtro por categoría y orden alfabético antes de paginar. Las categorías antiguas no se reclasifican automáticamente. La usuaria autorizó subir esta rama al repositorio Adelasantos12/POS_AB; no autorizó fusión ni despliegue de esta ampliación.

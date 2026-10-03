@@ -1,5 +1,6 @@
 """Inventory list with complete model families and one row per variant."""
 
+from boutique.utils import quitar_acentos
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
@@ -15,7 +16,12 @@ from .models import JornadaConteo, PiezaEtiqueta, VariantePreparada
 @profile_permission_required(['Inventario', 'Vendedor'])
 def inventario_view(request):
     q = request.GET.get('q', '').strip()
+    categoria = request.GET.get('categoria', '')
     visibles = Producto.objects.filter(Q(activo=True) | Q(preparacion__isnull=False))
+    if categoria.isdigit():
+        visibles = visibles.filter(categoria_id=int(categoria))
+    else:
+        categoria = ''
     if q:
         encontrados = visibles.filter(
             Q(sku__icontains=q) | Q(rasgo1__icontains=q) |
@@ -80,7 +86,7 @@ def inventario_view(request):
     for familia in agrupadas.values():
         for p in familia['productos']:
             p.familia_foto_url = p.foto.url if p.foto else familia['foto_url']
-    lista_familias = list(agrupadas.values())
+    lista_familias = sorted(agrupadas.values(), key=lambda f: (quitar_acentos(f['nombre']).casefold(), f['id']))
     familias = Paginator(lista_familias, 30).get_page(request.GET.get('page'))
     resumen = {
         'modelos': len(lista_familias), 'variantes': len(todos),
@@ -89,7 +95,7 @@ def inventario_view(request):
         'disponibles': sum(f['disponibles'] for f in lista_familias),
     }
     return render(request, 'boutique/inventario.html', {
-        'familias': familias, 'q': q, 'resumen': resumen,
+        'familias': familias, 'q': q, 'resumen': resumen, 'categoria_seleccionada': categoria,
         'entrada_pendiente': bool(request.session.get(f'prendas_borrador_{request.active_profile.pk}_ENTRADA', {}).get('piezas')),
         'salida_pendiente': bool(request.session.get(f'prendas_borrador_{request.active_profile.pk}_SALIDA', {}).get('piezas')),
         'es_admin': es_admin(request.active_profile),

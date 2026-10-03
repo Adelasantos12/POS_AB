@@ -9,7 +9,7 @@
 <p>Primero guarda el modelo. Después podrás agregar sus variantes sin volver a subir la foto. Este paso no suma inventario.</p>
 <form method="post" enctype="multipart/form-data" id="model-form">{% csrf_token %}
 {{ form.non_field_errors }}
-{% for field in form %}<div class="mb-3"><label class="form-label fw-bold" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}{% if field.name == 'foto_principal' %}<img id="model-preview" alt="Vista previa del modelo" style="display:none;max-width:220px;max-height:280px;margin-top:12px;border-radius:12px"><div class="mt-2"><button type="button" class="btn btn-outline-primary" id="model-ai">Sugerir datos con la foto</button></div><p id="model-message" class="mt-2" role="status"></p>{% endif %}</div>{% endfor %}
+{% for field in form %}<div class="mb-3"><label class="form-label fw-bold" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<small class="text-muted">{{ field.help_text }}</small>{% endif %}{{ field.errors }}{% if field.name == 'foto_principal' %}<img id="model-preview" alt="Vista previa del modelo" style="display:none;max-width:220px;max-height:280px;margin-top:12px;border-radius:12px"><div class="mt-2"><button type="button" class="btn btn-outline-primary" id="model-ai">Sugerir datos con la foto</button></div><p id="model-message" class="mt-2" role="status"></p>{% endif %}</div>{% endfor %}
 {% if form.errors %}<p class="text-danger">Revisa los campos señalados. Si habías elegido una foto, vuelve a seleccionarla.</p>{% endif %}
 <button class="btn btn-primary btn-lg" type="submit">Guardar modelo y agregar variantes</button>
 </form>

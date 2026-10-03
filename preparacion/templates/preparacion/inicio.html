@@ -71,8 +71,8 @@
         {% csrf_token %}
         <div class="row g-3">
           <div class="col-md-6"><label for="modelo_id">Modelo existente</label><select class="form-select" name="modelo_id" id="modelo_id"><option value="">Crear modelo nuevo</option>{% for m in modelos %}<option value="{{ m.pk }}" {% if selected_model_id == m.pk|stringformat:'s' %}selected{% endif %}>{{ m.nombre }}</option>{% endfor %}</select></div>
-          <div class="col-md-6"><label for="modelo_nuevo">Nombre del modelo nuevo</label><input class="form-control" id="modelo_nuevo" name="modelo_nuevo" placeholder="Ej. Vestido Aurora"></div>
-          <div class="col-md-6"><label for="categoria_id">Categoría</label><select class="form-select" id="categoria_id" name="categoria_id"><option value="">Elige una categoría</option>{% for c in categorias %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+          <div class="col-md-6"><label for="modelo_nuevo">Nombre del modelo nuevo</label><input class="form-control" id="modelo_nuevo" name="modelo_nuevo" placeholder="Ej. 1 hombro manga caída"></div>
+          <div class="col-md-6"><label for="categoria_id">Categoría (tipo de producto)</label><select class="form-select" id="categoria_id" name="categoria_id"><option value="">Elige una categoría</option>{% for c in categorias %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}</select></div>
           <div class="col-md-6"><label for="foto">Foto del modelo (opcional)</label><input type="file" accept="image/*" class="form-control" id="foto" name="foto"></div>
           <div class="col-12"><button type="button" id="ai-suggest" class="btn btn-outline-secondary">Sugerir datos de la foto con IA</button><span id="ai-message" class="ms-2 prep-note"></span></div>
           <div class="col-md-6"><label for="color_id">Color</label><select class="form-select" id="color_id" name="color_id"><option value="">Escribir un color nuevo</option>{% for c in colores %}<option value="{{ c.pk }}">{{ c.nombre }}</option>{% endfor %}</select><input class="form-control mt-2" id="color_nuevo" name="color_nuevo" placeholder="Color nuevo"></div>
@@ -113,7 +113,7 @@
   });
   var model = document.getElementById('modelo_id'), name = document.getElementById('modelo_nuevo');
   if (model) {
-    function toggleModel() { name.disabled = !!model.value; name.placeholder = model.value ? 'Se usará el modelo elegido' : 'Ej. Vestido Aurora'; }
+    function toggleModel() { name.disabled = !!model.value; name.placeholder = model.value ? 'Se usará el modelo elegido' : 'Ej. 1 hombro manga caída'; }
     model.addEventListener('change', toggleModel); toggleModel();
   }
   var scan = document.getElementById('scan-form');

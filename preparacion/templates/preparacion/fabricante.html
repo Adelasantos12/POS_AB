@@ -1,0 +1,38 @@
+{% extends 'boutique/base.html' %}
+{% block content %}
+<div class="container" style="max-width:900px">
+<a href="{% url 'inventario_view' %}">← Inventario</a><h1>Códigos del fabricante</h1>
+<p>Para fajas, capas y cualquier producto con etiqueta compartida. Elige color y talla al vender; no necesitas imprimir otra etiqueta.</p>
+{% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+{% if request.GET.guardado %}<div class="alert alert-success">Registro guardado.</div>{% endif %}
+{% if es_admin %}<details class="card p-3 mb-3" open><summary class="h5">1. Vincular etiqueta con colores y tallas</summary>
+<p>Agrega las combinaciones desde <a href="{% url 'preparacion:inicio' %}">Agregar variantes</a>. Cada combinación conserva su cantidad y precio. Vincular no suma inventario ni cambia códigos.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="accion" value="vincular">
+<label for="codigo">Código del fabricante</label><input class="form-control mb-3" id="codigo" name="codigo" required maxlength="80" autocomplete="off">
+<fieldset><legend class="h6">Selecciona las variantes que comparten esta etiqueta</legend>
+<div style="max-height:280px;overflow:auto">{% for p in productos %}<label class="d-block p-2"><input type="checkbox" name="productos" value="{{ p.pk }}"> {{ p.modelo|default:p.rasgo1 }} · {{ p.color }} · {{ p.talla }} · {{ p.sku }}</label>{% endfor %}</div></fieldset>
+<button class="btn btn-primary mt-3">Vincular código</button></form></details>{% endif %}
+<section class="card p-3 mb-3"><h2 class="h5">2. Registrar entrada por cantidad</h2>
+<p>Cuenta físicamente cada color y talla. Registra únicamente piezas nuevas o todavía no registradas. Esta cantidad se suma a las existencias.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="accion" value="entrada"><input type="hidden" name="clave" value="{{ clave }}">
+<label for="producto">Modelo, color y talla</label><select id="producto" name="producto" class="form-select mb-3" required><option value="">Seleccionar</option>{% for p in vinculados %}<option value="{{ p.pk }}">{{ p.modelo|default:p.rasgo1 }} · {{ p.color }} · {{ p.talla }}</option>{% endfor %}</select>
+<label for="cantidad">Piezas que entran</label><input id="cantidad" name="cantidad" type="number" min="1" max="500" required class="form-control mb-3">
+<label for="ubicacion">Dónde quedan</label><select id="ubicacion" name="ubicacion" class="form-select mb-3"><option value="BOUTIQUE">Boutique</option><option value="BODEGA">Bodega</option></select>
+{% if es_admin %}<label for="costo">Costo por pieza (opcional; vacío conserva la referencia)</label><input id="costo" name="costo_unitario" type="number" min="0" step="0.01" class="form-control mb-3">{% endif %}
+<button class="btn btn-primary">Confirmar entrada</button></form></section>
+{% if es_admin %}<details class="card p-3 mb-3"><summary class="h5">Corregir color o talla del conteo</summary>
+<p>Reclasifica piezas disponibles sin cambiar la etiqueta del fabricante ni el total. No modifica prendas vendidas, apartadas o devueltas de una venta.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="accion" value="corregir"><input type="hidden" name="clave" value="{{ clave }}">
+<label>Se contaron como</label><select name="origen" class="form-select mb-3" required><option value="">Seleccionar</option>{% for p in vinculados %}<option value="{{ p.pk }}">{{ p.modelo|default:p.rasgo1 }} · {{ p.color }} · {{ p.talla }}</option>{% endfor %}</select>
+<label>En realidad son</label><select name="destino" class="form-select mb-3" required><option value="">Seleccionar</option>{% for p in vinculados %}<option value="{{ p.pk }}">{{ p.modelo|default:p.rasgo1 }} · {{ p.color }} · {{ p.talla }}</option>{% endfor %}</select>
+<label>Piezas que se corrigen</label><input name="cantidad" type="number" min="1" max="500" class="form-control mb-3" required>
+<label>Ubicación actual</label><select name="ubicacion" class="form-select mb-3"><option value="BOUTIQUE">Boutique</option><option value="BODEGA">Bodega</option></select>
+<label>Motivo</label><input name="motivo" required maxlength="300" class="form-control mb-3">
+<button class="btn btn-outline-primary">Confirmar corrección</button></form></details>{% endif %}
+<h2 class="h5">Existencias por color, talla y ubicación</h2>
+<div class="table-responsive"><table class="table"><thead><tr><th>Modelo</th><th>Color</th><th>Talla</th><th>Ubicación</th><th>Piezas</th></tr></thead><tbody>{% for r in resumen %}<tr><td>{{ r.variante__producto__modelo__nombre }}<br><small>{{ r.variante__producto__sku }}</small></td><td>{{ r.variante__producto__color__nombre }}</td><td>{{ r.variante__producto__talla }}</td><td>{{ r.ubicacion }}</td><td>{{ r.total }}</td></tr>{% empty %}<tr><td colspan="5">Sin existencias registradas.</td></tr>{% endfor %}</tbody></table></div>
+<h2 class="h5">Ventas registradas por color y talla</h2>
+<p>Acumulado del sistema. Las devoluciones físicas se muestran aparte; no representan reembolsos.</p>
+<div class="table-responsive"><table class="table"><thead><tr><th>Modelo</th><th>Color</th><th>Talla</th><th>Vendidas</th><th>Devueltas</th></tr></thead><tbody>{% for r in ventas %}<tr><td>{{ r.pieza__variante__producto__modelo__nombre }}</td><td>{{ r.pieza__variante__producto__color__nombre }}</td><td>{{ r.pieza__variante__producto__talla }}</td><td>{{ r.vendidas }}</td><td>{{ r.devueltas }}</td></tr>{% empty %}<tr><td colspan="5">Todavía no hay ventas registradas.</td></tr>{% endfor %}</tbody></table></div>
+<details><summary>Etiquetas vinculadas</summary>{% for c in codigos %}<p><strong>{{ c.codigo }}</strong>{% for p in c.productos.all %}<br>{{ p.modelo|default:p.rasgo1 }} · {{ p.color }} · {{ p.talla }}{% endfor %}</p>{% endfor %}</details>
+</div>{% endblock %}

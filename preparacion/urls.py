@@ -1,11 +1,13 @@
 from django.urls import path
-from . import views, movements, inversion, operaciones
+from . import views, movements, inversion, operaciones, fabricante, catalogo
 from .deletion import eliminar_modelo
 from .modelos import agregar_modelo, agregar_modelos_bloque
 
 app_name = 'preparacion'
 
 urlpatterns = [
+    path('catalogo/<int:producto_id>/', catalogo.editar, name='editar_catalogo'),
+    path('fabricante/', fabricante.panel, name='fabricante'),
     path('buscar/', operaciones.buscar, name='buscar_prendas'),
     path('entradas/', operaciones.operacion, {'tipo': 'ENTRADA'}, name='entradas'),
     path('salidas/', operaciones.operacion, {'tipo': 'SALIDA'}, name='salidas'),

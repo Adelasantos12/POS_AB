@@ -3300,6 +3300,7 @@ def subida_bloque(request):
     """Vista para cargar múltiples vestidos de una vez"""
     from .models import RASGOS_ESTILO, RASGOS_CORTE, RASGOS_ESCOTE, RASGOS_TELA
     return render(request, 'boutique/subida_bloque.html', {
+        'es_admin': es_admin(request.active_profile),
         'categorias': Categoria.objects.all().order_by('nombre'),
         'colores': Color.objects.filter(activo=True).order_by('nombre'),
         'rasgos_estilo': RASGOS_ESTILO,
@@ -3332,6 +3333,8 @@ def api_subida_bloque(request):
                 if not precio_raw or not fila.get('categoria') or not fila.get('color'):
                     resultados.append({'fila': i + 1, 'status': 'skip', 'msg': 'Fila vacía, omitida'})
                     continue
+                from preparacion.costing import importe
+                costo = importe(fila.get('costo_referencia')) if es_admin(request.active_profile) else None
                 precio = safe_decimal(precio_raw)
                 if precio <= 0:
                     resultados.append({'fila': i + 1, 'status': 'error', 'msg': 'Precio inválido'})
@@ -3341,6 +3344,19 @@ def api_subida_bloque(request):
                     nombre=fila['color'].strip(),
                     defaults={'codigo_hex': '#CCCCCC', 'activo': True}
                 )
+                from .utils import normalizar_nombre
+                nombre_modelo = normalizar_nombre(fila.get('nombre_modelo', '').strip())
+                modelo = None
+                if nombre_modelo:
+                    if len(nombre_modelo) > 100:
+                        raise ValueError('El nombre del modelo admite hasta 100 caracteres.')
+                    modelo = Modelo.objects.filter(nombre__iexact=nombre_modelo).first()
+                    if modelo and modelo.categoria_id and modelo.categoria_id != categoria.pk:
+                        raise ValueError(f'El modelo {nombre_modelo} ya existe en otra categoría. Revisa su ficha.')
+                    if not modelo:
+                        modelo = Modelo.objects.create(nombre=nombre_modelo, categoria=categoria,
+                            descripcion=fila.get('rasgo1','').strip(), costo_referencia=costo,
+                            precio_sugerido=precio)
                 rasgo1_val = fila.get('rasgo1', '').strip()
                 rasgo1_prefix = rasgo1_val[:20] if rasgo1_val else ''
                 posible_duplicado = None
@@ -3353,12 +3369,13 @@ def api_subida_bloque(request):
                     if dup_candidate:
                         posible_duplicado = {'sku': dup_candidate.sku, 'id': dup_candidate.id}
                 producto, created = Producto.objects.get_or_create(
+                    modelo=modelo,
                     categoria=categoria,
                     color=color,
                     talla=fila.get('talla', 'U').strip(),
                     rasgo1=rasgo1_val,
                     rasgo2=fila.get('rasgo2', '').strip(),
-                    defaults={'precio_venta': precio, 'cantidad_actual': 0, 'estado': 'TIENDA'}
+                    defaults={'costo_referencia': costo, 'precio_venta': precio, 'cantidad_actual': 0, 'estado': 'TIENDA'}
                 )
                 # If get_or_create matched exactly, the posible_duplicado IS the same product — clear it
                 if posible_duplicado and not created and posible_duplicado['id'] == producto.id:
